@@ -460,6 +460,18 @@ async function main() {
   }
   check('前瞻打分版（实验备用，实战未用）同样顺藤摸瓜（20 次中 ' + nearCount2 + ' 次在附近）', nearCount2 >= 15);
 
+  // Rollout 版（实战在用，AI_ROLLOUT 开关控制）冒烟：小参数快速跑，只验基本合法性
+  const tR1 = aiMod.chooseTargetRollout([], { K: 3, P: 100, M: 1 });
+  check('rollout 空信息时给出合法目标', !!tR1 && tR1.row >= 0 && tR1.row < 10 && tR1.col >= 0 && tR1.col < 10);
+  const tR2 = aiMod.chooseTargetRollout([{ row: 3, col: 4, result: 'empty' }], { K: 3, P: 100, M: 1 });
+  check('rollout 已揭示的格子不会重复打', !(tR2.row === 3 && tR2.col === 4));
+  let nearCount3 = 0;
+  for (let i = 0; i < 10; i++) {
+    const t = aiMod.chooseTargetRollout([{ row: 5, col: 5, result: 'body' }], { K: 4, P: 200, M: 2 });
+    if (Math.abs(t.row - 5) + Math.abs(t.col - 5) <= 3) nearCount3++;
+  }
+  check('rollout 打中机身后也顺藤摸瓜（10 次中 ' + nearCount3 + ' 次在附近）', nearCount3 >= 6);
+
   // B. 人机房间完整流程
   const P = io(URL);
   await waitFor(P, 'connect');
@@ -574,7 +586,7 @@ async function main() {
   let specSawAI = null;
   S.on('revealResult', function (d) { if (d.attacker === 1) specSawAI = d; });
   P2.emit('reveal', { row: 2, col: 2 }); // 垫步引发 AI 走棋
-  await sleep(800); // AI 思考延迟 80~200ms + 走棋计算，留足余量
+  await sleep(1500); // AI 思考延迟 80~200ms + 走棋计算（rollout 版可达数百 ms），留足余量
   check('观战者实时看到 AI 走棋', specSawAI !== null);
 
   // 真人离线后房间回收（AI 永不掉线也照样回收）

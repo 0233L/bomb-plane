@@ -335,8 +335,8 @@ function scheduleAITurn(room) {
     if (!h || !h.connected) return;                   // 玩家中途断线：暂停
     if (r.steps[1] > r.steps[0]) return;              // 玩家抢步领先了：等待
 
-    // 用一步贪心（实测 4 种"一步前瞻"变体自对弈都不如它，详见 ai.js 头注释）
-    const target = ai.chooseTargetGreedy(r.players[0].shotsReceived);
+    // 实战用一步贪心；AI_ROLLOUT=1 可切换 rollout 版（500 盘实测未优于贪心，详见 ai.js 头注释）
+    const target = ai.chooseTargetLive(r.players[0].shotsReceived);
     tryReveal(r, 1, target.row, target.col);
 
     // 走完一步若还轮得到 AI（比如之前落后一步），继续调度

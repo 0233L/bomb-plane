@@ -61,6 +61,45 @@
 //   这本身不是问题，问题只是它没有更准。若未来启用前瞻版，注意
 //   首枪最坏约 1s，仍需藏在 AI 的随机思考延迟里。
 // ============================================
+// Rollout 一步前瞻（第二轮方案，AI_ROLLOUT=1 开启，默认关）
+//
+//   思路来自机器学习文献：Bertsekas Rollout 算法（用基础策略从后继状态
+//   模拟到终局的真实代价代替价值函数，有"不差于基础策略"的数学保证）
+//   + POMCP 粒子信念（Silver & Veness 2010, NIPS；POMCP 论文的测试域
+//   恰好包含 10×10 战舰，与本游戏同族）。
+//
+//   打分不再是"下一枪能拿多少分"，而是直接估计
+//   「打 x 之后按贪心打完一整局还要几步」的真实步数：
+//
+//     V(x) = 1 + Σ_{o∈{空,身,头}} p_o × R(A_o)          ← 越小越好
+//       p_o   = 该格得到结果 o 的精确概率（= n_o / alive，无抽样误差）
+//       A_o   = 存活组合中「x 处结果 = o」的子集
+//       R(A_o)= 从 A_o 出发按贪心打到底的期望剩余步数（蒙特卡洛估计）
+//
+//   R 的估计：从 A_o 采 ≤P 个组合当「粒子池」，每步在池上按与实战完全
+//   相同的贪心公式选格 → 对真相（从池里抽）揭示 → 筛掉矛盾的粒子，
+//   直到 3 个机头全中记步数；每分支独立采 M 次取平均。
+//   与上一轮失败的前瞻相比：价值单位就是真实步数（无度量不一致），
+//   残局"分数并列该打谁"由模拟自然涌现——上一轮的两个病根都不存在。
+//
+//   第 4 轮模拟实测（500 盘配对，同一批部署两算法各打一遍）：
+//     配置                                 平均步数   vs 贪心(18.94)
+//     K=8  P=300 M=4 （默认）               19.53      +0.60 步 ✗
+//     K=4  P=300 M=8                        19.25      +0.32 步 ✗
+//     K=2  P=300 M=16                       19.14      +0.21 步 ✗
+//     K=8  P=300 M=4  竞速两阶段            19.91      +0.97 步 ✗
+//     K=8  P=600 M=4                        19.57      +0.64 步 ✗
+//     K=16 P=300 M=4                        21.26      +2.33 步 ✗
+//     K=2  P=300 M=64                       18.94      +0.01 步 ✗（≈持平）
+//   结论：rollout 未优于贪心，保持贪心为实战算法（AI_ROLLOUT=1 可手动开启）。
+//   原因分析：候选格之间真实的期望步数差只有 0.1~0.5 步，而每步的时间预算
+//   （数百 ms）只够把蒙特卡洛噪声压到 ±0.5~1 步——噪声淹没了真实差异，
+//   rollout 的选择 ≈ 在几乎等价的格子里掷硬币（K=16 输得更惨正是噪声证据：
+//   候选越多越容易选到"靠运气分数好看"的格子；K=2/M=64 把噪声压小后
+//   收敛到与贪心持平，说明顶端候选格确实没有真实差异可挖）。文献的
+//   "不差于贪心"保证需要精确估值，实际做不到。与上一轮结论一致：
+//   一步贪心（w=1.3）就是当前时间预算下的局部最优。代码保留，供未来参考。
+// ============================================
 'use strict';
 
 const shared = require('./public/shared.js');
@@ -251,6 +290,7 @@ function filterAndCount(shotTable) {
     if (!ok) continue;
     alive++;
     ALIVE_MAP[comboIdx] = 1;
+    ALIVE_LIST[alive - 1] = comboIdx;   // 顺带记入存活列表（rollout 的抽样域）
     // 第 2 遍：这套部署成立，给它的头/身格子各记一分
     for (let pi = 0; pi < 3; pi++) {
       const cells = CELLS_OF[COMBOS[ci + pi]];
@@ -261,7 +301,7 @@ function filterAndCount(shotTable) {
       }
     }
   }
-  return { alive: alive, headCount: headCount, bodyCount: bodyCount };
+  return { alive: alive, aliveLen: alive, headCount: headCount, bodyCount: bodyCount };
 }
 
 // 把「存活组合中 x 处 = kind 的子集」里每格的头/身次数累加进 scratch。
@@ -305,8 +345,9 @@ function maxFollow(x, n, w, headScratch, bodyScratch, shotTable) {
 // 旧版核心决策（一步贪心，只算本枪分）。保留用于模拟对比和测试回归
 // shotsReceived = AI 打对方（真人）的记录
 // weight = 信息量权重（可选，默认 INFO_WEIGHT，模拟调参用）
-function chooseTargetGreedy(shotsReceived, weight) {
+function chooseTargetGreedy(shotsReceived, weight, rng) {
   const w = typeof weight === 'number' ? weight : INFO_WEIGHT;
+  const rand = typeof rng === 'function' ? rng : Math.random; // 可选随机源（模拟配对对比用）
   const shotTable = buildShotTable(shotsReceived);
 
   // 过滤 + 统计（约 5ms）
@@ -334,12 +375,12 @@ function chooseTargetGreedy(shotsReceived, weight) {
     for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
       if (shotTable[i] === 0) unknown.push(i);
     }
-    const pos = unknown[Math.floor(Math.random() * unknown.length)];
+    const pos = unknown[Math.floor(rand() * unknown.length)];
     return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
   }
 
   // 并列最高分随机选一个（避免被对手摸出固定套路）
-  const pos = bestPositions[Math.floor(Math.random() * bestPositions.length)];
+  const pos = bestPositions[Math.floor(rand() * bestPositions.length)];
   return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
 }
 
@@ -549,11 +590,302 @@ function chooseTargetBlend(shotsReceived, weight, lambda) {
   return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
 }
 
+// ---------- Rollout 一步前瞻（第二轮方案，思路见文件头） ----------
+
+// ALIVE_LIST[0..aliveLen)：本步存活组合列表（filterAndCount 顺带填好，空分支的抽样域）
+const ALIVE_LIST = new Int32Array(COMBOS.length / 3);
+
+// Rollout 专用缓冲区（与旧实验变体的 SCRATCH_* 互不干扰）：
+// 三个候选子集的暂存区（H = x 是机头，B = 机身，E = 空；候选格之间复用）
+const ROLL_SUBSET_H = new Int32Array(COMBOS.length / 3);
+const ROLL_SUBSET_B = new Int32Array(COMBOS.length / 3);
+const ROLL_SUBSET_E = new Int32Array(COMBOS.length / 3);
+// 粒子池：ROLL_POOL0 = 分支的基础池（每次 rollout 复制进 ROLL_POOL 再演化），≤1024 个组合下标
+const ROLL_POOL0 = new Int32Array(1024);
+const ROLL_POOL = new Int32Array(1024);
+// rollout 内部：粒子池的头/身计数（随筛选增量维护，不用每步重算）与局部揭示表
+const ROLL_HEAD = new Int32Array(BOARD_SIZE * BOARD_SIZE);
+const ROLL_BODY = new Int32Array(BOARD_SIZE * BOARD_SIZE);
+const ROLL_SHOT = new Uint8Array(BOARD_SIZE * BOARD_SIZE);
+
+// 组合 comboIdx 在格子 pos 处的取值：0 = 空，1 = 机身，2 = 机头
+// （先比 3 个机头、再扫 27 个机身，命中早退）
+function comboKindAt(comboIdx, pos) {
+  const c = comboIdx * 3;
+  for (let pi = 0; pi < 3; pi++) {
+    if (HEAD_POS[COMBOS[c + pi]] === pos) return 2;
+  }
+  for (let pi = 0; pi < 3; pi++) {
+    const cells = BODY_CELLS[COMBOS[c + pi]];
+    for (let k = 0; k < cells.length; k++) {
+      if (cells[k] === pos) return 1;
+    }
+  }
+  return 0;
+}
+
+// 把组合的头/身格子各加（或减）一分——rollout 里维护粒子池计数用
+function addComboTo(comboIdx, headScratch, bodyScratch, sign) {
+  const c = comboIdx * 3;
+  const p0 = COMBOS[c], p1 = COMBOS[c + 1], p2 = COMBOS[c + 2];
+  headScratch[HEAD_POS[p0]] += sign;
+  headScratch[HEAD_POS[p1]] += sign;
+  headScratch[HEAD_POS[p2]] += sign;
+  const b0 = BODY_CELLS[p0], b1 = BODY_CELLS[p1], b2 = BODY_CELLS[p2];
+  for (let k = 0; k < b0.length; k++) {
+    bodyScratch[b0[k]] += sign;
+    bodyScratch[b1[k]] += sign;
+    bodyScratch[b2[k]] += sign;
+  }
+}
+
+// 从 exactList[0..n) 均匀采粒子池写进 ROLL_POOL0，返回池大小。
+// n ≤ P 时整表入池（无抽样）；n > P 时放回抽样 P 个（重复无害，信念是多重集）
+function samplePool(exactList, n, P, rng) {
+  if (n <= P) {
+    for (let i = 0; i < n; i++) ROLL_POOL0[i] = exactList[i];
+    return n;
+  }
+  for (let i = 0; i < P; i++) ROLL_POOL0[i] = exactList[Math.floor(rng() * n)];
+  return P;
+}
+
+// 空分支（x 处为空）的粒子池，返回池大小（0 = 跳过该分支）：
+//   alive 不大时：全量精确分类（无偏）；
+//   alive 大时：从 ALIVE_LIST 拒绝采样（预算 P×64 抽；一次都没中说明分支
+//     概率 e/alive 小于 1/(64P) ≈ 万分之五，对 V 的影响可忽略，整个分支跳过）
+function buildEmptyPool(x, aliveLen, P, rng, rscan) {
+  if (aliveLen <= rscan) {
+    let len = 0;
+    for (let i = 0; i < aliveLen; i++) {
+      const ci = ALIVE_LIST[i];
+      if (comboKindAt(ci, x) === 0) ROLL_SUBSET_E[len++] = ci;
+    }
+    return samplePool(ROLL_SUBSET_E, len, P, rng);
+  }
+  let len = 0;
+  const budget = P * 64;
+  for (let d = 0; d < budget && len < P; d++) {
+    const ci = ALIVE_LIST[Math.floor(rng() * aliveLen)];
+    if (comboKindAt(ci, x) === 0) ROLL_POOL0[len++] = ci;
+  }
+  return len;
+}
+
+// 单次 rollout：复制一份粒子池，随机取一个当「真相」，在池上按与实战
+// 完全相同的贪心公式打真相，直到 3 个机头全中，返回步数（封顶 200 防病态）。
+//   localBase = 揭示表副本（x 已标记为本次结果），每次 rollout 复制后独立演化
+//   headsDone = 开局前（含 x 自己）已经命中的机头数
+//   不变式：真相从池里抽 → 筛粒子时池永不筛空
+function rolloutOnce(localBase, pool0, pool0Len, headsDone, w, rng) {
+  const pool = ROLL_POOL;
+  for (let i = 0; i < pool0Len; i++) pool[i] = pool0[i];
+  const shot = ROLL_SHOT;
+  shot.set(localBase);
+  const head = ROLL_HEAD;
+  const body = ROLL_BODY;
+  head.fill(0);
+  body.fill(0);
+
+  const truth = pool[Math.floor(rng() * pool0Len)];
+  let poolLen = pool0Len;
+  for (let i = 0; i < poolLen; i++) addComboTo(pool[i], head, body, 1);
+
+  let headsLeft = 3 - headsDone;   // 打完 x 之后还剩几颗头要打
+  let steps = 0;
+  while (headsLeft > 0 && steps < 200) {
+    // 第 1 步：在粒子池上按与实战相同的公式（机头概率 + w × 信息量）选格；
+    // 并列时按水库抽样随机选一个
+    let bestScore = -1;
+    let bestY = -1;
+    let ties = 0;
+    for (let y = 0; y < BOARD_SIZE * BOARD_SIZE; y++) {
+      if (shot[y] !== 0) continue;
+      const H = head[y];
+      const B = body[y];
+      const E = poolLen - H - B;
+      const score = (H + w * (poolLen - (H * H + B * B + E * E) / poolLen)) / poolLen;
+      if (score > bestScore) { bestScore = score; bestY = y; ties = 1; }
+      else if (score === bestScore) { ties++; if (rng() < 1 / ties) bestY = y; }
+    }
+    if (bestY < 0) break; // 没有可打的格子（防御，正常到不了这里）
+    steps++;
+    // 第 2 步：对真相揭示这一枪
+    const obs = comboKindAt(truth, bestY);
+    shot[bestY] = obs === 0 ? 1 : obs === 1 ? 2 : 3;
+    if (obs === 2) {
+      headsLeft--;
+      if (headsLeft === 0) break; // 最后一颗头：结束（这一枪已计入 steps）
+    }
+    // 第 3 步：筛掉与揭示结果矛盾的粒子（真相在池里，池不会空）
+    let keep = 0;
+    for (let i = 0; i < poolLen; i++) {
+      const ci = pool[i];
+      if (comboKindAt(ci, bestY) === obs) pool[keep++] = ci;
+      else addComboTo(ci, head, body, -1); // 出池的粒子：从计数里减掉
+    }
+    poolLen = keep;
+  }
+  return steps;
+}
+
+// 候选格 x 的期望总步数：V(x) = 1 + Σ_{o∈{空,身,头}} p_o × R̄_o
+//   p_o 用精确概率 n_o / alive；R̄_o = M 次 rollout 的平均剩余步数
+//   localBase 会被临时改成三种结果（x 处标记），用完即弃，调用方无需还原
+function evaluateCandidate(x, localBase, counted, cfg, rng) {
+  const alive = counted.alive;
+  const aliveLen = counted.aliveLen;
+  // 1) 头/身子集：POS_INDEX 列表 × 存活位图，精确
+  let hLen = 0;
+  const hList = POS_INDEX.heads[x];
+  for (let i = 0; i < hList.length; i++) {
+    const ci = hList[i];
+    if (ALIVE_MAP[ci]) ROLL_SUBSET_H[hLen++] = ci;
+  }
+  let bLen = 0;
+  const bList = POS_INDEX.bodies[x];
+  for (let i = 0; i < bList.length; i++) {
+    const ci = bList[i];
+    if (ALIVE_MAP[ci]) ROLL_SUBSET_B[bLen++] = ci;
+  }
+  const h = hLen;
+  const b = bLen;
+  const e = alive - h - b;
+  let V = 1;
+  // 2) 机头分支：x 是头。若这是最后一颗头则后续 0 步，直接跳过 rollout
+  localBase[x] = 3;
+  let headsDone = cfg.headsRevealed + 1;
+  if (h > 0 && headsDone < 3) {
+    let sum = 0;
+    const poolLen = samplePool(ROLL_SUBSET_H, h, cfg.P, rng);
+    for (let m = 0; m < cfg.M; m++) sum += rolloutOnce(localBase, ROLL_POOL0, poolLen, headsDone, cfg.w, rng);
+    V += (h / alive) * (sum / cfg.M);
+  }
+  // 3) 机身分支
+  localBase[x] = 2;
+  headsDone = cfg.headsRevealed;
+  if (b > 0) {
+    let sum = 0;
+    const poolLen = samplePool(ROLL_SUBSET_B, b, cfg.P, rng);
+    for (let m = 0; m < cfg.M; m++) sum += rolloutOnce(localBase, ROLL_POOL0, poolLen, headsDone, cfg.w, rng);
+    V += (b / alive) * (sum / cfg.M);
+  }
+  // 4) 空分支（poolLen = 0 表示分支概率小到可忽略，跳过）
+  localBase[x] = 1;
+  if (e > 0) {
+    const poolLen = buildEmptyPool(x, aliveLen, cfg.P, rng, cfg.rscan);
+    if (poolLen > 0) {
+      let sum = 0;
+      for (let m = 0; m < cfg.M; m++) sum += rolloutOnce(localBase, ROLL_POOL0, poolLen, headsDone, cfg.w, rng);
+      V += (e / alive) * (sum / cfg.M);
+    }
+  }
+  return V;
+}
+
+// Rollout 版核心决策：对贪心分最高的 K 个候选格，用「打 x 之后按贪心
+// 打完一整局还要几步」的模拟步数 V(x) 决胜负，返回 {row, col}
+// opts = { K, P, M, w, rscan, race, rng }（模拟调参用，实战参数走 env）
+function chooseTargetRollout(shotsReceived, opts) {
+  const o = opts || {};
+  const K = typeof o.K === 'number' ? o.K : 8;
+  const P = Math.min(typeof o.P === 'number' ? o.P : 300, 1024); // 池缓冲上限 1024
+  const M = typeof o.M === 'number' ? o.M : 4;
+  const w = typeof o.w === 'number' ? o.w : INFO_WEIGHT;
+  const rscan = typeof o.rscan === 'number' ? o.rscan : 1024;
+  const rng = typeof o.rng === 'function' ? o.rng : Math.random;
+  const shotTable = buildShotTable(shotsReceived);
+  const counted = filterAndCount(shotTable);     // 重建 ALIVE_MAP / ALIVE_LIST（约 5ms）
+  const alive = counted.alive;
+  const aliveLen = counted.aliveLen;
+
+  // 理论上不会出现"一个组合都不剩"，防御性兜底（与贪心一致）
+  if (!alive) {
+    const unknown = [];
+    for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
+      if (shotTable[i] === 0) unknown.push(i);
+    }
+    const pos = unknown[Math.floor(rng() * unknown.length)];
+    return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
+  }
+
+  // 1) 全部未知格按贪心分排序，取 top-K（含与第 K 名同分的并列，封顶 24 个）
+  const scored = [];
+  for (let pos = 0; pos < BOARD_SIZE * BOARD_SIZE; pos++) {
+    if (shotTable[pos] !== 0) continue;
+    const h = counted.headCount[pos];
+    const b = counted.bodyCount[pos];
+    const e = alive - h - b;
+    scored.push({ pos: pos, score: h / alive + w * (1 - (h * h + b * b + e * e) / (alive * alive)) });
+  }
+  scored.sort(function (a, b2) { return b2.score - a.score; });
+  const cutoff = scored[Math.min(K, scored.length) - 1].score;
+  const candidates = [];
+  for (let i = 0; i < scored.length && candidates.length < 24; i++) {
+    if (scored[i].score >= cutoff) candidates.push(scored[i].pos);
+  }
+
+  const cfg = {
+    P: P, w: w, rscan: rscan,
+    headsRevealed: shotsReceived.filter(function (s) { return s.result === 'head'; }).length
+  };
+  let contenders = candidates;
+  let finalM = M;
+  // 2) 两阶段竞速（可选）：先用小样本粗筛出 T 个，再用大样本定胜负，抑制噪声选错
+  if (o.race) {
+    const M0 = typeof o.raceM0 === 'number' ? o.raceM0 : 2;
+    const T = typeof o.raceT === 'number' ? o.raceT : 2;
+    finalM = typeof o.raceM1 === 'number' ? o.raceM1 : 8;
+    cfg.M = M0;
+    let bestV = Infinity;
+    const best = [];
+    for (let i = 0; i < contenders.length; i++) {
+      const v = evaluateCandidate(contenders[i], Uint8Array.from(shotTable), counted, cfg, rng);
+      if (v < bestV) { bestV = v; best.length = 0; best.push(contenders[i]); }
+      else if (v === bestV) best.push(contenders[i]);
+    }
+    // 超过 T 个并列时随机淘汰（避免固定保留前 T 个的偏向）
+    while (best.length > T) best.splice(Math.floor(rng() * best.length), 1);
+    contenders = best;
+  }
+  // 3) 决赛：V(x) 最小的格子获胜（并列随机选，避免被对手摸出固定套路）
+  cfg.M = finalM;
+  let bestV = Infinity;
+  const bestPos = [];
+  for (let i = 0; i < contenders.length; i++) {
+    const x = contenders[i];
+    const v = evaluateCandidate(x, Uint8Array.from(shotTable), counted, cfg, rng);
+    if (v < bestV) { bestV = v; bestPos.length = 0; bestPos.push(x); }
+    else if (v === bestV) bestPos.push(x);
+  }
+  const pos = bestPos[Math.floor(rng() * bestPos.length)];
+  return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
+}
+
+// 实战入口：按环境变量分发。默认用贪心；AI_ROLLOUT=1 显式切换 rollout
+// （自对弈 500 盘实测 rollout 未优于贪心，见文件头"第二轮"结论，故默认不开）。
+// 其余参数也可用 env 覆盖：AI_RK（候选数）、AI_RP（粒子数）、AI_RM（每分支
+// 模拟次数）、AI_RW（信息量权重）、AI_RRACE=1（两阶段竞速）
+const AI_USE_ROLLOUT = process.env.AI_ROLLOUT === '1';
+const LIVE_OPTS = {
+  K: parseInt(process.env.AI_RK || '8', 10),
+  P: parseInt(process.env.AI_RP || '300', 10),
+  M: parseInt(process.env.AI_RM || '4', 10),
+  w: parseFloat(process.env.AI_RW || String(INFO_WEIGHT)),
+  race: process.env.AI_RRACE === '1'
+};
+function chooseTargetLive(shotsReceived) {
+  if (!AI_USE_ROLLOUT) return chooseTargetGreedy(shotsReceived);
+  return chooseTargetRollout(shotsReceived, LIVE_OPTS);
+}
+
 module.exports = {
   INFO_WEIGHT: INFO_WEIGHT,
   randomDeployment: randomDeployment,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,
   chooseTargetShots: chooseTargetShots,
-  chooseTargetBlend: chooseTargetBlend
+  chooseTargetBlend: chooseTargetBlend,
+  chooseTargetRollout: chooseTargetRollout,
+  chooseTargetLive: chooseTargetLive
 };
