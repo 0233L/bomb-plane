@@ -74,8 +74,6 @@ button.primary:hover { background: #1d4ed8; }
 .btn-row { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
 
 /* 首页人机对战的难度选择按钮（三个小按钮均分一行） */
-#ai-level-row .btn-row { margin: 12px 0 4px; }
-#ai-level-row .ai-level-btn { flex: 1; }
 
 /* ---------- 顶部栏 ---------- */
 .topbar {

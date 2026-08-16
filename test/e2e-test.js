@@ -427,17 +427,16 @@ async function main() {
   }
   check('AI 随机部署 100 次全部合法', allDeployOk);
 
-  const t1 = aiMod.chooseTarget([], 'normal');
+  const t1 = aiMod.chooseTarget([]);
   check('空信息时 AI 给出合法目标', !!t1 && t1.row >= 0 && t1.row < 10 && t1.col >= 0 && t1.col < 10);
-  const tDup = aiMod.chooseTarget([{ row: 3, col: 4, result: 'empty' }], 'hard');
+  const tDup = aiMod.chooseTarget([{ row: 3, col: 4, result: 'empty' }]);
   check('已揭示的格子 AI 不会重复打', !(tDup.row === 3 && tDup.col === 4));
   let nearCount = 0;
   for (let i = 0; i < 40; i++) {
-    const t = aiMod.chooseTarget([{ row: 5, col: 5, result: 'body' }], 'normal');
+    const t = aiMod.chooseTarget([{ row: 5, col: 5, result: 'body' }]);
     if (Math.abs(t.row - 5) + Math.abs(t.col - 5) <= 3) nearCount++;
   }
   check('打中机身后 AI 顺着机身找头（40 次中 ' + nearCount + ' 次在附近）', nearCount >= 30);
-  check('非法难度回退普通（正常返回目标）', !!aiMod.chooseTarget([], 'insane'));
 
   // B. 人机房间完整流程
   const P = io(URL);
@@ -445,7 +444,7 @@ async function main() {
   P.on('error', function () {}); // 领先时被拒等预期内的错误，吞掉即可
 
   const deployP = waitFor(P, 'deployReady');
-  P.emit('createRoomAI', { name: '玩家甲', level: 'normal' });
+  P.emit('createRoomAI', { name: '玩家甲' });
   const aiRoom = await waitFor(P, 'roomCreated');
   check('人机房间创建（对手是 🤖 电脑）', aiRoom.isAI === true && aiRoom.names[1] === '🤖 电脑');
   check('AI 永远在线（绿点恒亮）', aiRoom.online[1] === true);
@@ -568,15 +567,12 @@ async function main() {
   check('回收后无法重连（房间已删除）', rejFail.roomId === aiRoom.roomId);
   P3.disconnect();
 
-  // 异常输入：空昵称被拒；非法难度回退普通
+  // 异常输入：空昵称被拒
   const P4 = io(URL);
   await waitFor(P4, 'connect');
-  P4.emit('createRoomAI', { name: '   ', level: 'normal' });
+  P4.emit('createRoomAI', { name: '   ' });
   const errAI = await waitFor(P4, 'error');
   check('人机房间空昵称被拒绝', errAI.message.indexOf('昵称') !== -1);
-  P4.emit('createRoomAI', { name: '测试员', level: 'insane' });
-  const badLvl = await waitFor(P4, 'roomCreated');
-  check('非法难度回退普通（正常创建）', badLvl.isAI === true && badLvl.aiLevel === 'normal');
   P4.disconnect();
 
   C.disconnect(); D.disconnect();

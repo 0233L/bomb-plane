@@ -18,14 +18,7 @@
       <input id="name-input" type="text" maxlength="12" placeholder="输入昵称">
       <button id="btn-create" class="primary">创建房间</button>
       <button id="btn-ai">🤖 人机对战</button>
-      <div id="ai-level-row" class="hidden">
-        <div class="btn-row">
-          <button class="ai-level-btn" data-level="easy">简单</button>
-          <button class="ai-level-btn" data-level="normal">普通</button>
-          <button class="ai-level-btn" data-level="hard">困难</button>
-        </div>
-        <p class="help">选择难度，和电脑对战（普通 ≈ 会推理的人类玩家）</p>
-      </div>
+      <p class="help">和会推理的电脑对战（每步枚举所有可能的飞机布局，打「机头概率 + 信息量」评分最高的格子）</p>
       <div class="divider">或</div>
       <label for="room-input">房间号</label>
       <input id="room-input" type="text" maxlength="4" placeholder="4 位房间号">

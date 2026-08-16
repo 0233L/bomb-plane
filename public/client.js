@@ -126,8 +126,7 @@ const state = {
   inviteRoomId: null,        // 从邀请链接读到的房间号（受邀加入页用）
   spectator: false,          // 我是不是观战者（房间满员时进入观战席）
   spectatorCount: 0,         // 本房间的观战人数（0 时不显示徽章）
-  ai: false,                 // 对手是不是电脑（人机对战房间）
-  aiLevel: null              // AI 难度 easy | normal | hard
+  ai: false                  // 对手是不是电脑（人机对战房间）
 };
 
 // ---------- 棋盘渲染 ----------
@@ -553,7 +552,6 @@ function bindSocketEvents() {
     state.spectator = false;
     state.inviteRoomId = null;
     state.ai = !!d.isAI;      // 人机对战房间标记
-    state.aiLevel = d.aiLevel || null;
     localStorage.removeItem('bp_draft');
     goDeploy();
   });
@@ -571,7 +569,6 @@ function bindSocketEvents() {
     state.spectator = false;
     state.inviteRoomId = null;
     state.ai = false; // 人机房间满员，真人不可能走到这里
-    state.aiLevel = null;
     localStorage.removeItem('bp_draft');
     goDeploy();
   });
@@ -743,7 +740,6 @@ function bindSocketEvents() {
     state.winReason = d.winReason;
     state.rematchVotes = d.rematchVotes || [false, false];
     state.ai = !!d.isAI;          // 人机房间断线重连后仍感知对手是电脑
-    state.aiLevel = d.aiLevel || null;
 
     updateRoomLastSeen(d.roomId); // 重连成功 = 又在这个房间在线过，列表顺序同步刷新
     setRoomInUrl(d.roomId);       // 网址带上房间号，刷新也能直接回来
@@ -807,17 +803,11 @@ function bindUIEvents() {
     localStorage.setItem('bp_name', name.trim());
     state.socket.emit('createRoom', { name: name });
   });
-  // 人机对战：先展开难度选择，选一个难度才真正创建房间
+  // 人机对战：直接创建人机房间（唯一的 AI 已是最强档）
   $('#btn-ai').addEventListener('click', function () {
-    $('#ai-level-row').classList.toggle('hidden');
-  });
-  document.querySelectorAll('.ai-level-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      const name = $('#name-input').value;
-      localStorage.setItem('bp_name', name.trim());
-      $('#ai-level-row').classList.add('hidden');
-      state.socket.emit('createRoomAI', { name: name, level: btn.dataset.level });
-    });
+    const name = $('#name-input').value;
+    localStorage.setItem('bp_name', name.trim());
+    state.socket.emit('createRoomAI', { name: name });
   });
   $('#btn-join').addEventListener('click', function () {
     const name = $('#name-input').value;

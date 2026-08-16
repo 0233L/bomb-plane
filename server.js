@@ -59,7 +59,6 @@ function createRoom() {
     cleanupTimer: null,           // 双方都离线时的房间回收计时器
     spectators: [],               // 观战者列表 [{name, socketId}]（房间满员后可进入观战席）
     isAI: false,                  // 人机对战房间（AI 坐 1 号位，永不掉线）
-    aiLevel: null,                // easy | normal | hard
     aiTimer: null,                // AI 走棋的定时器
     aiRematchTimer: null          // AI 自动投「再来一局」的定时器
   };
@@ -254,7 +253,7 @@ function handleCreateRoom(socket, data) {
     roomId: room.id, token: token, seat: 0, name: name,
     names: [name, ''],
     online: [true, false],
-    isAI: false, aiLevel: null,
+    isAI: false,
     deployConfirmed: [false, false]
   });
 }
@@ -265,11 +264,8 @@ function handleCreateRoomAI(socket, data) {
   const err = checkName(null, name);
   if (err) return sendError(socket, err);
 
-  const level = ai.LEVELS[data.level] ? data.level : 'normal'; // 非法难度回退普通
-
   const room = createRoom();
   room.isAI = true;
-  room.aiLevel = level;
 
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
@@ -292,13 +288,13 @@ function handleCreateRoomAI(socket, data) {
   socket.data.seat = 0;
   socket.data.token = token;
   socket.join(room.id);
-  console.log(`[${room.id}] 人机房间创建，玩家：${name}（难度 ${level}）`);
+  console.log(`[${room.id}] 人机房间创建，玩家：${name}`);
 
   socket.emit('roomCreated', {
     roomId: room.id, token: token, seat: 0, name: name,
     names: [name, '🤖 电脑'],
     online: [true, true],
-    isAI: true, aiLevel: level,
+    isAI: true,
     deployConfirmed: [false, true] // AI 马上就自动确认部署
   });
 
@@ -313,7 +309,7 @@ function aiDeployAndConfirm(room) {
   aiPlayer.planes = planes;
   aiPlayer.board = buildBoard(planes);
   aiPlayer.deployConfirmed = true;
-  console.log(`[${room.id}] AI 确认部署（难度 ${room.aiLevel}）`);
+  console.log(`[${room.id}] AI 确认部署`);
   emitToRoom(room, 'deployReady', {
     seat: 1,
     confirmed: [room.players[0].deployConfirmed, true]
@@ -338,7 +334,7 @@ function scheduleAITurn(room) {
     if (!h || !h.connected) return;                   // 玩家中途断线：暂停
     if (r.steps[1] > r.steps[0]) return;              // 玩家抢步领先了：等待
 
-    const target = ai.chooseTarget(r.players[0].shotsReceived, r.aiLevel);
+    const target = ai.chooseTarget(r.players[0].shotsReceived);
     tryReveal(r, 1, target.row, target.col);
 
     // 走完一步若还轮得到 AI（比如之前落后一步），继续调度
@@ -486,8 +482,7 @@ function handleRejoin(socket, data) {
     winner: room.winner,
     winReason: room.winReason,
     rematchVotes: room.rematchVotes,
-    isAI: room.isAI,                      // 人机对战房间标记（前端据此显示）
-    aiLevel: room.aiLevel
+    isAI: room.isAI                       // 人机对战房间标记（前端据此显示）
   });
 }
 
