@@ -13,7 +13,7 @@ npm install   # 第一次运行前安装依赖（只需要做一次）
 npm start     # 启动服务器
 ```
 
-然后浏览器打开 **http://localhost:3000**。
+然后浏览器打开 http://localhost:3000。
 
 ### 自己一个人测试
 
