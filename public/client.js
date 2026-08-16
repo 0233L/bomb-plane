@@ -335,14 +335,14 @@ function updateBattlePanels() {
   $('#panel-enemy-turn').textContent = theirTurnText;
 
   // 双方累计比分：从第二局起显示，居中在棋盘上端（第一局 0:0 不显示）
-  // 只显示数字（左边是房主、右边是加入方），昵称存在 data-name 里，鼠标悬停在数字上才显示
+  // 只显示数字，左边永远是「我」的比分、右边是对方的；昵称存在 data-name 里，悬停在数字上才显示
   const scoreEl = $('#battle-score');
   if (state.score[0] + state.score[1] > 0) {
     scoreEl.classList.remove('hidden');
-    $('#score-a').textContent = state.score[0];
-    $('#score-a').dataset.name = state.names[0];
-    $('#score-b').textContent = state.score[1];
-    $('#score-b').dataset.name = state.names[1];
+    $('#score-a').textContent = state.score[state.seat];
+    $('#score-a').dataset.name = state.names[state.seat];
+    $('#score-b').textContent = state.score[1 - state.seat];
+    $('#score-b').dataset.name = state.names[1 - state.seat];
   } else {
     scoreEl.classList.add('hidden');
   }
@@ -446,6 +446,10 @@ function onEnemyCellClick(r, c) {
   if (state.steps[state.seat] > state.steps[1 - state.seat]) {
     return toast('你的步数已领先，等待对方');
   }
+  // 点击后立即给格子一个"处理中"样式：网络慢时也能看到响应，不觉得卡
+  const td = $('#enemy-board').querySelector(
+    'td[data-row="' + r + '"][data-col="' + c + '"]');
+  if (td) td.classList.add('cell-pending');
   state.socket.emit('reveal', { row: r, col: c });
 }
 
@@ -455,6 +459,10 @@ function bindSocketEvents() {
 
   s.on('error', function (d) {
     toast(d.message);
+    // 清除所有"处理中"格子的样式（比如领先方点击被拒绝，格子不会收到揭示结果）
+    document.querySelectorAll('.cell-pending').forEach(function (td) {
+      td.classList.remove('cell-pending');
+    });
     // 自动加入房间失败（比如房间已满）：还没进入任何房间且网址带房间号时，
     // 清掉房间号参数，免得刷新页面反复重试
     if (!state.roomId && location.search.indexOf('room=') !== -1) clearRoomFromUrl();

@@ -271,6 +271,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 #enemy-board td.cell-unknown { cursor: pointer; }
 #enemy-board td.cell-unknown:hover { background: #334155; }
 #enemy-board td:not(.cell-unknown) { cursor: default; }
+/* 已点击、等待服务器回复的格子：立即变色反馈，网络慢也不觉得"没反应" */
+#enemy-board td.cell-pending { background: #3b5bdb; cursor: wait; }
 
 /* 部署棋盘：所有格子都可点（放置/旋转/移除） */
 #deploy-board td { cursor: pointer; }
