@@ -7,3 +7,6 @@ node_modules/
 
 # 本地截图等临时文件
 screenshot*
+
+# Claude Code 本地会话文件
+.claude/

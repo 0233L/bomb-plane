@@ -449,10 +449,16 @@ async function main() {
   check('已揭示的格子 AI 不会重复打', !(tDup.row === 3 && tDup.col === 4));
   let nearCount = 0;
   for (let i = 0; i < 40; i++) {
-    const t = aiMod.chooseTarget([{ row: 5, col: 5, result: 'body' }]);
+    const t = aiMod.chooseTargetGreedy([{ row: 5, col: 5, result: 'body' }]);
     if (Math.abs(t.row - 5) + Math.abs(t.col - 5) <= 3) nearCount++;
   }
-  check('打中机身后 AI 顺着机身找头（40 次中 ' + nearCount + ' 次在附近）', nearCount >= 30);
+  check('旧算法打中机身后顺着机身找头（40 次中 ' + nearCount + ' 次在附近）', nearCount >= 30);
+  let nearCount2 = 0;
+  for (let i = 0; i < 20; i++) {
+    const t = aiMod.chooseTarget([{ row: 5, col: 5, result: 'body' }]);
+    if (Math.abs(t.row - 5) + Math.abs(t.col - 5) <= 3) nearCount2++;
+  }
+  check('前瞻打分版（实验备用，实战未用）同样顺藤摸瓜（20 次中 ' + nearCount2 + ' 次在附近）', nearCount2 >= 15);
 
   // B. 人机房间完整流程
   const P = io(URL);
@@ -568,7 +574,7 @@ async function main() {
   let specSawAI = null;
   S.on('revealResult', function (d) { if (d.attacker === 1) specSawAI = d; });
   P2.emit('reveal', { row: 2, col: 2 }); // 垫步引发 AI 走棋
-  await sleep(800);
+  await sleep(800); // AI 思考延迟 80~200ms + 走棋计算，留足余量
   check('观战者实时看到 AI 走棋', specSawAI !== null);
 
   // 真人离线后房间回收（AI 永不掉线也照样回收）
