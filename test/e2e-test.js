@@ -191,6 +191,22 @@ async function main() {
   await sleep(150);
   check('结束后攻击被拒绝', errA.length > errA3);
 
+  // 对局结束：服务器公开双方飞机坐标（前端据此暗色显示未探测格子）
+  check('对局结束公开双方飞机坐标', gameOver && Array.isArray(gameOver.planes) &&
+    shared.validateDeployment(gameOver.planes[0]) === null &&
+    shared.validateDeployment(gameOver.planes[1]) === null);
+
+  // 结束后才进入的观战者：快照也带双方飞机
+  const G0 = io(URL);
+  await waitFor(G0, 'connect');
+  G0.emit('joinRoom', { roomId: created.roomId, name: '事后观众' });
+  const specOver = await waitFor(G0, 'spectatorJoined');
+  check('结束后进入的观战者拿到双方飞机', specOver.phase === 'over' &&
+    Array.isArray(specOver.planes) &&
+    shared.validateDeployment(specOver.planes[0]) === null &&
+    shared.validateDeployment(specOver.planes[1]) === null);
+  G0.disconnect();
+
   // 5. 再来一局（含投票数显示）
   console.log('— 再来一局 —');
   const voteB = waitFor(B, 'rematchVote');
@@ -500,6 +516,9 @@ async function main() {
     await sleep(300); // 等自己或 AI 的 revealResult / error
   }
   check('对局必然结束（' + guard + ' 轮内）', overAI !== null);
+  check('人机对局结束也公开双方飞机', overAI && Array.isArray(overAI.planes) &&
+    shared.validateDeployment(overAI.planes[0]) === null &&
+    shared.validateDeployment(overAI.planes[1]) === null);
 
   // AI 自动投「再来一局」（对局结束约 1.5 秒后）
   const voteAI = await waitFor(P, 'rematchVote', 5000);

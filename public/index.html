@@ -87,6 +87,15 @@
       <button class="btn-copy-link small-btn">📋 复制邀请链接</button>
       <button class="btn-back-menu small-btn">← 返回菜单</button>
     </div>
+    <!-- 结束横幅：对局结束后出现（棋盘保留、对方飞机公开），不遮挡棋盘 -->
+    <div id="over-banner" class="over-banner hidden">
+      <h2 id="over-title"></h2>
+      <p id="over-detail"></p>
+      <div class="btn-row">
+        <button id="btn-rematch" class="primary">再来一局</button>
+      </div>
+      <p id="over-rematch-status"></p>
+    </div>
     <!-- 棋盘上方的信息条：观战人数 | 我的信息 | 比分 | 对手信息（比分居中） -->
     <div class="battle-info-row">
       <div id="spectator-badge" class="spectator-badge hidden">👁 <span id="spectator-count">0</span></div>
@@ -129,17 +138,6 @@
     <h2>对局准备中</h2>
     <p class="help">你正在观战：双方正在部署飞机，开战后自动进入对局</p>
     <div id="wait-spectator-badge" class="spectator-badge hidden">👁 <span id="wait-spectator-count">0</span> 人观战中</div>
-  </section>
-
-  <!-- ============ 结束页 ============ -->
-  <section id="view-over" class="view">
-    <h2 id="over-title"></h2>
-    <p id="over-detail"></p>
-    <div class="btn-row">
-      <button id="btn-rematch" class="primary">再来一局</button>
-      <button id="btn-leave">返回大厅</button>
-    </div>
-    <p id="over-rematch-status"></p>
   </section>
 
   <!-- 底部小提示条 -->

@@ -126,7 +126,9 @@ const state = {
   inviteRoomId: null,        // 从邀请链接读到的房间号（受邀加入页用）
   spectator: false,          // 我是不是观战者（房间满员时进入观战席）
   spectatorCount: 0,         // 本房间的观战人数（0 时不显示徽章）
-  ai: false                  // 对手是不是电脑（人机对战房间）
+  ai: false,                 // 对手是不是电脑（人机对战房间）
+  over: false,               // 本局是否已结束（结束后棋盘保留并公开飞机）
+  revealedPlanes: null       // 对局结束后服务器公开的双方飞机 [A 的, B 的]
 };
 
 // ---------- 棋盘渲染 ----------
@@ -222,8 +224,12 @@ function renderDeployBoard() {
 
 // 渲染对战页双棋盘
 function renderBattleBoards() {
+  const revealed = state.over ? state.revealedPlanes : null; // 对局结束后公开的双方飞机
+
   // ---- 己方棋盘：自己的飞机（对战阶段不画轮廓）+ 对方打过的位置高亮 ----
-  const myBoard = buildBoard(state.myPlanes);
+  // 观战者平时看不到任何飞机；对局结束后公开 1 号玩家的飞机
+  const myPlanesSrc = (state.spectator && revealed) ? (revealed[0] || []) : state.myPlanes;
+  const myBoard = buildBoard(myPlanesSrc);
   const myMarks = {};
   state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
 
@@ -240,9 +246,14 @@ function renderBattleBoards() {
   });
 
   // ---- 对方棋盘：未知格 + 已揭示结果 ----
+  // 对局结束后：没被探测到的格子按己方棋盘同款样式公开（暗色），探测过的保持结果颜色
+  const enemySeat = state.spectator ? 1 : (1 - state.seat);
+  const enemyPlanes = revealed ? (revealed[enemySeat] || []) : [];
+  const enemyBoard = buildBoard(enemyPlanes);
   const enemyMarks = {};
   state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s.result; });
 
+  $('#enemy-board').classList.toggle('revealed', !!revealed);
   $('#enemy-board').querySelectorAll('td').forEach(function (td) {
     const r = +td.dataset.row, c = +td.dataset.col;
     td.className = '';
@@ -250,7 +261,16 @@ function renderBattleBoards() {
     if (res === 'empty') td.classList.add('cell-empty');
     else if (res === 'body') td.classList.add('cell-body');
     else if (res === 'head') td.classList.add('cell-head');
-    else td.classList.add('cell-unknown');
+    else if (revealed) {
+      // 没探测过的格子：公开真实飞机（暗色遮罩，和己方棋盘同款显示方式）
+      const cell = enemyBoard[r][c];
+      if (cell === CELL_HEAD) td.classList.add('cell-head');
+      else if (cell === CELL_BODY) td.classList.add('cell-body');
+      else td.classList.add('cell-unknown');
+      td.classList.add('dimmed');
+    } else {
+      td.classList.add('cell-unknown');
+    }
   });
 
   // ---- 上一手揭示的格子：蓝色框框选 ----
@@ -363,6 +383,12 @@ function updateBattlePanels() {
     $('#panel-enemy-turn').textContent = theirTurnText;
   }
 
+  // 对局已结束：行动提示换成结束标志
+  if (state.over) {
+    $('#panel-my-turn').textContent = '🏁 对局结束';
+    $('#panel-enemy-turn').textContent = '';
+  }
+
   // 双方累计比分：从第二局起显示，居中在棋盘上端（第一局 0:0 不显示）
   // 只显示数字，玩家视角左边永远是「我」的比分；观战视角按 1 号玩家在左、2 号在右
   // 昵称存在 data-name 里，悬停在数字上才显示
@@ -383,6 +409,8 @@ function updateBattlePanels() {
 
 // 进入对战页
 function goBattle() {
+  state.over = false;
+  $('#over-banner').classList.add('hidden');
   $('#battle-room-id').textContent = state.roomId;
   if (state.spectator) {
     // 观战视角：棋盘标题改成双方昵称，而不是「我的 / 对方的」
@@ -392,6 +420,7 @@ function goBattle() {
     $('#board-title-my').textContent = '我的棋盘';
     $('#board-title-enemy').textContent = '对方棋盘';
   }
+  $('#board-title-enemy-note').textContent = '（点击未知格子揭示）';
   renderBattleBoards();
   updateBattlePanels();
   showView('battle');
@@ -404,8 +433,11 @@ function goWait() {
   showView('wait');
 }
 
-// 结束页（只有击中 3 个机头一种结束方式，任何情况都不判负）
+// 对局结束：留在对战页（棋盘保留），顶部弹出结束横幅，
+// 双方飞机公开——没被探测的格子用暗色显示（和己方棋盘同款样式）
+// （只有击中 3 个机头一种结束方式，任何情况都不判负）
 function goOver() {
+  state.over = true;
   if (state.spectator) {
     // 观战视角：标题显示获胜者昵称，不参与再来一局投票
     $('#over-title').textContent = '🏁 ' + state.names[state.winner] + ' 获胜';
@@ -414,7 +446,6 @@ function goOver() {
     $('#over-detail').textContent =
       state.names[0] + ' 击中机头 ' + hitsA + '/3 · ' + state.names[1] + ' 击中机头 ' + hitsB + '/3';
     $('#btn-rematch').classList.add('hidden');
-    $('#btn-leave').textContent = '离开观战';
   } else {
     $('#over-title').textContent = state.winner === state.seat ? '🎉 你赢了！' : '你输了';
 
@@ -423,10 +454,13 @@ function goOver() {
     $('#over-detail').textContent = '你击中机头 ' + myHits + '/3 · 对方击中机头 ' + theirHits + '/3';
 
     $('#btn-rematch').classList.remove('hidden');
-    $('#btn-leave').textContent = '返回大厅';
   }
+  $('#board-title-enemy-note').textContent = '（暗色 = 对方没被你探测过的格子）';
+  renderBattleBoards();   // 公开渲染：探测过的保持结果颜色，没探测过的暗色公开
+  updateBattlePanels();
   updateOverRematchStatus();
-  showView('over');
+  showView('battle');     // 留在对战页，棋盘不消失
+  $('#over-banner').classList.remove('hidden');
 }
 
 // 结束页的「再来一局」投票显示
@@ -509,6 +543,9 @@ function onEnemyCellClick(r, c) {
   if (state.spectator) {
     return toast('观战模式不能下棋');
   }
+  if (state.over) {
+    return toast('对局已结束，点「再来一局」继续');
+  }
   if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
     return toast('这个格子已经揭示过了');
   }
@@ -590,6 +627,7 @@ function bindSocketEvents() {
     state.rematchVotes = [false, false];
     state.myShotsReceived = d.shots[0] || [];   // 打在 1 号玩家棋盘上的记录
     state.enemyShotsReceived = d.shots[1] || []; // 打在 2 号玩家棋盘上的记录
+    state.revealedPlanes = d.planes || null;    // 对局结束后才有的双方飞机
     if (d.phase === 'battle') goBattle();
     else if (d.phase === 'over') goOver();
     else goWait(); // deploy / waiting：双方还在部署，显示等待页
@@ -635,6 +673,7 @@ function bindSocketEvents() {
     state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
     state.myShotsReceived = [];
     state.enemyShotsReceived = [];
+    state.revealedPlanes = null; // 新一局：上一局公开的飞机作废
     goBattle();
   });
 
@@ -658,6 +697,7 @@ function bindSocketEvents() {
     state.headsLeft = d.headsLeft;
     state.score = d.score;
     state.rematchVotes = [false, false];
+    state.revealedPlanes = d.planes || null; // 服务器公开双方飞机，棋盘暗色显示
     goOver();
   });
 
@@ -684,6 +724,8 @@ function bindSocketEvents() {
     state.enemyShotsReceived = [];
     state.winner = null;
     state.winReason = null;
+    state.over = false;
+    state.revealedPlanes = null; // 新一局：上一局公开的飞机作废
     state.deployConfirmed = [false, false];
     if (state.spectator) {
       goWait(); // 观战者不参与部署，回等待页看双方重新部署
@@ -740,6 +782,7 @@ function bindSocketEvents() {
     state.winReason = d.winReason;
     state.rematchVotes = d.rematchVotes || [false, false];
     state.ai = !!d.isAI;          // 人机房间断线重连后仍感知对手是电脑
+    state.revealedPlanes = d.planes || null; // 对局结束后才有的双方飞机
 
     updateRoomLastSeen(d.roomId); // 重连成功 = 又在这个房间在线过，列表顺序同步刷新
     setRoomInUrl(d.roomId);       // 网址带上房间号，刷新也能直接回来
@@ -862,12 +905,9 @@ function bindUIEvents() {
     state.socket.emit('deployCancel');
   });
 
-  // 结束页：再来一局 / 返回大厅
+  // 结束横幅：再来一局（返回菜单用对战页顶部的「← 返回菜单」按钮）
   $('#btn-rematch').addEventListener('click', function () {
     state.socket.emit('rematch');
-  });
-  $('#btn-leave').addEventListener('click', function () {
-    state.socket.emit('leaveRoom');
   });
 
   // 受邀加入页：确认加入 / 返回菜单

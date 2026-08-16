@@ -119,7 +119,8 @@ function endGame(room, winnerSeat, reason) {
     winner: winnerSeat,
     reason: reason,
     headsLeft: headsLeftOf(room),
-    score: room.score
+    score: room.score,
+    planes: room.players.map(function (p) { return p ? p.planes : null; }) // 对局结束：公开双方飞机坐标
   });
 
   if (room.isAI) {
@@ -384,7 +385,7 @@ function handleJoinRoom(socket, data) {
 }
 
 // 观战席：房间已满时进入。能看双方已揭示的格子，不能下棋；
-// 只拿到双方互相可见的揭示记录，绝不发飞机坐标
+// 平时只拿到双方互相可见的揭示记录；对局结束后才公开双方飞机坐标
 function handleSpectatorJoin(socket, room, name) {
   room.spectators.push({ name: name, socketId: socket.id });
   socket.data.roomId = room.id;
@@ -402,7 +403,8 @@ function handleSpectatorJoin(socket, room, name) {
     headsLeft: headsLeftOf(room),
     shots: room.players.map(function (p) { return p.shotsReceived; }), // [A 被打的, B 被打的]
     winner: room.winner,
-    winReason: room.winReason
+    winReason: room.winReason,
+    planes: room.phase === 'over' ? room.players.map(function (p) { return p.planes; }) : null
   });
   emitToRoom(room, 'spectatorCount', { count: room.spectators.length });
 }
@@ -461,7 +463,7 @@ function handleRejoin(socket, data) {
   // 人机房间：玩家回来了，AI 恢复行动
   if (room.isAI && room.phase === 'battle') scheduleAITurn(room);
 
-  // 拼出完整现场发给重连方（只含公开信息，绝不含对方飞机坐标）
+  // 拼出完整现场发给重连方（只含公开信息；对局结束后才公开双方飞机坐标）
   const enemy = room.players[1 - seat];
   socket.emit('reconnected', {
     roomId: roomId,
@@ -482,7 +484,8 @@ function handleRejoin(socket, data) {
     winner: room.winner,
     winReason: room.winReason,
     rematchVotes: room.rematchVotes,
-    isAI: room.isAI                       // 人机对战房间标记（前端据此显示）
+    isAI: room.isAI,                      // 人机对战房间标记（前端据此显示）
+    planes: room.phase === 'over' ? room.players.map(function (p) { return p ? p.planes : null; }) : null
   });
 }
 

@@ -239,6 +239,19 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .player-panel p { font-size: 14px; color: #475569; margin: 3px 0; }
 .player-panel .turn-hint { color: #2563eb; font-size: 13px; min-height: 18px; }
 
+/* 对局结束横幅：留在对战页上方，棋盘保持可见 */
+.over-banner {
+  text-align: center;
+  background: #fff8e1;
+  border: 2px solid #ffd54f;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.over-banner h2 { margin: 0 0 4px; font-size: 22px; }
+.over-banner p { margin: 4px 0; }
+.over-banner #over-rematch-status { color: #b45309; font-size: 13px; min-height: 18px; }
+
 /* ---------- 对战页双棋盘 ---------- */
 .boards-row { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
 .board-col { text-align: center; }
@@ -268,8 +281,9 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .board td.cell-empty { background: #f5f5f5; }
 .board td.cell-unknown { background: #1e293b; }
 
-/* 己方棋盘：没被对方打过的格子蒙上深色遮罩（调暗）；被打过的保持原色高亮，不加额外标记 */
-#my-board td.dimmed::before {
+/* 没被打过的格子蒙上深色遮罩（调暗）；被打过的保持原色高亮，不加额外标记
+   （己方棋盘一直如此；对方棋盘在对局结束公开飞机后也这样显示） */
+#my-board td.dimmed::before, #enemy-board td.dimmed::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -293,6 +307,9 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 #enemy-board td.cell-unknown { cursor: pointer; }
 #enemy-board td.cell-unknown:hover { background: #334155; }
 #enemy-board td:not(.cell-unknown) { cursor: default; }
+/* 对局结束公开布局后：对方棋盘不再可点（点了只会提示对局已结束） */
+#enemy-board.revealed td.cell-unknown { cursor: default; }
+#enemy-board.revealed td.cell-unknown:hover { background: #1e293b; }
 /* 已点击、等待服务器回复的格子：立即变色反馈，网络慢也不觉得"没反应" */
 #enemy-board td.cell-pending { background: #3b5bdb; cursor: wait; }
 
