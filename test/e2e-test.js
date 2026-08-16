@@ -33,6 +33,20 @@ function waitFor(socket, event, timeoutMs) {
   });
 }
 
+// 等待满足条件的指定事件（先注册再 emit 用；不满足条件的事件会被过滤继续等）
+function waitForMatch(socket, event, predicate, timeoutMs) {
+  return new Promise(function (resolve, reject) {
+    const t = setTimeout(function () { socket.off(event, handler); reject(new Error('等待事件超时: ' + event)); }, timeoutMs || 4000);
+    function handler(d) {
+      if (!predicate(d)) return; // 例如过滤掉玩家自己的 revealResult
+      clearTimeout(t);
+      socket.off(event, handler);
+      resolve(d);
+    }
+    socket.on(event, handler);
+  });
+}
+
 // 随机生成一份合法部署（复用 shared.js 的校验逻辑，和真实游戏一致）
 function randomDeployment() {
   const dirs = ['up', 'down', 'left', 'right'];
@@ -400,6 +414,170 @@ async function main() {
   const closed = await closedP;
   check('双方都离开后房间回收，观战者收到 roomClosed', closed.message.length > 0);
   G.disconnect();
+
+  // 13. 人机对战
+  console.log('— 人机对战 —');
+  const aiMod = require('../ai.js');
+
+  // A. ai.js 纯函数单测（不连服务器，确定性）
+  let allDeployOk = true;
+  for (let i = 0; i < 100; i++) {
+    const d = aiMod.randomDeployment();
+    if (!d || shared.validateDeployment(d) !== null) { allDeployOk = false; break; }
+  }
+  check('AI 随机部署 100 次全部合法', allDeployOk);
+
+  const t1 = aiMod.chooseTarget([], 'normal');
+  check('空信息时 AI 给出合法目标', !!t1 && t1.row >= 0 && t1.row < 10 && t1.col >= 0 && t1.col < 10);
+  const tDup = aiMod.chooseTarget([{ row: 3, col: 4, result: 'empty' }], 'hard');
+  check('已揭示的格子 AI 不会重复打', !(tDup.row === 3 && tDup.col === 4));
+  let nearCount = 0;
+  for (let i = 0; i < 40; i++) {
+    const t = aiMod.chooseTarget([{ row: 5, col: 5, result: 'body' }], 'normal');
+    if (Math.abs(t.row - 5) + Math.abs(t.col - 5) <= 3) nearCount++;
+  }
+  check('打中机身后 AI 顺着机身找头（40 次中 ' + nearCount + ' 次在附近）', nearCount >= 30);
+  check('非法难度回退普通（正常返回目标）', !!aiMod.chooseTarget([], 'insane'));
+
+  // B. 人机房间完整流程
+  const P = io(URL);
+  await waitFor(P, 'connect');
+  P.on('error', function () {}); // 领先时被拒等预期内的错误，吞掉即可
+
+  const deployP = waitFor(P, 'deployReady');
+  P.emit('createRoomAI', { name: '玩家甲', level: 'normal' });
+  const aiRoom = await waitFor(P, 'roomCreated');
+  check('人机房间创建（对手是 🤖 电脑）', aiRoom.isAI === true && aiRoom.names[1] === '🤖 电脑');
+  check('AI 永远在线（绿点恒亮）', aiRoom.online[1] === true);
+  const aiDeploy = await deployP;
+  check('AI 自动部署并确认', aiDeploy.seat === 1 && aiDeploy.confirmed[1] === true);
+
+  // 真人确认部署 → 开战（AI 早已就绪）
+  const battleAIP = waitFor(P, 'battleStart');
+  P.emit('deployConfirm', { planes: randomDeployment() });
+  const battleAI = await battleAIP;
+  check('玩家确认后开战', battleAI.steps[0] === 0 && battleAI.steps[1] === 0);
+
+  // 从开战起统一维护对局状态
+  let overAI = null;
+  let stepsP = 0, stepsAI = 0, aiMoves = 0;
+  P.on('revealResult', function (d) {
+    stepsP = d.steps[0]; stepsAI = d.steps[1];
+    if (d.attacker === 1) aiMoves++;
+  });
+  P.on('gameOver', function (d) { overAI = d; });
+
+  // AI 自动走棋（测试服务器上"思考"延迟被压到 80~200ms）
+  const firstMove = await waitFor(P, 'revealResult', 5000);
+  check('AI 自动走棋', firstMove.attacker === 1 && firstMove.steps[1] === 1);
+  await sleep(1200);
+  check('AI 领先 1 步后等待玩家（不连走）', aiMoves === 1);
+
+  // 玩家垫一步 → AI 继续走（先注册监听再 emit，过滤掉玩家自己的 revealResult）
+  const aiReplyP = waitForMatch(P, 'revealResult', function (d) { return d.attacker === 1; }, 5000);
+  P.emit('reveal', { row: 0, col: 0 });
+  const aiReply = await aiReplyP;
+  check('玩家走后 AI 继续走', aiReply.attacker === 1 && aiReply.steps[1] === 2);
+
+  // 打完整局：玩家和 AI 轮流行动直到分出胜负。
+  // 不断言谁赢（AI 棋盘随机、玩家盲打无法保证先赢），只断言对局必然结束
+  const revealedByP = new Set(['0,0']);
+  function pickUnknown() {
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        if (!revealedByP.has(r + ',' + c)) return [r, c];
+      }
+    }
+    return null;
+  }
+  let guard = 0;
+  while (!overAI && guard < 150) {
+    guard++;
+    if (stepsP <= stepsAI) {
+      const cell = pickUnknown();
+      P.emit('reveal', { row: cell[0], col: cell[1] });
+      revealedByP.add(cell[0] + ',' + cell[1]);
+    }
+    await sleep(300); // 等自己或 AI 的 revealResult / error
+  }
+  check('对局必然结束（' + guard + ' 轮内）', overAI !== null);
+
+  // AI 自动投「再来一局」（对局结束约 1.5 秒后）
+  const voteAI = await waitFor(P, 'rematchVote', 5000);
+  check('AI 自动想再来一局', voteAI.votes[1] === true && voteAI.votes[0] === false);
+
+  // 玩家同意 → 重开 → AI 自动重新部署
+  const restartAI = waitFor(P, 'rematchStart');
+  const aiDeploy2P = waitFor(P, 'deployReady');
+  P.emit('rematch');
+  await restartAI;
+  const aiDeploy2 = await aiDeploy2P;
+  check('再来一局后 AI 自动重新部署', aiDeploy2.seat === 1 && aiDeploy2.confirmed[1] === true);
+
+  const battleAI2P = waitFor(P, 'battleStart');
+  P.emit('deployConfirm', { planes: randomDeployment() });
+  const battleAI2 = await battleAI2P;
+  check('第二局开战且累计比分正确', battleAI2.steps[0] === 0 && battleAI2.steps[1] === 0 &&
+    battleAI2.score[0] + battleAI2.score[1] === 1);
+
+  // 断线重连：AI 不掉线，玩家回来继续
+  P.disconnect();
+  await sleep(200);
+  const P2 = io(URL);
+  await waitFor(P2, 'connect');
+  P2.on('error', function () {});
+  P2.emit('rejoin', { token: aiRoom.token, roomId: aiRoom.roomId });
+  const reAI = await waitFor(P2, 'reconnected');
+  check('人机房间重连成功（AI 依旧在线）', reAI.phase === 'battle' && reAI.isAI === true && reAI.online[1] === true);
+
+  // 玩家垫一步（若被拒则无碍），然后 AI 必然走一步（先注册监听再 emit）
+  const afterRejoinP = waitForMatch(P2, 'revealResult', function (d) { return d.attacker === 1; }, 5000);
+  P2.emit('reveal', { row: 1, col: 1 });
+  const afterRejoin = await afterRejoinP;
+  check('重连后 AI 继续走棋', afterRejoin.attacker === 1);
+
+  // 观战兼容：第三人进入人机房间观战
+  const S = io(URL);
+  await waitFor(S, 'connect');
+  const errS = [];
+  S.on('error', function (d) { errS.push(d.message); });
+  S.emit('joinRoom', { roomId: aiRoom.roomId, name: '观众丁' });
+  const specAI = await waitFor(S, 'spectatorJoined');
+  check('人机房间观战快照正常', specAI.names[1] === '🤖 电脑' && specAI.online[1] === true);
+  S.emit('reveal', { row: 2, col: 2 });
+  await sleep(150);
+  check('人机房间观战者也不能下棋', errS.length === 1);
+  let specSawAI = null;
+  S.on('revealResult', function (d) { if (d.attacker === 1) specSawAI = d; });
+  P2.emit('reveal', { row: 2, col: 2 }); // 垫步引发 AI 走棋
+  await sleep(800);
+  check('观战者实时看到 AI 走棋', specSawAI !== null);
+
+  // 真人离线后房间回收（AI 永不掉线也照样回收）
+  const closedP2 = waitFor(S, 'roomClosed', 5000);
+  P2.disconnect(); // 玩家离开且不再回来
+  const closedAI = await closedP2;
+  check('真人离线后房间回收，观战者收到 roomClosed', closedAI.message.length > 0);
+  S.disconnect();
+
+  // 回收后重连失败（房间已删除）
+  const P3 = io(URL);
+  await waitFor(P3, 'connect');
+  P3.emit('rejoin', { token: aiRoom.token, roomId: aiRoom.roomId });
+  const rejFail = await waitFor(P3, 'rejoinFailed');
+  check('回收后无法重连（房间已删除）', rejFail.roomId === aiRoom.roomId);
+  P3.disconnect();
+
+  // 异常输入：空昵称被拒；非法难度回退普通
+  const P4 = io(URL);
+  await waitFor(P4, 'connect');
+  P4.emit('createRoomAI', { name: '   ', level: 'normal' });
+  const errAI = await waitFor(P4, 'error');
+  check('人机房间空昵称被拒绝', errAI.message.indexOf('昵称') !== -1);
+  P4.emit('createRoomAI', { name: '测试员', level: 'insane' });
+  const badLvl = await waitFor(P4, 'roomCreated');
+  check('非法难度回退普通（正常创建）', badLvl.isAI === true && badLvl.aiLevel === 'normal');
+  P4.disconnect();
 
   C.disconnect(); D.disconnect();
   await sleep(200);

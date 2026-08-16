@@ -18,9 +18,14 @@ const { Server } = require('socket.io');
 const shared = require('./public/shared.js');
 const { BOARD_SIZE, CELL_HEAD, CELL_BODY, buildBoard, validateDeployment } = shared;
 
+// 人机对战的 AI 决策模块（精确枚举 + 机头概率图）
+const ai = require('./ai.js');
+
 // ---------- 常量 ----------
 const PORT = process.env.PORT || 3000;  // 部署到 Render 等平台时会自动注入 PORT
 const RECYCLE_SECONDS = Number(process.env.RECYCLE_SECONDS) || 600; // 双方都离线后回收房间的等待时间（秒，默认 10 分钟）；可用环境变量覆盖（测试用）
+const AI_THINK_MIN_MS = Number(process.env.AI_THINK_MIN_MS) || 800; // AI 每步"思考"延迟的随机范围（默认 0.8~1.5 秒，更像真人）；测试时可压小
+const AI_THINK_MAX_MS = Number(process.env.AI_THINK_MAX_MS) || 1500;
 const ROOM_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 房间号字符表（去掉易混淆的 I/O/0/1）
 
 // ---------- 数据 ----------
@@ -52,7 +57,11 @@ function createRoom() {
     winReason: null,          // allHeads（任何情况都不判负，只有这一种结束方式）
     rematchVotes: [false, false], // 结束页"再来一局"的投票
     cleanupTimer: null,           // 双方都离线时的房间回收计时器
-    spectators: []                // 观战者列表 [{name, socketId}]（房间满员后可进入观战席）
+    spectators: [],               // 观战者列表 [{name, socketId}]（房间满员后可进入观战席）
+    isAI: false,                  // 人机对战房间（AI 坐 1 号位，永不掉线）
+    aiLevel: null,                // easy | normal | hard
+    aiTimer: null,                // AI 走棋的定时器
+    aiRematchTimer: null          // AI 自动投「再来一局」的定时器
   };
 }
 
@@ -113,10 +122,38 @@ function endGame(room, winnerSeat, reason) {
     headsLeft: headsLeftOf(room),
     score: room.score
   });
+
+  if (room.isAI) {
+    // 对局结束：清掉还没触发的走棋定时器
+    if (room.aiTimer) { clearTimeout(room.aiTimer); room.aiTimer = null; }
+    // AI 稍等片刻自动投「再来一局」票（和真人点按钮效果一样）
+    room.aiRematchTimer = setTimeout(function () {
+      room.aiRematchTimer = null;
+      const r = rooms.get(room.id);
+      if (!r || r.phase !== 'over') return; // 房间没了或已经重开
+      r.rematchVotes[1] = true;
+      console.log(`[${r.id}] AI 想再来一局`);
+      emitToRoom(r, 'rematchVote', { seat: 1, votes: r.rematchVotes });
+      // 玩家可能已经先点了「再来一局」，两票齐了就开
+      if (r.rematchVotes[0]) startRematch(r);
+    }, 1500);
+  }
+}
+
+// 双方都同意再来一局：重置并进入新一轮部署（真人房间 + 人机房间共用）
+function startRematch(room) {
+  console.log(`[${room.id}] 双方同意再来一局`);
+  resetToDeploy(room);
+  emitToRoom(room, 'rematchStart', {
+    names: room.players.map(function (p) { return p.name; })
+  });
+  if (room.isAI) aiDeployAndConfirm(room); // AI 自动重新部署
 }
 
 // 重置房间，回到部署阶段（第一次开战 / 再来一局共用）
 function resetToDeploy(room) {
+  // 防御性清理：任何时刻回到部署阶段，AI 的走棋定时器都不该再触发
+  if (room.aiTimer) { clearTimeout(room.aiTimer); room.aiTimer = null; }
   room.phase = 'deploy';
   room.steps = [0, 0];
   room.winner = null;
@@ -140,18 +177,29 @@ function onDisconnect(room, seat) {
   scheduleRoomCleanup(room);
 }
 
-// 双方都离线时启动房间回收计时；到点后再确认一次，期间有人回来就不回收
+// 真人玩家是否全部离线（人机房间里的 AI 永不掉线，只判断真人）
+function allHumansOffline(room) {
+  return room.players.every(function (p, seat) {
+    if (!p) return true;
+    if (room.isAI && seat === 1) return true; // AI 不算真人
+    return !p.connected;
+  });
+}
+
+// 真人全部离线时启动房间回收计时；到点后再确认一次，期间有人回来就不回收
 function scheduleRoomCleanup(room) {
-  const allOffline = room.players.every(function (p) { return !p || !p.connected; });
-  if (!allOffline || room.cleanupTimer) return;
-  console.log(`[${room.id}] 双方都已离线，${RECYCLE_SECONDS} 秒后回收房间`);
+  if (!allHumansOffline(room) || room.cleanupTimer) return;
+  console.log(`[${room.id}] 真人全部离线，${RECYCLE_SECONDS} 秒后回收房间`);
   room.cleanupTimer = setTimeout(function () {
     const r = rooms.get(room.id);
     if (!r) return;
     r.cleanupTimer = null;
-    if (r.players.every(function (p) { return !p || !p.connected; })) {
-      console.log(`[${room.id}] 双方离线超时，回收房间`);
+    if (allHumansOffline(r)) {
+      console.log(`[${room.id}] 真人离线超时，回收房间`);
       io.to(room.id).emit('roomClosed', { message: '双方都已离开，房间已回收' }); // 提醒还挂着的观战者
+      // 清掉 AI 的定时器，防止回收后还触发
+      if (r.aiTimer) clearTimeout(r.aiTimer);
+      if (r.aiRematchTimer) clearTimeout(r.aiRematchTimer);
       rooms.delete(room.id);
     }
   }, RECYCLE_SECONDS * 1000);
@@ -205,8 +253,97 @@ function handleCreateRoom(socket, data) {
   socket.emit('roomCreated', {
     roomId: room.id, token: token, seat: 0, name: name,
     names: [name, ''],
-    online: [true, false]
+    online: [true, false],
+    isAI: false, aiLevel: null,
+    deployConfirmed: [false, false]
   });
+}
+
+// 创建人机对战房间：真人坐 0 号位，AI 立刻坐 1 号位并自动部署
+function handleCreateRoomAI(socket, data) {
+  const name = (typeof data.name === 'string' ? data.name : '').trim();
+  const err = checkName(null, name);
+  if (err) return sendError(socket, err);
+
+  const level = ai.LEVELS[data.level] ? data.level : 'normal'; // 非法难度回退普通
+
+  const room = createRoom();
+  room.isAI = true;
+  room.aiLevel = level;
+
+  const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
+  room.players[0] = {
+    name: name, token: token,
+    socketId: socket.id, connected: true, left: false,
+    planes: null, board: null, shotsReceived: [],
+    deployConfirmed: false
+  };
+  // AI 坐 1 号位：没有 socket，永不掉线，走棋由服务器定时器驱动
+  room.players[1] = {
+    name: '🤖 电脑', token: crypto.randomBytes(8).toString('hex'),
+    socketId: null, connected: true, left: false,
+    planes: null, board: null, shotsReceived: [],
+    deployConfirmed: false
+  };
+  rooms.set(room.id, room);
+  resetToDeploy(room); // 真人房间靠第二人加入时切到部署阶段，人机房间在这里切
+
+  socket.data.roomId = room.id;
+  socket.data.seat = 0;
+  socket.data.token = token;
+  socket.join(room.id);
+  console.log(`[${room.id}] 人机房间创建，玩家：${name}（难度 ${level}）`);
+
+  socket.emit('roomCreated', {
+    roomId: room.id, token: token, seat: 0, name: name,
+    names: [name, '🤖 电脑'],
+    online: [true, true],
+    isAI: true, aiLevel: level,
+    deployConfirmed: [false, true] // AI 马上就自动确认部署
+  });
+
+  aiDeployAndConfirm(room); // AI 随机部署并确认
+}
+
+// AI 自动部署并确认（创建人机房间时、每局重新开始时调用）
+function aiDeployAndConfirm(room) {
+  const aiPlayer = room.players[1];
+  const planes = ai.randomDeployment();
+  if (!planes) return console.error(`[${room.id}] AI 生成部署失败（极少见，忽略即可）`);
+  aiPlayer.planes = planes;
+  aiPlayer.board = buildBoard(planes);
+  aiPlayer.deployConfirmed = true;
+  console.log(`[${room.id}] AI 确认部署（难度 ${room.aiLevel}）`);
+  emitToRoom(room, 'deployReady', {
+    seat: 1,
+    confirmed: [room.players[0].deployConfirmed, true]
+  });
+}
+
+// 轮到 AI 时安排它走一步（带随机"思考"延迟，更像真人）。
+// 触发时机：开战 / 每次揭示后 / 玩家重连回来；玩家断线时 AI 暂停等待
+function scheduleAITurn(room) {
+  if (!room.isAI || room.aiTimer) return;      // 已经有定时器在等
+  if (room.phase !== 'battle') return;         // 只在对战阶段走棋
+  const human = room.players[0];
+  if (!human || !human.connected) return;      // 玩家不在线：暂停，等重连
+  if (room.steps[1] > room.steps[0]) return;   // 步数领先时等待玩家追上（和真人同一套规则）
+
+  const thinkMs = crypto.randomInt(AI_THINK_MIN_MS, AI_THINK_MAX_MS + 1);
+  room.aiTimer = setTimeout(function () {
+    room.aiTimer = null;
+    const r = rooms.get(room.id);
+    if (!r || r.phase !== 'battle') return;           // 房间被回收 / 对局已结束
+    const h = r.players[0];
+    if (!h || !h.connected) return;                   // 玩家中途断线：暂停
+    if (r.steps[1] > r.steps[0]) return;              // 玩家抢步领先了：等待
+
+    const target = ai.chooseTarget(r.players[0].shotsReceived, r.aiLevel);
+    tryReveal(r, 1, target.row, target.col);
+
+    // 走完一步若还轮得到 AI（比如之前落后一步），继续调度
+    if (r.phase === 'battle' && r.steps[1] <= r.steps[0]) scheduleAITurn(r);
+  }, thinkMs);
 }
 
 // 加入房间：不满 2 人坐 1 号位；满员则进入观战席
@@ -325,6 +462,9 @@ function handleRejoin(socket, data) {
   // 广播在线状态（对方的状态点变绿）
   emitToRoom(room, 'playerStatus', { seat: seat, connected: true });
 
+  // 人机房间：玩家回来了，AI 恢复行动
+  if (room.isAI && room.phase === 'battle') scheduleAITurn(room);
+
   // 拼出完整现场发给重连方（只含公开信息，绝不含对方飞机坐标）
   const enemy = room.players[1 - seat];
   socket.emit('reconnected', {
@@ -345,7 +485,9 @@ function handleRejoin(socket, data) {
     enemyShotsReceived: enemy ? enemy.shotsReceived : [], // 我打对方的记录
     winner: room.winner,
     winReason: room.winReason,
-    rematchVotes: room.rematchVotes
+    rematchVotes: room.rematchVotes,
+    isAI: room.isAI,                      // 人机对战房间标记（前端据此显示）
+    aiLevel: room.aiLevel
   });
 }
 
@@ -382,6 +524,7 @@ function handleDeployConfirm(socket, data) {
       score: room.score,
       online: room.players.map(function (p) { return p.connected; })
     });
+    if (room.isAI) scheduleAITurn(room); // 人机房间：轮到 AI 就自动走棋
   }
 }
 
@@ -425,6 +568,13 @@ function handleReveal(socket, data) {
   }
 
   // —— 全部校验通过，执行揭示 ——
+  tryReveal(room, seat, row, col);
+}
+
+// 执行一次揭示：查表、记录、步数 +1、广播、判胜（调用前已通过全部校验）
+// 真人玩家（handleReveal）和 AI（scheduleAITurn）共用，保证两边遵守同一套规则
+function tryReveal(room, seat, row, col) {
+  const defender = room.players[1 - seat];
   const cell = defender.board[row][col];
   const result = cell === CELL_HEAD ? 'head' : cell === CELL_BODY ? 'body' : 'empty';
   defender.shotsReceived.push({ row: row, col: col, result: result });
@@ -440,7 +590,10 @@ function handleReveal(socket, data) {
   // 对方 3 个机头全被揭示 → 我方获胜
   if (headsLeft[1 - seat] === 0) {
     endGame(room, seat, 'allHeads');
+    return;
   }
+
+  if (room.isAI) scheduleAITurn(room); // 人机房间：每次揭示后看是否轮到 AI
 }
 
 // 再来一局投票
@@ -454,11 +607,7 @@ function handleRematch(socket) {
   emitToRoom(room, 'rematchVote', { seat: seat, votes: room.rematchVotes });
 
   if (room.rematchVotes[0] && room.rematchVotes[1]) {
-    console.log(`[${room.id}] 双方同意再来一局`);
-    resetToDeploy(room);
-    emitToRoom(room, 'rematchStart', {
-      names: room.players.map(function (p) { return p.name; })
-    });
+    startRematch(room);
   }
 }
 
@@ -477,6 +626,7 @@ io.on('connection', function (socket) {
   console.log(`新连接 ${socket.id}`);
 
   socket.on('createRoom', function (data) { handleCreateRoom(socket, data || {}); });
+  socket.on('createRoomAI', function (data) { handleCreateRoomAI(socket, data || {}); }); // 人机对战房间
   socket.on('joinRoom', function (data) { handleJoinRoom(socket, data || {}); });
   socket.on('rejoin', function (data) { handleRejoin(socket, data || {}); });
 
