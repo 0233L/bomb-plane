@@ -1,7 +1,7 @@
 // ============================================
 // ai.js —— 人机对战的 AI 决策模块（服务器端）
 //
-// 算法：精确枚举 + 机头概率 × 信息量加权打分（一步贪心，实战在用）
+// 算法：精确枚举 + 打分选格（一步贪心，实战在用）
 //   服务器启动时一次性枚举出「3 架飞机互不重叠」的全部合法部署
 //   （单架摆放 168 种 → 三架组合 66,816 种，枚举 + 建索引共约 100ms）。
 //   每走一步时：
@@ -9,32 +9,56 @@
 //     2. 统计每个未知格在所有"仍然可能的部署"中：
 //        headCount = 是机头的组合数
 //        bodyCount = 是机身的组合数
-//     3. 每个未知格算一个分数，打分数最高的格子：
+//     3. 每个未知格算一个分数，打分数最高的格子。实战默认公式是
+//        「机头组熵贪心」（第 7 轮引入，函数 chooseTargetHeadSet）：
+//
+//          分数 = 机头概率 + w × ΔH头组
+//            机头概率 = head / alive
+//            ΔH头组 = H(当前"机头三元组"分布) − Σ_o p_o·H(结果 o 桶内的机头组分布)
+//
+//   〖机头组熵是什么意思〗胜负只取决于机头在哪——排除 1000 个机身摆法
+//   不同、但机头位置相同的组合，对获胜毫无帮助。所以信息量要对着
+//   "机头三元组"（3 个机头分别在哪些格，打包成一个 id）的分布量，
+//   而不是对着整套机身布局量——旧的 1−Σp² 把两种信息混在一起，
+//   这正是它的盲区。灵感来自 Wordle 求解器文献（见下）。
+//
+//   旧公式（chooseTargetGreedy，仍作候选预排和兜底用）：
 //
 //          分数 = 机头概率 + INFO_WEIGHT × 信息量
-//            机头概率 = head / alive
-//            信息量   = 打这格后期望排除的组合比例
-//                     = 1 - (head² + body² + empty²) / alive²
+//            信息量 = 打这格后期望排除的组合比例
+//                   = 1 - (head² + body² + empty²) / alive²
 //
 //   〖信息量是什么意思〗打这格可能得到 空/机身/机头 三种结果，每种结果的
 //   概率是 (empty|body|head)/alive，得到该结果后剩下的组合数是
 //   (empty|body|head) 本身。加权平均就是"打完后还剩下多少组合"，
 //   用 1 减掉它就得到"能排除多少"——越大越能缩小包围圈。
 //
-//   权重 INFO_WEIGHT 是两者之间的平衡杆。曾用自对弈模拟实测：
+//   权重调校史（自对弈模拟，公共随机数配对）：
 //   第 1 轮（200 盘粗扫）：w=0（纯追头）20.97 步、w=1 约 18.70 步（最优）、
 //     w=1000（纯信息）20.00 步 → 信息量加一点最好，加太多反而拖慢。
 //   第 2 轮（1500 盘加密扫 0.6~2.0）：w=1.3 平均 18.91 步最优，1.1~1.8 是平台区。
 //   第 3 轮（4000 盘验证前 4 名）：w=1.3 再次最优（18.98 步）。
 //   第 5 轮（8000 盘精细扫 1.2~1.4，步长 0.025，公共随机数配对）：
 //     1.25~1.4 是平台区（与 1.3 的配对差 −0.018~+0.020 步，SE 仅 ±0.005~0.017），
-//     w=1.2 显著更差（+0.038±0.017）→ 固定权重已收敛。
+//     w=1.2 显著更差（+0.038±0.017）→ 旧公式固定权重已收敛。
 //   第 6 轮（6000 盘配对，"自适应权重"实验）：按剩余方案数 alive 让权重
 //     随对数斜坡 wHi→wLo 变化（开局重信息、残局重机头的直觉方案），以及
 //     按剩余机头数分段的变体，共 10 组 vs 固定 1.3——全部不优于基准
 //     （+0.007~+0.236 步），且残局权重降得越低越差。原因：残局方案数少时
 //     机头概率并列很常见，信息量项正好打破并列、选"打空了也最能缩小包围圈"
-//     的格子——残局同样需要信息量。固定 1.3 就是局部最优，保持。
+//     的格子——残局同样需要信息量。
+//   第 7 轮（Wordle/Mastermind 求解器文献对照实验，三组独立种子共 3.5 万盘）
+//     - 香农熵贪心（信息项换成香农熵 H(p空,p身,p头)）：w=1.0 时
+//       −0.109±0.040 步（6000 盘，勉强过线），w≥1.3 变差 → 不采用；
+//     - Knuth minimax（最小化最坏情况剩余方案数）：+1.1~1.4 步，明显更差；
+//     - 探测优先硬切换（开局先打纯信息格直到首次命中）：打平（±0.003 步）；
+//     - 贪心 1.3 + 香农熵并列打破：打平（+0.003±0.003 步）；
+//     - 机头组熵贪心【采纳】：Wordle 最优解（Olson 3.421 步）"对答案本身
+//       取熵"的映射。三组种子（1000/1000/1500 盘）w∈{0.5,0.7,1.0} 配对差
+//       −0.26~−0.70 步、全部 ≥2.4σ——七轮里第一个真实提升。w=0.7 加权
+//       平均 −0.448 步（w=0.5 是 −0.387、w=1.0 是 −0.406，三者在一个平台
+//       区内，取平均最优的 0.7）；w=1.3 无效果（−0.016±0.109）。候选数 K
+//       扫 {2,4,8}：K=4 与 K=8 打平（K=2 明显差），取 4 更快。
 //   理论分析（500 盘逐枪实测熵，信息论视角）："11 枪下界"假设每枪 3 种结果
 //     等概率（1.585 比特/枪），实际开局最优一枪也只有 1.289 比特（结果严重
 //     不均：空/身/头 ≈ 60%/35%/5%）；且获胜 ≠ 识别布局——贪心获胜时平均
@@ -42,7 +66,8 @@
 //     贪心每枪熵 1.285 vs 全局最大 1.339（≈96% 效率），每枪机头概率 0.197
 //     （比纯追头的 0.184 还高——先缩圈、机头概率才"变浓"）。三策略夹逼估计
 //     理论最优在 18~19 步，贪心差距约 0.2~0.5 步。
-//   结论：取 1.3。
+//   结论：实战默认机头组熵 w=0.7（AI_HS_W/AI_HS_K 可覆盖）；旧公式
+//   权重取 1.3 留作候选预排与兜底。
 //
 // 为什么这样就能变聪明：
 //   - 打中机身后，机头方向上的格子概率自动升高 → AI 自然"顺藤摸瓜"
@@ -203,6 +228,20 @@ const BODY_CELLS = CELLS_OF.map(function (cells) {
   return body;
 });
 for (let p = 0; p < PLACEMENTS.length; p++) HEAD_POS[p] = CELLS_OF[p][0] >> 2;
+
+// 每个组合的「机头三元组」打包 id（3 个机头位置排序后各占 7 位拼成，≤2²¹ 装进 Int32）。
+// 分析用（机头组熵实验）：胜负只取决于机头在哪——机头位置相同的组合是同一个"获胜假设"。
+const HEAD_SET_IDS = new Int32Array(COMBOS.length / 3);
+for (let c = 0; c < HEAD_SET_IDS.length; c++) {
+  const base = c * 3;
+  let a = HEAD_POS[COMBOS[base]];
+  let b = HEAD_POS[COMBOS[base + 1]];
+  let cc = HEAD_POS[COMBOS[base + 2]];
+  if (a > b) { const t = a; a = b; b = t; }
+  if (b > cc) { const t = b; b = cc; cc = t; }
+  if (a > b) { const t = a; a = b; b = t; }
+  HEAD_SET_IDS[c] = a | (b << 7) | (cc << 14);
+}
 
 // POS_INDEX.heads[pos] = 以 pos 为机头的组合下标列表（平均约 2000 个）
 // POS_INDEX.bodies[pos] = 以 pos 为机身的组合下标列表（平均约 18000 个）
@@ -881,10 +920,101 @@ function chooseTargetRollout(shotsReceived, opts) {
   return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
 }
 
-// 实战入口：按环境变量分发。默认用贪心；AI_ROLLOUT=1 显式切换 rollout
-// （自对弈 500 盘实测 rollout 未优于贪心，见文件头"第二轮"结论，故默认不开）。
-// 其余参数也可用 env 覆盖：AI_RK（候选数）、AI_RP（粒子数）、AI_RM（每分支
-// 模拟次数）、AI_RW（信息量权重）、AI_RRACE=1（两阶段竞速）
+// ---------- 机头组熵贪心（第 7 轮，Wordle 文献启发，实战默认） ----------
+// 打分 = 机头概率 + w × ΔH头组，其中
+//   ΔH头组 = H(当前"机头三元组"分布) − Σ_o p_o · H(结果 o 桶内的机头组分布)
+// 直觉：胜负只取决于机头在哪——排除 1000 个机身摆法不同、但机头位置相同的
+// 组合，对获胜毫无帮助。所以信息量要对着"机头组"量，而不是对着整套机身
+// 布局量（旧的 1−Σp² 把两种信息混在一起，这是它的盲区）。Wordle 文献的
+// 最优解（Olson 3.421 步）也是这个思路：对"答案本身"的状态取熵。
+// 实测（第 7 轮三组独立种子共 3500 盘配对）：w∈{0.5,0.7,1.0} 全部显著快于
+// 旧贪心（各 −0.26~−0.70 步，全部 ≥2.4σ），w=0.7 加权平均 −0.448 步最优；
+// w=1.3 无效果（−0.016±0.109）。是七轮实验里第一个真实提升，采纳为默认。
+//
+// 实现：只在贪心 1.3 预排的 top-K 候选格里重新算 ΔH头组（候选过滤，和
+// rollout 同法）。每格三张 Map 统计 空/身/头 桶内的机头组 id 分布。
+// 性能：AI 每步有 0.8~1.5s 思考预算，最坏（开局 alive=66,816）约 100~200ms，
+// 藏在思考延迟内。
+function chooseTargetHeadSet(shotsReceived, weight, rng, K) {
+  const w = typeof weight === 'number' ? weight : HEAD_SET_WEIGHT;
+  const k = typeof K === 'number' ? K : HEAD_SET_K;
+  const rand = typeof rng === 'function' ? rng : Math.random; // 可选随机源（模拟配对对比用）
+  const shotTable = buildShotTable(shotsReceived);
+  const counted = filterAndCount(shotTable);
+  const alive = counted.alive;
+  const aliveLen = counted.aliveLen;
+
+  // 1) 当前机头组分布熵
+  const mapNow = new Map();
+  for (let i = 0; i < aliveLen; i++) {
+    const id = HEAD_SET_IDS[ALIVE_LIST[i]];
+    mapNow.set(id, (mapNow.get(id) || 0) + 1);
+  }
+  let hNow = 0;
+  mapNow.forEach(function (cnt) {
+    const p = cnt / aliveLen;
+    hNow -= p * Math.log2(p);
+  });
+
+  // 2) 贪心 1.3 预排 top-K 候选
+  const scored = [];
+  for (let pos = 0; pos < BOARD_SIZE * BOARD_SIZE; pos++) {
+    if (shotTable[pos] !== 0) continue;
+    const h = counted.headCount[pos];
+    const b = counted.bodyCount[pos];
+    const e = alive - h - b;
+    scored.push({
+      pos: pos,
+      pHead: h / alive,
+      s: h / alive + INFO_WEIGHT * (1 - (h * h + b * b + e * e) / (alive * alive))
+    });
+  }
+  scored.sort(function (x, y) { return y.s - x.s; });
+  const top = scored.slice(0, Math.min(k, scored.length));
+
+  // 3) 每个候选格算 ΔH头组，打分 = 机头概率 + w × ΔH头组
+  let bestScore = -Infinity;
+  let bestPositions = [];
+  top.forEach(function (entry) {
+    const pos = entry.pos;
+    const maps = [new Map(), new Map(), new Map()]; // 空 / 身 / 头 三桶的 id→数量 表
+    for (let i = 0; i < aliveLen; i++) {
+      const combo = ALIVE_LIST[i];
+      const kind = comboKindAt(combo, pos); // 2=头 1=身 0=空
+      const id = HEAD_SET_IDS[combo];
+      const m = maps[kind];
+      m.set(id, (m.get(id) || 0) + 1);
+    }
+    let hExp = 0;
+    for (let kind = 0; kind < 3; kind++) {
+      const m = maps[kind];
+      let n = 0;
+      m.forEach(function (cnt) { n += cnt; });
+      if (n === 0) continue;
+      let hSum = 0;
+      m.forEach(function (cnt) {
+        const p = cnt / n;
+        hSum -= p * Math.log2(p);
+      });
+      hExp += (n / aliveLen) * hSum;
+    }
+    const score = entry.pHead + w * (hNow - hExp);
+    if (score > bestScore) { bestScore = score; bestPositions = [pos]; }
+    else if (score === bestScore) bestPositions.push(pos);
+  });
+
+  // 理论上不会一个候选都不剩（对方部署一定合法），防御性兜底走旧贪心
+  if (!bestPositions.length) return chooseTargetGreedy(shotsReceived, w, rand);
+  const pos = bestPositions[Math.floor(rand() * bestPositions.length)];
+  return { row: Math.floor(pos / BOARD_SIZE), col: pos % BOARD_SIZE };
+}
+
+// 实战入口：按环境变量分发。默认机头组熵贪心（第 7 轮实测快约 0.45 步）；
+// AI_ROLLOUT=1 显式切换 rollout（自对弈 500 盘实测未优于旧贪心，见文件头）。
+// 其余参数可用 env 覆盖：AI_HS_W（头组熵权重，默认 0.5）、AI_HS_K（候选数，
+// 默认 4）、AI_RK/AI_RP/AI_RM/AI_RW/AI_RRACE（rollout 参数）
+const HEAD_SET_WEIGHT = parseFloat(process.env.AI_HS_W || '0.7');
+const HEAD_SET_K = parseInt(process.env.AI_HS_K || '4', 10);
 const AI_USE_ROLLOUT = process.env.AI_ROLLOUT === '1';
 const LIVE_OPTS = {
   K: parseInt(process.env.AI_RK || '8', 10),
@@ -894,8 +1024,8 @@ const LIVE_OPTS = {
   race: process.env.AI_RRACE === '1'
 };
 function chooseTargetLive(shotsReceived) {
-  if (!AI_USE_ROLLOUT) return chooseTargetGreedy(shotsReceived);
-  return chooseTargetRollout(shotsReceived, LIVE_OPTS);
+  if (AI_USE_ROLLOUT) return chooseTargetRollout(shotsReceived, LIVE_OPTS);
+  return chooseTargetHeadSet(shotsReceived);
 }
 
 module.exports = {
@@ -903,11 +1033,15 @@ module.exports = {
   TOTAL_COMBOS: COMBOS.length / 3,       // 全部合法布局数 = 66,816（理论分析用）
   buildShotTable: buildShotTable,        // 揭示记录 → 棋盘表（理论分析用）
   filterAndCount: filterAndCount,        // 过滤 + 每格统计（理论分析用）
+  ALIVE_LIST: ALIVE_LIST,                // filterAndCount 后 [0..aliveLen) 为存活组合下标（分析用）
+  HEAD_SET_IDS: HEAD_SET_IDS,            // 每组合的机头三元组打包 id（分析用）
+  comboKindAt: comboKindAt,              // 组合在格子处的取值：0 空 / 1 身 / 2 头（分析用）
   randomDeployment: randomDeployment,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,
   chooseTargetShots: chooseTargetShots,
   chooseTargetBlend: chooseTargetBlend,
   chooseTargetRollout: chooseTargetRollout,
+  chooseTargetHeadSet: chooseTargetHeadSet,
   chooseTargetLive: chooseTargetLive
 };
