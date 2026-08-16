@@ -26,6 +26,22 @@
 //     w=1000（纯信息）20.00 步 → 信息量加一点最好，加太多反而拖慢。
 //   第 2 轮（1500 盘加密扫 0.6~2.0）：w=1.3 平均 18.91 步最优，1.1~1.8 是平台区。
 //   第 3 轮（4000 盘验证前 4 名）：w=1.3 再次最优（18.98 步）。
+//   第 5 轮（8000 盘精细扫 1.2~1.4，步长 0.025，公共随机数配对）：
+//     1.25~1.4 是平台区（与 1.3 的配对差 −0.018~+0.020 步，SE 仅 ±0.005~0.017），
+//     w=1.2 显著更差（+0.038±0.017）→ 固定权重已收敛。
+//   第 6 轮（6000 盘配对，"自适应权重"实验）：按剩余方案数 alive 让权重
+//     随对数斜坡 wHi→wLo 变化（开局重信息、残局重机头的直觉方案），以及
+//     按剩余机头数分段的变体，共 10 组 vs 固定 1.3——全部不优于基准
+//     （+0.007~+0.236 步），且残局权重降得越低越差。原因：残局方案数少时
+//     机头概率并列很常见，信息量项正好打破并列、选"打空了也最能缩小包围圈"
+//     的格子——残局同样需要信息量。固定 1.3 就是局部最优，保持。
+//   理论分析（500 盘逐枪实测熵，信息论视角）："11 枪下界"假设每枪 3 种结果
+//     等概率（1.585 比特/枪），实际开局最优一枪也只有 1.289 比特（结果严重
+//     不均：空/身/头 ≈ 60%/35%/5%）；且获胜 ≠ 识别布局——贪心获胜时平均
+//     还剩 56 种方案未排除（差 2.35 比特），仅 21% 的局在获胜前完全识别。
+//     贪心每枪熵 1.285 vs 全局最大 1.339（≈96% 效率），每枪机头概率 0.197
+//     （比纯追头的 0.184 还高——先缩圈、机头概率才"变浓"）。三策略夹逼估计
+//     理论最优在 18~19 步，贪心差距约 0.2~0.5 步。
 //   结论：取 1.3。
 //
 // 为什么这样就能变聪明：
@@ -344,15 +360,18 @@ function maxFollow(x, n, w, headScratch, bodyScratch, shotTable) {
 
 // 旧版核心决策（一步贪心，只算本枪分）。保留用于模拟对比和测试回归
 // shotsReceived = AI 打对方（真人）的记录
-// weight = 信息量权重（可选，默认 INFO_WEIGHT，模拟调参用）
+// weight = 信息量权重（可选，默认 INFO_WEIGHT，模拟调参用）。
+//   也可以是 function(aliveLen) → 数字：按当前剩余方案数自适应调权
+//   （比如方案多时加大信息量权重、方案少时专心找机头，模拟实验用）
 function chooseTargetGreedy(shotsReceived, weight, rng) {
-  const w = typeof weight === 'number' ? weight : INFO_WEIGHT;
   const rand = typeof rng === 'function' ? rng : Math.random; // 可选随机源（模拟配对对比用）
   const shotTable = buildShotTable(shotsReceived);
 
   // 过滤 + 统计（约 5ms）
   const counted = filterAndCount(shotTable);
   const alive = counted.alive;
+  const w = typeof weight === 'number' ? weight
+    : (typeof weight === 'function' ? weight(counted.aliveLen) : INFO_WEIGHT);
 
   // 每个未知格算分：机头概率 + 权重 × 信息量，取最高分
   let bestScore = -1;
@@ -881,6 +900,9 @@ function chooseTargetLive(shotsReceived) {
 
 module.exports = {
   INFO_WEIGHT: INFO_WEIGHT,
+  TOTAL_COMBOS: COMBOS.length / 3,       // 全部合法布局数 = 66,816（理论分析用）
+  buildShotTable: buildShotTable,        // 揭示记录 → 棋盘表（理论分析用）
+  filterAndCount: filterAndCount,        // 过滤 + 每格统计（理论分析用）
   randomDeployment: randomDeployment,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,
