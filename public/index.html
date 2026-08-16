@@ -72,33 +72,34 @@
       <button class="btn-copy-link small-btn">📋 复制邀请链接</button>
       <button class="btn-back-menu small-btn">← 返回菜单</button>
     </div>
-    <div id="battle-score" class="battle-score hidden">
-      <span id="score-a" class="score-num">0</span>
-      <span class="score-sep">:</span>
-      <span id="score-b" class="score-num">0</span>
-    </div>
-    <div class="battle-layout">
+    <!-- 棋盘上方的信息条：我的信息 | 比分 | 对手信息（比分居中） -->
+    <div class="battle-info-row">
       <div class="player-panel">
         <h3><span id="panel-my-name"></span> <span id="panel-my-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-my-steps">0</b></p>
         <p>已找到机头：<b id="panel-my-heads">0/3</b></p>
         <p class="turn-hint" id="panel-my-turn"></p>
       </div>
-      <div class="boards-row">
-        <div class="board-col">
-          <h3>我的棋盘 <span class="small">（对方打过的位置高亮）</span></h3>
-          <table id="my-board" class="board"></table>
-        </div>
-        <div class="board-col">
-          <h3>对方棋盘 <span class="small">（点击未知格子揭示）</span></h3>
-          <table id="enemy-board" class="board"></table>
-        </div>
+      <div id="battle-score" class="battle-score hidden">
+        <span id="score-a" class="score-num">0</span>
+        <span class="score-sep">:</span>
+        <span id="score-b" class="score-num">0</span>
       </div>
       <div class="player-panel">
         <h3><span id="panel-enemy-name"></span> <span id="panel-enemy-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-enemy-steps">0</b></p>
         <p>已找到机头：<b id="panel-enemy-heads">0/3</b></p>
         <p class="turn-hint" id="panel-enemy-turn"></p>
+      </div>
+    </div>
+    <div class="boards-row">
+      <div class="board-col">
+        <h3>我的棋盘 <span class="small">（对方打过的位置高亮）</span></h3>
+        <table id="my-board" class="board"></table>
+      </div>
+      <div class="board-col">
+        <h3>对方棋盘 <span class="small">（点击未知格子揭示）</span></h3>
+        <table id="enemy-board" class="board"></table>
       </div>
     </div>
   </section>

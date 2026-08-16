@@ -83,11 +83,11 @@ button.primary:hover { background: #1d4ed8; }
 .names-tag { color: #64748b; }
 button.small-btn { padding: 6px 12px; font-size: 13px; }
 
-/* ---------- 双方累计比分（第二局起显示，居中在棋盘上端） ---------- */
+/* ---------- 双方累计比分（信息条中间一项，第二局起显示） ---------- */
 /* 只显示数字；鼠标悬停在数字上时，下方气泡显示对应玩家昵称 */
 .battle-score {
   display: table;
-  margin: 0 auto 12px;
+  margin: 0; /* 作为信息条的子项，位置由父级 flex 布局决定 */
   padding: 8px 22px;
   text-align: center;
   font-size: 17px;
@@ -97,6 +97,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   border-radius: 999px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
 }
+/* 第一局还没有比分（0:0）：胶囊隐藏但保留占位，第二局出现时布局不跳动 */
+.battle-score.hidden { display: table !important; visibility: hidden; }
 .score-num {
   position: relative;
   padding: 0 4px;
@@ -195,25 +197,24 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 #deploy-count { text-align: center; margin: 8px 0; color: #475569; font-size: 14px; }
 #deploy-ready-status { text-align: center; margin: 8px 0; color: #64748b; font-size: 14px; min-height: 20px; }
 
-/* ---------- 对战页：左右玩家信息栏 ---------- */
-.battle-layout {
+/* ---------- 对战页：棋盘上方信息条（我的信息 | 比分 | 对手信息） ---------- */
+.battle-info-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 14px;
 }
 .player-panel {
   background: #fff;
   border-radius: 10px;
-  padding: 14px 18px;
+  padding: 10px 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
   min-width: 150px;
   text-align: center;
-  align-self: center;
 }
-.player-panel h3 { font-size: 16px; margin-bottom: 8px; }
-.player-panel p { font-size: 14px; color: #475569; margin: 4px 0; }
+.player-panel h3 { font-size: 16px; margin-bottom: 6px; }
+.player-panel p { font-size: 14px; color: #475569; margin: 3px 0; }
 .player-panel .turn-hint { color: #2563eb; font-size: 13px; min-height: 18px; }
 
 /* ---------- 对战页双棋盘 ---------- */
@@ -321,10 +322,13 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .recent-list li button { width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
 
 /* ---------- 手机适配 ---------- */
-@media (max-width: 900px) {
-  .battle-layout { flex-direction: column; align-items: center; }
-}
 @media (max-width: 720px) {
   .board td { width: 28px; height: 28px; font-size: 14px; }
   h1 { font-size: 30px; }
+  /* 信息条压缩：面板变窄，比分胶囊变小，保持一行放得下 */
+  .battle-info-row { gap: 8px; }
+  .player-panel { min-width: 0; padding: 8px 10px; }
+  .player-panel h3 { font-size: 14px; }
+  .player-panel p { font-size: 12px; }
+  .battle-score { padding: 8px 12px; font-size: 15px; }
 }
