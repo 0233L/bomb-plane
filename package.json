@@ -1,0 +1,16 @@
+{
+  "name": "bomb-plane",
+  "version": "1.0.0",
+  "description": "炸飞机：双人实时对战网页小游戏",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

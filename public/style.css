@@ -1,0 +1,330 @@
+/* ============================================
+   style.css —— 炸飞机界面样式
+   设计目标：简洁、直观，宽屏双棋盘并排，手机自动上下堆叠
+   ============================================ */
+
+/* ---------- 全局 ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: #f0f4f8;
+  color: #1f2937;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 20px 12px;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 页面切换 ---------- */
+.view { display: none; width: 100%; max-width: 1400px; }
+.view.active { display: block; }
+
+h1 { text-align: center; font-size: 40px; margin: 24px 0 4px; }
+h2 { text-align: center; margin: 8px 0; }
+.subtitle { text-align: center; color: #64748b; margin-bottom: 20px; }
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  margin: 0 auto 16px;
+  max-width: 380px;
+}
+.card label { display: block; font-size: 14px; color: #475569; margin: 8px 0 4px; }
+.card input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.card button { width: 100%; margin-top: 4px; }
+.divider { text-align: center; color: #94a3b8; margin: 12px 0; font-size: 13px; }
+
+/* ---------- 按钮 ---------- */
+button {
+  padding: 10px 18px;
+  font-size: 15px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  transition: background .15s;
+}
+button:hover { background: #f1f5f9; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+button.primary:hover { background: #1d4ed8; }
+
+.btn-row { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
+
+/* ---------- 顶部栏 ---------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.room-tag { color: #475569; }
+.names-tag { color: #64748b; }
+button.small-btn { padding: 6px 12px; font-size: 13px; }
+
+/* ---------- 双方累计比分（第二局起显示，居中在棋盘上端） ---------- */
+/* 只显示数字；鼠标悬停在数字上时，下方气泡显示对应玩家昵称 */
+.battle-score {
+  display: table;
+  margin: 0 auto 12px;
+  padding: 8px 22px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: bold;
+  color: #1f2937;
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+}
+.score-num {
+  position: relative;
+  padding: 0 4px;
+  cursor: default;
+  border-radius: 6px;
+}
+.score-num:hover { background: #eff6ff; }
+.score-num:hover::after {
+  content: attr(data-name);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, .92);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: normal;
+  white-space: nowrap;
+  z-index: 10;
+}
+/* 气泡上方的小三角箭头 */
+.score-num:hover::before {
+  content: '';
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: rgba(15, 23, 42, .92);
+}
+
+/* ---------- 弹窗（游戏规则） ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: calc(100% - 40px);
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+.rules-diagram { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+.rules-plane { text-align: center; }
+.rules-plane p { font-size: 12px; color: #64748b; margin-top: 6px; }
+.rules-h3 { font-size: 15px; margin: 16px 0 6px; color: #1f2937; }
+.rules-h3:first-of-type { margin-top: 8px; }
+.rules-p { font-size: 14px; color: #334155; line-height: 1.8; }
+.rules-list { padding-left: 20px; font-size: 14px; color: #334155; line-height: 2; margin: 0; }
+.rules-list li { margin-bottom: 2px; }
+/* 规则里的小色块：白 = 空 / 绿 = 机身 / 红 = 机头 */
+.rules-chip {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid #94a3b8;
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+.chip-empty { background: #f5f5f5; }
+.chip-body  { background: #66bb6a; }
+.chip-head  { background: #ef5350; }
+
+/* 规则弹窗里的飞机小配图：借用棋盘配色，格子缩小到 15px */
+.mini-board td { width: 15px; height: 15px; }
+
+/* ---------- 在线状态点：绿 = 在线，红 = 离线 ---------- */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.dot-on { background: #22c55e; }
+.dot-off { background: #ef4444; }
+
+/* ---------- 部署页 ---------- */
+.dir-row { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 10px 0; }
+.dir-label { font-size: 14px; color: #475569; }
+.dir-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+.board-wrap { display: flex; justify-content: center; }
+#deploy-count { text-align: center; margin: 8px 0; color: #475569; font-size: 14px; }
+#deploy-ready-status { text-align: center; margin: 8px 0; color: #64748b; font-size: 14px; min-height: 20px; }
+
+/* ---------- 对战页：左右玩家信息栏 ---------- */
+.battle-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  align-items: flex-start;
+}
+.player-panel {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  min-width: 150px;
+  text-align: center;
+  align-self: center;
+}
+.player-panel h3 { font-size: 16px; margin-bottom: 8px; }
+.player-panel p { font-size: 14px; color: #475569; margin: 4px 0; }
+.player-panel .turn-hint { color: #2563eb; font-size: 13px; min-height: 18px; }
+
+/* ---------- 对战页双棋盘 ---------- */
+.boards-row { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
+.board-col { text-align: center; }
+.board-col h3 { margin-bottom: 8px; font-size: 16px; }
+.small { color: #94a3b8; font-weight: normal; font-size: 12px; }
+
+/* ---------- 棋盘 ---------- */
+.board {
+  border-collapse: collapse;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+.board td {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #94a3b8;
+  text-align: center;
+  user-select: none;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* 格子颜色：机头柔红 / 机身柔绿 / 空白 / 未知深蓝灰 */
+.board td.cell-head  { background: #ef5350; }
+.board td.cell-body  { background: #66bb6a; }
+.board td.cell-empty { background: #f5f5f5; }
+.board td.cell-unknown { background: #1e293b; }
+
+/* 己方棋盘：没被对方打过的格子蒙上深色遮罩（调暗）；被打过的保持原色高亮，不加额外标记 */
+#my-board td.dimmed::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, .65);
+  pointer-events: none;
+}
+#my-board td { cursor: default; }
+
+/* 飞机的轮廓：中灰色，只画外边缘；比棋盘格线（1px 浅灰）略粗略深，能区分即可 */
+.board td.edge-t { border-top: 2px solid #64748b; }
+.board td.edge-b { border-bottom: 2px solid #64748b; }
+.board td.edge-l { border-left: 2px solid #64748b; }
+.board td.edge-r { border-right: 2px solid #64748b; }
+
+/* 上一手揭示的格子：蓝色框框选（双方棋盘都标，无论哪一方操作的）
+   用 outline 画：起点就在格子边界（棋盘线）上，向外 3px，与格子对齐；
+   outline 不会被表格裁掉，显示稳定（z-index 保证盖住相邻格线） */
+.board td.last-reveal { outline: 3px solid #2563eb; z-index: 1; }
+
+/* 对方棋盘：只有未知格可以点（未知格更深，已揭示的更突出） */
+#enemy-board td.cell-unknown { cursor: pointer; }
+#enemy-board td.cell-unknown:hover { background: #334155; }
+#enemy-board td:not(.cell-unknown) { cursor: default; }
+
+/* 部署棋盘：所有格子都可点（放置/旋转/移除） */
+#deploy-board td { cursor: pointer; }
+#deploy-board td:hover { outline: 2px solid #2563eb; outline-offset: -2px; }
+
+/* ---------- 结束页 ---------- */
+#over-title { font-size: 32px; }
+#over-detail { text-align: center; color: #475569; margin: 12px 0; }
+#over-rematch-status { text-align: center; color: #2563eb; font-size: 14px; min-height: 20px; margin-top: 8px; }
+
+/* ---------- 底部提示条 ---------- */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, .92);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+  z-index: 100;
+}
+.toast.show { opacity: 1; }
+
+.help { text-align: center; color: #64748b; font-size: 13px; margin-top: 12px; }
+
+/* ---------- 玩法说明卡片 ---------- */
+.card.rules { max-width: 380px; }
+.card.rules h3 { margin-bottom: 8px; font-size: 15px; }
+.card.rules ol { padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.8; }
+
+/* ---------- 最近加入的房间列表 ---------- */
+#recent-card h3 { font-size: 15px; margin-bottom: 4px; }
+.recent-list { list-style: none; }
+.recent-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+}
+.recent-list li:last-child { border-bottom: none; }
+.recent-list li span { flex: 1; color: #334155; }
+.recent-list li button { width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
+
+/* ---------- 手机适配 ---------- */
+@media (max-width: 900px) {
+  .battle-layout { flex-direction: column; align-items: center; }
+}
+@media (max-width: 720px) {
+  .board td { width: 28px; height: 28px; font-size: 14px; }
+  h1 { font-size: 30px; }
+}

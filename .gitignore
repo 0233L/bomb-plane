@@ -1,0 +1,6 @@
+# 依赖目录：npm install 时自动生成，不用上传
+node_modules/
+
+# 各种临时文件
+*.log
+.DS_Store
