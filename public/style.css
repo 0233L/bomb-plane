@@ -6,14 +6,87 @@
 /* ---------- 全局 ---------- */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ---------- 主题配色 ----------
+   浅色 = 默认（:root），深色 = 右上角按钮切换后（data-theme="dark"）。
+   页面里所有颜色都通过下面的变量引用，切换主题时只需换变量值 */
+:root {
+  color-scheme: light;
+  --bg: #f0f4f8;               /* 页面背景 */
+  --surface: #ffffff;          /* 卡片 / 面板 / 棋盘底色 */
+  --text: #1f2937;             /* 主文字（标题） */
+  --text-2: #334155;           /* 次要文字（按钮、正文） */
+  --text-3: #475569;           /* 辅助文字（标签、说明） */
+  --muted: #64748b;            /* 小注释 */
+  --faint: #94a3b8;            /* 最淡（分隔线文字） */
+  --border: #cbd5e1;           /* 输入框 / 按钮边框 */
+  --border-soft: #e2e8f0;      /* 浅分隔线 */
+  --primary: #2563eb;          /* 主色（主要按钮、链接、选中态） */
+  --primary-hover: #1d4ed8;
+  --hover: #f1f5f9;            /* 按钮悬停背景 */
+  --banner-bg: #fff8e1;        /* 对局结束横幅 */
+  --banner-border: #ffd54f;
+  --banner-text: #b45309;
+  --cell-empty: #f5f5f5;       /* 棋盘：空格 */
+  --cell-unknown: #1e293b;     /* 棋盘：未知格（深蓝灰） */
+  --cell-unknown-hover: #334155;
+  --cell-pending: #3b5bdb;      /* 棋盘：已点击、等待服务器回复的格子 */
+  --edge: #64748b;             /* 飞机轮廓线 */
+  --board-border: #94a3b8;     /* 棋盘格线 */
+  --dim-overlay: rgba(15, 23, 42, .65); /* 没被打过的格子的遮罩 */
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #e2e8f0;
+  --text-2: #cbd5e1;
+  --text-3: #94a3b8;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --border: #475569;
+  --border-soft: #334155;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --hover: #334155;
+  --banner-bg: #3a341f;
+  --banner-border: #c9a227;
+  --banner-text: #eab308;
+  --cell-empty: #334155;       /* 深色下空格比未知格亮一档，仍然分得清 */
+  --cell-unknown: #0f172a;
+  --cell-unknown-hover: #475569;
+  --cell-pending: #3b82f6;
+  --edge: #94a3b8;
+  --board-border: #475569;
+  --dim-overlay: rgba(0, 0, 0, .5);
+}
+
 body {
   font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  background: #f0f4f8;
-  color: #1f2937;
+  background: var(--bg);
+  color: var(--text);
   min-height: 100vh;
   display: flex;
   justify-content: center;
   padding: 20px 12px;
+}
+
+/* ---------- 右上角主题切换按钮（所有页面固定显示） ---------- */
+#btn-theme {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 90;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
 }
 
 .hidden { display: none !important; }
@@ -24,32 +97,34 @@ body {
 
 h1 { text-align: center; font-size: 40px; margin: 24px 0 4px; }
 h2 { text-align: center; margin: 8px 0; }
-.subtitle { text-align: center; color: #64748b; margin-bottom: 20px; }
+.subtitle { text-align: center; color: var(--muted); margin-bottom: 20px; }
 
 /* ---------- 卡片 ---------- */
 .card {
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
   margin: 0 auto 16px;
   max-width: 380px;
 }
-.card label { display: block; font-size: 14px; color: #475569; margin: 8px 0 4px; }
+.card label { display: block; font-size: 14px; color: var(--text-3); margin: 8px 0 4px; }
 .card input {
   width: 100%;
   padding: 10px 12px;
   font-size: 16px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
+  background: var(--surface);
+  color: var(--text);
 }
 .card button { width: 100%; margin-top: 4px; }
-.divider { text-align: center; color: #94a3b8; margin: 12px 0; font-size: 13px; }
+.divider { text-align: center; color: var(--faint); margin: 12px 0; font-size: 13px; }
 
 /* ---------- 受邀加入页 ---------- */
 .invite-room-id {
-  color: #2563eb;
+  color: var(--primary);
   font-size: 20px;
   letter-spacing: 2px;
 }
@@ -59,17 +134,17 @@ h2 { text-align: center; margin: 8px 0; }
 button {
   padding: 10px 18px;
   font-size: 15px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
-  color: #334155;
+  background: var(--surface);
+  color: var(--text-2);
   cursor: pointer;
   transition: background .15s;
 }
-button:hover { background: #f1f5f9; }
+button:hover { background: var(--hover); }
 button:disabled { opacity: .45; cursor: not-allowed; }
-button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-button.primary:hover { background: #1d4ed8; }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.primary:hover { background: var(--primary-hover); }
 
 .btn-row { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
 
@@ -82,15 +157,16 @@ button.primary:hover { background: #1d4ed8; }
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  background: #fff;
+  background: var(--surface);
   border-radius: 10px;
   padding: 10px 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
   margin-bottom: 10px;
+  margin-right: 52px; /* 给右上角固定的主题按钮留位置，避免和「返回菜单」重叠 */
   font-size: 14px;
 }
-.room-tag { color: #475569; }
-.names-tag { color: #64748b; }
+.room-tag { color: var(--text-3); }
+.names-tag { color: var(--muted); }
 button.small-btn { padding: 6px 12px; font-size: 13px; }
 
 /* ---------- 双方累计比分（信息条中间一项，第二局起显示） ---------- */
@@ -102,8 +178,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   text-align: center;
   font-size: 17px;
   font-weight: bold;
-  color: #1f2937;
-  background: #fff;
+  color: var(--text);
+  background: var(--surface);
   border-radius: 999px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
 }
@@ -115,7 +191,7 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   cursor: default;
   border-radius: 6px;
 }
-.score-num:hover { background: #eff6ff; }
+.score-num:hover { background: var(--hover); }
 .score-num:hover::after {
   content: attr(data-name);
   position: absolute;
@@ -153,7 +229,7 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   z-index: 50;
 }
 .modal-box {
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 24px;
   width: calc(100% - 40px);
@@ -164,11 +240,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 }
 .rules-diagram { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
 .rules-plane { text-align: center; }
-.rules-plane p { font-size: 12px; color: #64748b; margin-top: 6px; }
-.rules-h3 { font-size: 15px; margin: 16px 0 6px; color: #1f2937; }
+.rules-plane p { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.rules-h3 { font-size: 15px; margin: 16px 0 6px; color: var(--text); }
 .rules-h3:first-of-type { margin-top: 8px; }
-.rules-p { font-size: 14px; color: #334155; line-height: 1.8; }
-.rules-list { padding-left: 20px; font-size: 14px; color: #334155; line-height: 2; margin: 0; }
+.rules-p { font-size: 14px; color: var(--text-2); line-height: 1.8; }
+.rules-list { padding-left: 20px; font-size: 14px; color: var(--text-2); line-height: 2; margin: 0; }
 .rules-list li { margin-bottom: 2px; }
 /* 规则里的小色块：白 = 空 / 绿 = 机身 / 红 = 机头 */
 .rules-chip {
@@ -176,11 +252,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  border: 1px solid #94a3b8;
+  border: 1px solid var(--faint);
   vertical-align: -1px;
   margin-right: 4px;
 }
-.chip-empty { background: #f5f5f5; }
+.chip-empty { background: var(--cell-empty); }
 .chip-body  { background: #66bb6a; }
 .chip-head  { background: #ef5350; }
 
@@ -189,11 +265,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 
 /* ---------- 观战人数徽章（信息条最左侧，无人观战时不显示） ---------- */
 .spectator-badge {
-  background: #fff;
+  background: var(--surface);
   border-radius: 999px;
   padding: 6px 14px;
   font-size: 14px;
-  color: #475569;
+  color: var(--text-3);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
   white-space: nowrap;
 }
@@ -212,12 +288,12 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 
 /* ---------- 部署页 ---------- */
 .dir-row { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 10px 0; }
-.dir-label { font-size: 14px; color: #475569; }
-.dir-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+.dir-label { font-size: 14px; color: var(--text-3); }
+.dir-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
 .board-wrap { display: flex; justify-content: center; }
-#deploy-count { text-align: center; margin: 8px 0; color: #475569; font-size: 14px; }
-#deploy-ready-status { text-align: center; margin: 8px 0; color: #64748b; font-size: 14px; min-height: 20px; }
+#deploy-count { text-align: center; margin: 8px 0; color: var(--text-3); font-size: 14px; }
+#deploy-ready-status { text-align: center; margin: 8px 0; color: var(--muted); font-size: 14px; min-height: 20px; }
 
 /* ---------- 对战页：棋盘上方信息条（我的信息 | 比分 | 对手信息） ---------- */
 .battle-info-row {
@@ -228,7 +304,7 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   margin-bottom: 14px;
 }
 .player-panel {
-  background: #fff;
+  background: var(--surface);
   border-radius: 10px;
   padding: 10px 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
@@ -236,39 +312,39 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   text-align: center;
 }
 .player-panel h3 { font-size: 16px; margin-bottom: 6px; }
-.player-panel p { font-size: 14px; color: #475569; margin: 3px 0; }
-.player-panel .turn-hint { color: #2563eb; font-size: 13px; min-height: 18px; }
+.player-panel p { font-size: 14px; color: var(--text-3); margin: 3px 0; }
+.player-panel .turn-hint { color: var(--primary); font-size: 13px; min-height: 18px; }
 
 /* 对局结束横幅：留在对战页上方，棋盘保持可见 */
 .over-banner {
   text-align: center;
-  background: #fff8e1;
-  border: 2px solid #ffd54f;
+  background: var(--banner-bg);
+  border: 2px solid var(--banner-border);
   border-radius: 12px;
   padding: 14px;
   margin-bottom: 12px;
 }
 .over-banner h2 { margin: 0 0 4px; font-size: 22px; }
 .over-banner p { margin: 4px 0; }
-.over-banner #over-rematch-status { color: #b45309; font-size: 13px; min-height: 18px; }
+.over-banner #over-rematch-status { color: var(--banner-text); font-size: 13px; min-height: 18px; }
 
 /* ---------- 对战页双棋盘 ---------- */
 .boards-row { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
 .board-col { text-align: center; }
 .board-col h3 { margin-bottom: 8px; font-size: 16px; }
-.small { color: #94a3b8; font-weight: normal; font-size: 12px; }
+.small { color: var(--faint); font-weight: normal; font-size: 12px; }
 
 /* ---------- 棋盘 ---------- */
 .board {
   border-collapse: collapse;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
 }
 .board td {
   position: relative;
   width: 48px;
   height: 48px;
-  border: 1px solid #94a3b8;
+  border: 1px solid var(--board-border);
   text-align: center;
   user-select: none;
   font-size: 20px;
@@ -278,8 +354,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 /* 格子颜色：机头柔红 / 机身柔绿 / 空白 / 未知深蓝灰 */
 .board td.cell-head  { background: #ef5350; }
 .board td.cell-body  { background: #66bb6a; }
-.board td.cell-empty { background: #f5f5f5; }
-.board td.cell-unknown { background: #1e293b; }
+.board td.cell-empty { background: var(--cell-empty); }
+.board td.cell-unknown { background: var(--cell-unknown); }
 
 /* 没被打过的格子蒙上深色遮罩（调暗）；被打过的保持原色高亮，不加额外标记
    （己方棋盘一直如此；对方棋盘在对局结束公开飞机后也这样显示） */
@@ -287,40 +363,40 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, .65);
+  background: var(--dim-overlay);
   pointer-events: none;
 }
 #my-board td { cursor: default; }
 
 /* 飞机的轮廓：中灰色，只画外边缘；比棋盘格线（1px 浅灰）略粗略深，能区分即可 */
-.board td.edge-t { border-top: 2px solid #64748b; }
-.board td.edge-b { border-bottom: 2px solid #64748b; }
-.board td.edge-l { border-left: 2px solid #64748b; }
-.board td.edge-r { border-right: 2px solid #64748b; }
+.board td.edge-t { border-top: 2px solid var(--edge); }
+.board td.edge-b { border-bottom: 2px solid var(--edge); }
+.board td.edge-l { border-left: 2px solid var(--edge); }
+.board td.edge-r { border-right: 2px solid var(--edge); }
 
 /* 上一手揭示的格子：蓝色框框选（双方棋盘都标，无论哪一方操作的）
    用 outline 画：起点就在格子边界（棋盘线）上，向外 3px，与格子对齐；
    outline 不会被表格裁掉，显示稳定（z-index 保证盖住相邻格线） */
-.board td.last-reveal { outline: 3px solid #2563eb; z-index: 1; }
+.board td.last-reveal { outline: 3px solid var(--primary); z-index: 1; }
 
 /* 对方棋盘：只有未知格可以点（未知格更深，已揭示的更突出） */
 #enemy-board td.cell-unknown { cursor: pointer; }
-#enemy-board td.cell-unknown:hover { background: #334155; }
+#enemy-board td.cell-unknown:hover { background: var(--cell-unknown-hover); }
 #enemy-board td:not(.cell-unknown) { cursor: default; }
 /* 对局结束公开布局后：对方棋盘不再可点（点了只会提示对局已结束） */
 #enemy-board.revealed td.cell-unknown { cursor: default; }
-#enemy-board.revealed td.cell-unknown:hover { background: #1e293b; }
+#enemy-board.revealed td.cell-unknown:hover { background: var(--cell-unknown); }
 /* 已点击、等待服务器回复的格子：立即变色反馈，网络慢也不觉得"没反应" */
-#enemy-board td.cell-pending { background: #3b5bdb; cursor: wait; }
+#enemy-board td.cell-pending { background: var(--cell-pending); cursor: wait; }
 
 /* 部署棋盘：所有格子都可点（放置/旋转/移除） */
 #deploy-board td { cursor: pointer; }
-#deploy-board td:hover { outline: 2px solid #2563eb; outline-offset: -2px; }
+#deploy-board td:hover { outline: 2px solid var(--primary); outline-offset: -2px; }
 
-/* ---------- 结束页 ---------- */
+/* ---------- 结束横幅里的文字（棋盘保留在对战页） ---------- */
 #over-title { font-size: 32px; }
-#over-detail { text-align: center; color: #475569; margin: 12px 0; }
-#over-rematch-status { text-align: center; color: #2563eb; font-size: 14px; min-height: 20px; margin-top: 8px; }
+#over-detail { text-align: center; color: var(--text-3); margin: 12px 0; }
+#over-rematch-status { text-align: center; color: var(--banner-text); font-size: 14px; min-height: 20px; margin-top: 8px; }
 
 /* ---------- 底部提示条 ---------- */
 .toast {
@@ -340,12 +416,12 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 }
 .toast.show { opacity: 1; }
 
-.help { text-align: center; color: #64748b; font-size: 13px; margin-top: 12px; }
+.help { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
 
 /* ---------- 玩法说明卡片 ---------- */
 .card.rules { max-width: 380px; }
 .card.rules h3 { margin-bottom: 8px; font-size: 15px; }
-.card.rules ol { padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.8; }
+.card.rules ol { padding-left: 20px; font-size: 13px; color: var(--text-3); line-height: 1.8; }
 
 /* ---------- 最近加入的房间列表 ---------- */
 #recent-card h3 { font-size: 15px; margin-bottom: 4px; }
@@ -355,11 +431,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-soft);
   font-size: 14px;
 }
 .recent-list li:last-child { border-bottom: none; }
-.recent-list li span { flex: 1; color: #334155; }
+.recent-list li span { flex: 1; color: var(--text-2); }
 .recent-list li button { width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
 
 /* ---------- 手机适配 ---------- */

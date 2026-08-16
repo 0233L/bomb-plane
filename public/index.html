@@ -4,6 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>炸飞机 · 双人对战</title>
+  <!-- 提前应用主题（必须在样式表加载前执行，避免页面闪一下白色）：
+       记住上次的选择；没选过就跟随系统深浅色 -->
+  <script>
+    (function () {
+      var t = localStorage.getItem('bp_theme') || 'auto';
+      if (t === 'auto') {
+        t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -139,6 +150,9 @@
     <p class="help">你正在观战：双方正在部署飞机，开战后自动进入对局</p>
     <div id="wait-spectator-badge" class="spectator-badge hidden">👁 <span id="wait-spectator-count">0</span> 人观战中</div>
   </section>
+
+  <!-- 右上角主题切换按钮：🌓 跟随系统 → ☀️ 浅色 → 🌙 深色（循环切换） -->
+  <button id="btn-theme" title="主题：跟随系统" aria-label="切换主题">🌓</button>
 
   <!-- 底部小提示条 -->
   <div id="toast" class="toast"></div>

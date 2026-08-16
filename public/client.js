@@ -25,6 +25,44 @@ function showView(name) {
   });
 }
 
+// ---------- 主题切换（右上角按钮） ----------
+// 三种模式循环：跟随系统 → 浅色 → 深色。选择存在 localStorage 里，默认跟随系统
+const THEME_ORDER = ['auto', 'light', 'dark'];
+const THEME_ICONS = { auto: '🌓', light: '☀️', dark: '🌙' };
+const THEME_TITLES = { auto: '主题：跟随系统', light: '主题：浅色', dark: '主题：深色' };
+
+function savedTheme() {
+  return localStorage.getItem('bp_theme') || 'auto';
+}
+
+// 「跟随系统」模式下实际显示哪种颜色
+function resolvedTheme() {
+  if (savedTheme() === 'auto') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return savedTheme();
+}
+
+// 应用主题（给 <html> 加 data-theme，CSS 按它换色）+ 更新按钮图标和悬停提示
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', resolvedTheme());
+  const btn = $('#btn-theme');
+  btn.textContent = THEME_ICONS[savedTheme()];
+  btn.title = THEME_TITLES[savedTheme()];
+}
+
+// 点按钮：切到下一个模式
+function cycleTheme() {
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(savedTheme()) + 1) % THEME_ORDER.length];
+  localStorage.setItem('bp_theme', next);
+  applyTheme();
+}
+
+// 系统深浅色变化时：只有「跟随系统」模式才跟着变
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+  if (savedTheme() === 'auto') applyTheme();
+});
+
 // ---------- 最近加入的房间（重连用） ----------
 // 历史记录存在 localStorage 里，形如 [{roomId, token, name, lastSeen}]，最多 5 条
 // lastSeen = 我最后一次在这个房间里在线的时间（毫秒时间戳），列表按它从新到旧排序
@@ -840,6 +878,9 @@ function renderRulesDiagram() {
 
 // ---------- 按钮事件 ----------
 function bindUIEvents() {
+  // 右上角主题切换：跟随系统 → 浅色 → 深色 循环
+  $('#btn-theme').addEventListener('click', cycleTheme);
+
   // 首页
   $('#btn-create').addEventListener('click', function () {
     const name = $('#name-input').value;
@@ -959,6 +1000,7 @@ function init() {
   state.socket = io({ transports: ['websocket', 'polling'] });
   bindSocketEvents();
   bindUIEvents();
+  applyTheme(); // 按上次选择 / 系统偏好设置主题（含右上角按钮图标）
 
   // 预生成三个棋盘
   makeBoard($('#deploy-board'), onDeployCellClick);
