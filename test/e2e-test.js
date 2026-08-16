@@ -316,10 +316,92 @@ async function main() {
   const failRejoin = await waitFor(C, 'rejoinFailed');
   check('rejoinFailed 带上 roomId 便于客户端删除失效条目', failRejoin.roomId === 'ZZZZ' && failRejoin.message.length > 0);
 
-  C.disconnect(); D.disconnect();
+  // 11. 观战：满员房间第三人进入观战席
+  console.log('— 观战 —');
+  // 房间2 现在只有 C 一人（D 之前重名被拒），先让 D 用别的名字加入凑满
+  D.emit('joinRoom', { roomId: created2.roomId, name: '小刚' });
+  await waitFor(D, 'joinedRoom');
 
-  // 收尾
-  A3.disconnect(); B2.disconnect();
+  const E = io(URL);
+  await waitFor(E, 'connect');
+  const errE = [];
+  E.on('error', function (d) { errE.push(d.message); });
+  const countCP = waitFor(C, 'spectatorCount');
+  E.emit('joinRoom', { roomId: created2.roomId, name: '小刚' }); // 观战者允许和玩家重名
+  const spec = await waitFor(E, 'spectatorJoined');
+  check('满员房间进入观战席（部署阶段）', spec.roomId === created2.roomId && spec.phase === 'deploy');
+  check('观战快照含双方昵称和打击记录', spec.names[0] === '小明' && spec.names[1] === '小刚' && spec.shots.length === 2);
+  const countC1 = await countCP;
+  check('房主收到观战人数 1', countC1.count === 1);
+
+  E.emit('reveal', { row: 0, col: 0 });
+  await sleep(150);
+  check('观战者不能下棋', errE.length === 1);
+
+  // 双方部署开战，观战者自动同步进入对战
+  const dC = randomDeployment(), dD = randomDeployment();
+  C.emit('deployConfirm', { planes: dC });
+  await waitFor(C, 'deployReady');
+  D.emit('deployConfirm', { planes: dD });
+  await Promise.all([waitFor(C, 'battleStart'), waitFor(D, 'battleStart'), waitFor(E, 'battleStart')]);
+  check('观战者同步收到开战', true);
+
+  // 对局中的揭示，观战者实时可见
+  const rrEP = waitFor(E, 'revealResult');
+  C.emit('reveal', { row: 0, col: 0 });
+  const rrE = await rrEP;
+  check('观战者实时收到揭示结果', rrE.attacker === 0 && rrE.steps[0] === 1);
+
+  // 观战者不能确认部署
+  const errE2 = errE.length;
+  E.emit('deployConfirm', { planes: dC });
+  await sleep(150);
+  check('观战者不能确认部署', errE.length > errE2);
+
+  // 第二个观战者在对局中进入：快照应带上已公开的揭示记录
+  const F = io(URL);
+  await waitFor(F, 'connect');
+  const errF = [];
+  F.on('error', function (d) { errF.push(d.message); });
+  const countCP2 = waitFor(C, 'spectatorCount');
+  F.emit('joinRoom', { roomId: created2.roomId, name: '观众乙' });
+  const specF = await waitFor(F, 'spectatorJoined');
+  check('对局中进入观战席', specF.phase === 'battle');
+  check('观战快照包含已公开的揭示记录', specF.shots[1].length === 1);
+  const countC2 = await countCP2;
+  check('房主收到观战人数 2', countC2.count === 2);
+
+  F.emit('reveal', { row: 0, col: 0 });
+  await sleep(150);
+  check('第二个观战者也不能下棋', errF.length === 1);
+
+  // 观战者离开：人数广播递减到 0
+  // 注意：两条 once 监听不能同时挂，否则 F 断开的 count=1 会同时喂给两个监听器
+  const countCP3 = waitFor(C, 'spectatorCount');
+  F.disconnect();
+  const countC3 = await countCP3;
+  check('观战者断开后人数降为 1', countC3.count === 1);
+
+  const countCP4 = waitFor(C, 'spectatorCount');
+  E.disconnect();
+  const countC4 = await countCP4;
+  check('观战者全部离开后人数归 0', countC4.count === 0);
+
+  // 12. 房间回收通知观战者：双方都离开后房间回收，还挂着的观战者收到 roomClosed
+  console.log('— 房间回收通知观战者 —');
+  const G = io(URL);
+  await waitFor(G, 'connect');
+  G.emit('joinRoom', { roomId: created.roomId, name: '观众丙' });
+  const specG = await waitFor(G, 'spectatorJoined');
+  check('观战者可进入正在对战的房间', specG.phase === 'battle');
+
+  const closedP = waitFor(G, 'roomClosed', 5000);
+  A3.disconnect(); B2.disconnect(); // 双方都离开：回收计时开始，房间里只剩观战者 G
+  const closed = await closedP;
+  check('双方都离开后房间回收，观战者收到 roomClosed', closed.message.length > 0);
+  G.disconnect();
+
+  C.disconnect(); D.disconnect();
   await sleep(200);
 
   console.log('');

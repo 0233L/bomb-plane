@@ -185,6 +185,18 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 /* 规则弹窗里的飞机小配图：借用棋盘配色，格子缩小到 15px */
 .mini-board td { width: 15px; height: 15px; }
 
+/* ---------- 观战人数徽章（信息条最左侧，无人观战时不显示） ---------- */
+.spectator-badge {
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  color: #475569;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  white-space: nowrap;
+}
+#view-wait .spectator-badge { display: table; margin: 16px auto 0; }
+
 /* ---------- 在线状态点：绿 = 在线，红 = 离线 ---------- */
 .dot {
   display: inline-block;

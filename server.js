@@ -51,7 +51,8 @@ function createRoom() {
     winner: null,             // 结束时的胜者 seat
     winReason: null,          // allHeads（任何情况都不判负，只有这一种结束方式）
     rematchVotes: [false, false], // 结束页"再来一局"的投票
-    cleanupTimer: null            // 双方都离线时的房间回收计时器
+    cleanupTimer: null,           // 双方都离线时的房间回收计时器
+    spectators: []                // 观战者列表 [{name, socketId}]（房间满员后可进入观战席）
   };
 }
 
@@ -150,6 +151,7 @@ function scheduleRoomCleanup(room) {
     r.cleanupTimer = null;
     if (r.players.every(function (p) { return !p || !p.connected; })) {
       console.log(`[${room.id}] 双方离线超时，回收房间`);
+      io.to(room.id).emit('roomClosed', { message: '双方都已离开，房间已回收' }); // 提醒还挂着的观战者
       rooms.delete(room.id);
     }
   }, RECYCLE_SECONDS * 1000);
@@ -207,15 +209,20 @@ function handleCreateRoom(socket, data) {
   });
 }
 
-// 加入房间（坐 1 号位），满 2 人进入部署阶段
+// 加入房间：不满 2 人坐 1 号位；满员则进入观战席
 function handleJoinRoom(socket, data) {
   const roomId = String(data.roomId || '').toUpperCase();
   const room = rooms.get(roomId);
   if (!room) return sendError(socket, '房间不存在，请检查房间号');
-  if (room.players.length >= 2) return sendError(socket, '房间已满');
 
   const name = (typeof data.name === 'string' ? data.name : '').trim();
-  const err = checkName(room, name);
+  if (!name) return sendError(socket, '昵称不能为空');
+  if (name.length > 12) return sendError(socket, '昵称最长 12 个字符');
+
+  // 满员 → 观战席（观战者昵称不和玩家查重，可以随便起）
+  if (room.players.length >= 2) return handleSpectatorJoin(socket, room, name);
+
+  const err = checkName(room, name); // 玩家还要查同房重名
   if (err) return sendError(socket, err);
 
   const token = crypto.randomBytes(8).toString('hex');
@@ -241,6 +248,38 @@ function handleJoinRoom(socket, data) {
   });
   // 通知房主：对手来了
   socket.to(room.id).emit('opponentJoined', { names: [room.players[0].name, name] });
+}
+
+// 观战席：房间已满时进入。能看双方已揭示的格子，不能下棋；
+// 只拿到双方互相可见的揭示记录，绝不发飞机坐标
+function handleSpectatorJoin(socket, room, name) {
+  room.spectators.push({ name: name, socketId: socket.id });
+  socket.data.roomId = room.id;
+  socket.data.spectator = true; // 没有 seat/token，玩家操作（locate）一律查不到它
+  socket.join(room.id);
+  console.log(`[${room.id}] ${name} 进入观战席（共 ${room.spectators.length} 人）`);
+
+  socket.emit('spectatorJoined', {
+    roomId: room.id,
+    phase: room.phase,
+    names: room.players.map(function (p) { return p.name; }),
+    online: room.players.map(function (p) { return p.connected; }),
+    steps: room.steps,
+    score: room.score,
+    headsLeft: headsLeftOf(room),
+    shots: room.players.map(function (p) { return p.shotsReceived; }), // [A 被打的, B 被打的]
+    winner: room.winner,
+    winReason: room.winReason
+  });
+  emitToRoom(room, 'spectatorCount', { count: room.spectators.length });
+}
+
+// 观战者离开（主动离开或断线）：移除并广播最新观战人数
+function removeSpectator(socket) {
+  const room = rooms.get(socket.data.roomId);
+  if (!room) return;
+  room.spectators = room.spectators.filter(function (s) { return s.socketId !== socket.id; });
+  emitToRoom(room, 'spectatorCount', { count: room.spectators.length });
 }
 
 // 断线重连：凭 token + 房间号恢复现场
@@ -451,11 +490,25 @@ io.on('connection', function (socket) {
   socket.on('reveal', function (data) { handleReveal(socket, data || {}); });
   socket.on('rematch', function () { handleRematch(socket); });
   socket.on('leaveRoom', function () {
+    if (socket.data.spectator) {
+      // 观战者离开：只从观战席移除，不影响对局
+      removeSpectator(socket);
+      socket.leave(socket.data.roomId);
+      socket.data.roomId = null;
+      socket.data.spectator = false;
+      socket.emit('leftRoom', {});
+      return;
+    }
     const loc = locate(socket);
     if (loc) onLeave(loc.room, loc.seat, socket);
   });
 
   socket.on('disconnect', function () {
+    if (socket.data.spectator) {
+      // 观战者断线：从观战席移除（观战者不重连，刷新后重新进即可）
+      removeSpectator(socket);
+      return;
+    }
     const loc = locate(socket);
     if (!loc) return; // 没有绑定房间（比如刚被新连接顶掉），忽略
     onDisconnect(loc.room, loc.seat);

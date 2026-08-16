@@ -123,7 +123,9 @@ const state = {
   rematchVotes: [false, false],
   curDir: 'up',              // 部署页当前选中的朝向
   draft: [],                 // 部署草稿 [{headRow, headCol, dir}]
-  inviteRoomId: null         // 从邀请链接读到的房间号（受邀加入页用）
+  inviteRoomId: null,        // 从邀请链接读到的房间号（受邀加入页用）
+  spectator: false,          // 我是不是观战者（房间满员时进入观战席）
+  spectatorCount: 0          // 本房间的观战人数（0 时不显示徽章）
 };
 
 // ---------- 棋盘渲染 ----------
@@ -316,55 +318,112 @@ function setDot(el, online) {
   el.classList.toggle('dot-off', !online);
 }
 
+// 渲染观战人数徽章（对战页 + 观战等待页各一个，无人观战时不显示）
+function renderSpectatorBadge() {
+  const show = state.spectatorCount > 0;
+  $('#spectator-badge').classList.toggle('hidden', !show);
+  $('#wait-spectator-badge').classList.toggle('hidden', !show);
+  if (show) {
+    $('#spectator-count').textContent = state.spectatorCount;
+    $('#wait-spectator-count').textContent = state.spectatorCount;
+  }
+}
+
 // 更新对战页左右两侧的玩家信息栏（昵称+在线状态点、步数、已找到机头数、行动提示）
 function updateBattlePanels() {
   const mine = state.steps[state.seat], theirs = state.steps[1 - state.seat];
 
-  $('#panel-my-name').textContent = state.names[state.seat] + '（我）';
-  setDot($('#panel-my-dot'), state.online[state.seat]);
-  $('#panel-my-steps').textContent = mine;
-  $('#panel-my-heads').textContent = (PLANE_COUNT - state.headsLeft[1 - state.seat]) + '/' + PLANE_COUNT;
-  $('#panel-enemy-name').textContent = state.names[1 - state.seat];
-  setDot($('#panel-enemy-dot'), state.online[1 - state.seat]);
-  $('#panel-enemy-steps').textContent = theirs;
-  $('#panel-enemy-heads').textContent = (PLANE_COUNT - state.headsLeft[state.seat]) + '/' + PLANE_COUNT;
+  if (state.spectator) {
+    // 观战视角：固定按 1 号玩家（房主）在左、2 号玩家在右显示，昵称不加「（我）」
+    $('#panel-my-name').textContent = state.names[0];
+    setDot($('#panel-my-dot'), state.online[0]);
+    $('#panel-my-steps').textContent = state.steps[0];
+    $('#panel-my-heads').textContent = (PLANE_COUNT - state.headsLeft[1]) + '/' + PLANE_COUNT;
+    $('#panel-enemy-name').textContent = state.names[1];
+    setDot($('#panel-enemy-dot'), state.online[1]);
+    $('#panel-enemy-steps').textContent = state.steps[1];
+    $('#panel-enemy-heads').textContent = (PLANE_COUNT - state.headsLeft[0]) + '/' + PLANE_COUNT;
+    $('#panel-my-turn').textContent = '👁 观战中';
+    $('#panel-enemy-turn').textContent = '';
+  } else {
+    $('#panel-my-name').textContent = state.names[state.seat] + '（我）';
+    setDot($('#panel-my-dot'), state.online[state.seat]);
+    $('#panel-my-steps').textContent = mine;
+    $('#panel-my-heads').textContent = (PLANE_COUNT - state.headsLeft[1 - state.seat]) + '/' + PLANE_COUNT;
+    $('#panel-enemy-name').textContent = state.names[1 - state.seat];
+    setDot($('#panel-enemy-dot'), state.online[1 - state.seat]);
+    $('#panel-enemy-steps').textContent = theirs;
+    $('#panel-enemy-heads').textContent = (PLANE_COUNT - state.headsLeft[state.seat]) + '/' + PLANE_COUNT;
 
-  // 行动提示：步数少（或相等）的一方可以下棋
-  const myTurnText = mine <= theirs ? (mine === theirs ? '⚡ 双方抢步中' : '✓ 可行动') : '⏳ 等待对方';
-  const theirTurnText = theirs <= mine ? (theirs === mine ? '⚡ 双方抢步中' : '✓ 可行动') : '⏳ 等待对方';
-  $('#panel-my-turn').textContent = myTurnText;
-  $('#panel-enemy-turn').textContent = theirTurnText;
+    // 行动提示：步数少（或相等）的一方可以下棋
+    const myTurnText = mine <= theirs ? (mine === theirs ? '⚡ 双方抢步中' : '✓ 可行动') : '⏳ 等待对方';
+    const theirTurnText = theirs <= mine ? (theirs === mine ? '⚡ 双方抢步中' : '✓ 可行动') : '⏳ 等待对方';
+    $('#panel-my-turn').textContent = myTurnText;
+    $('#panel-enemy-turn').textContent = theirTurnText;
+  }
 
   // 双方累计比分：从第二局起显示，居中在棋盘上端（第一局 0:0 不显示）
-  // 只显示数字，左边永远是「我」的比分、右边是对方的；昵称存在 data-name 里，悬停在数字上才显示
+  // 只显示数字，玩家视角左边永远是「我」的比分；观战视角按 1 号玩家在左、2 号在右
+  // 昵称存在 data-name 里，悬停在数字上才显示
   const scoreEl = $('#battle-score');
   if (state.score[0] + state.score[1] > 0) {
     scoreEl.classList.remove('hidden');
-    $('#score-a').textContent = state.score[state.seat];
-    $('#score-a').dataset.name = state.names[state.seat];
-    $('#score-b').textContent = state.score[1 - state.seat];
-    $('#score-b').dataset.name = state.names[1 - state.seat];
+    const a = state.spectator ? 0 : state.seat; // 观战者固定左 = 1 号玩家
+    $('#score-a').textContent = state.score[a];
+    $('#score-a').dataset.name = state.names[a];
+    $('#score-b').textContent = state.score[1 - a];
+    $('#score-b').dataset.name = state.names[1 - a];
   } else {
     scoreEl.classList.add('hidden');
   }
+
+  renderSpectatorBadge();
 }
 
 // 进入对战页
 function goBattle() {
   $('#battle-room-id').textContent = state.roomId;
+  if (state.spectator) {
+    // 观战视角：棋盘标题改成双方昵称，而不是「我的 / 对方的」
+    $('#board-title-my').textContent = state.names[0] + ' 的棋盘';
+    $('#board-title-enemy').textContent = state.names[1] + ' 的棋盘';
+  } else {
+    $('#board-title-my').textContent = '我的棋盘';
+    $('#board-title-enemy').textContent = '对方棋盘';
+  }
   renderBattleBoards();
   updateBattlePanels();
   showView('battle');
 }
 
+// 观战等待页：双方还在部署（或等待对手加入），开战后自动进入对战页
+function goWait() {
+  $('#wait-room-id').textContent = state.roomId;
+  renderSpectatorBadge();
+  showView('wait');
+}
+
 // 结束页（只有击中 3 个机头一种结束方式，任何情况都不判负）
 function goOver() {
-  $('#over-title').textContent = state.winner === state.seat ? '🎉 你赢了！' : '你输了';
+  if (state.spectator) {
+    // 观战视角：标题显示获胜者昵称，不参与再来一局投票
+    $('#over-title').textContent = '🏁 ' + state.names[state.winner] + ' 获胜';
+    const hitsA = PLANE_COUNT - state.headsLeft[1]; // 1 号玩家打中对方的机头数
+    const hitsB = PLANE_COUNT - state.headsLeft[0];
+    $('#over-detail').textContent =
+      state.names[0] + ' 击中机头 ' + hitsA + '/3 · ' + state.names[1] + ' 击中机头 ' + hitsB + '/3';
+    $('#btn-rematch').classList.add('hidden');
+    $('#btn-leave').textContent = '离开观战';
+  } else {
+    $('#over-title').textContent = state.winner === state.seat ? '🎉 你赢了！' : '你输了';
 
-  const myHits = PLANE_COUNT - state.headsLeft[1 - state.seat];
-  const theirHits = PLANE_COUNT - state.headsLeft[state.seat];
-  $('#over-detail').textContent = '你击中机头 ' + myHits + '/3 · 对方击中机头 ' + theirHits + '/3';
+    const myHits = PLANE_COUNT - state.headsLeft[1 - state.seat];
+    const theirHits = PLANE_COUNT - state.headsLeft[state.seat];
+    $('#over-detail').textContent = '你击中机头 ' + myHits + '/3 · 对方击中机头 ' + theirHits + '/3';
 
+    $('#btn-rematch').classList.remove('hidden');
+    $('#btn-leave').textContent = '返回大厅';
+  }
   updateOverRematchStatus();
   showView('over');
 }
@@ -372,6 +431,11 @@ function goOver() {
 // 结束页的「再来一局」投票显示
 function updateOverRematchStatus() {
   const votes = state.rematchVotes.filter(Boolean).length;
+  if (state.spectator) {
+    // 观战者不参与投票，只显示双方意愿
+    $('#over-rematch-status').textContent = votes > 0 ? '双方想再来一局：' + votes + '/2' : '';
+    return;
+  }
   const mine = state.rematchVotes[state.seat];
   const btn = $('#btn-rematch');
   btn.textContent = mine ? '再来一局（' + votes + '/2）' : '再来一局';
@@ -441,6 +505,9 @@ function saveDraft() {
 
 // 点对方棋盘：只有"未知 + 我有行动权"的格子才会发出揭示请求
 function onEnemyCellClick(r, c) {
+  if (state.spectator) {
+    return toast('观战模式不能下棋');
+  }
   if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
     return toast('这个格子已经揭示过了');
   }
@@ -481,6 +548,8 @@ function bindSocketEvents() {
     state.online = d.online;
     state.myPlanes = [];
     state.deployConfirmed = [false, false];
+    state.spectator = false;
+    state.inviteRoomId = null;
     localStorage.removeItem('bp_draft');
     goDeploy();
   });
@@ -495,8 +564,45 @@ function bindSocketEvents() {
     state.online = d.online;
     state.myPlanes = [];
     state.deployConfirmed = [false, false];
+    state.spectator = false;
+    state.inviteRoomId = null;
     localStorage.removeItem('bp_draft');
     goDeploy();
+  });
+
+  // 房间已满，我进入观战席：收到完整的对局快照（只含双方已公开的信息，绝不含飞机坐标）
+  s.on('spectatorJoined', function (d) {
+    state.spectator = true;
+    state.roomId = d.roomId;
+    setRoomInUrl(d.roomId); // 观战者不写历史，但网址带上房间号，刷新后能重新进入
+    state.inviteRoomId = null;
+    state.seat = 0; // 借用 1 号玩家（房主）的视角：左 = 房主，右 = 2 号玩家
+    state.names = d.names;
+    state.online = d.online;
+    state.steps = d.steps;
+    state.score = d.score;
+    state.headsLeft = d.headsLeft;
+    state.winner = d.winner;
+    state.winReason = d.winReason;
+    state.rematchVotes = [false, false];
+    state.myShotsReceived = d.shots[0] || [];   // 打在 1 号玩家棋盘上的记录
+    state.enemyShotsReceived = d.shots[1] || []; // 打在 2 号玩家棋盘上的记录
+    if (d.phase === 'battle') goBattle();
+    else if (d.phase === 'over') goOver();
+    else goWait(); // deploy / waiting：双方还在部署，显示等待页
+  });
+
+  // 观战人数变化：更新徽章（0 人时隐藏）
+  s.on('spectatorCount', function (d) {
+    state.spectatorCount = d.count;
+    renderSpectatorBadge();
+  });
+
+  // 房间被回收（双方都离线超时）：回首页，观战者和玩家都会收到
+  s.on('roomClosed', function (d) {
+    toast(d.message || '房间已回收');
+    clearRoomFromUrl();
+    showView('home');
   });
 
   // 对手加入（房主收到）
@@ -576,13 +682,20 @@ function bindSocketEvents() {
     state.winner = null;
     state.winReason = null;
     state.deployConfirmed = [false, false];
-    localStorage.removeItem('bp_draft');
-    goDeploy();
+    if (state.spectator) {
+      goWait(); // 观战者不参与部署，回等待页看双方重新部署
+    } else {
+      localStorage.removeItem('bp_draft');
+      goDeploy();
+    }
   });
 
   // 我自己离开了房间：清空草稿回首页（房间记录保留，随时可以回来继续）
+  // 观战者离开观战席也走这里（不写历史，回首页后身份恢复成普通玩家）
   s.on('leftRoom', function () {
     localStorage.removeItem('bp_draft');
+    state.spectator = false;
+    state.spectatorCount = 0;
     clearRoomFromUrl(); // 地址栏回到干净的首页
     showView('home');
   });
@@ -691,10 +804,14 @@ function bindUIEvents() {
     localStorage.setItem('bp_name', name.trim());
     state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name });
   });
-  // 对局中的「返回菜单」按钮（部署页 + 对战页各一个）
+  // 对局中的「返回菜单」按钮（部署页 + 对战页 + 观战等待页各一个）
   document.querySelectorAll('.btn-back-menu').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!window.confirm('确定要返回菜单吗？对局将暂停，之后可从「最近加入的房间」回来继续')) return;
+      // 观战者退出不影响对局，确认文案区分开
+      const msg = state.spectator
+        ? '确定要退出观战、返回菜单吗？'
+        : '确定要返回菜单吗？对局将暂停，之后可从「最近加入的房间」回来继续';
+      if (!window.confirm(msg)) return;
       state.socket.emit('leaveRoom');
     });
   });

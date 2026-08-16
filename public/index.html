@@ -85,8 +85,9 @@
       <button class="btn-copy-link small-btn">📋 复制邀请链接</button>
       <button class="btn-back-menu small-btn">← 返回菜单</button>
     </div>
-    <!-- 棋盘上方的信息条：我的信息 | 比分 | 对手信息（比分居中） -->
+    <!-- 棋盘上方的信息条：观战人数 | 我的信息 | 比分 | 对手信息（比分居中） -->
     <div class="battle-info-row">
+      <div id="spectator-badge" class="spectator-badge hidden">👁 <span id="spectator-count">0</span></div>
       <div class="player-panel">
         <h3><span id="panel-my-name"></span> <span id="panel-my-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-my-steps">0</b></p>
@@ -107,14 +108,25 @@
     </div>
     <div class="boards-row">
       <div class="board-col">
-        <h3>我的棋盘 <span class="small">（对方打过的位置高亮）</span></h3>
+        <h3><span id="board-title-my">我的棋盘</span> <span class="small" id="board-title-my-note">（对方打过的位置高亮）</span></h3>
         <table id="my-board" class="board"></table>
       </div>
       <div class="board-col">
-        <h3>对方棋盘 <span class="small">（点击未知格子揭示）</span></h3>
+        <h3><span id="board-title-enemy">对方棋盘</span> <span class="small" id="board-title-enemy-note">（点击未知格子揭示）</span></h3>
         <table id="enemy-board" class="board"></table>
       </div>
     </div>
+  </section>
+
+  <!-- ============ 观战等待页：双方还在部署 ============ -->
+  <section id="view-wait" class="view">
+    <div class="topbar">
+      <span class="room-tag">房间 <b id="wait-room-id"></b></span>
+      <button class="btn-back-menu small-btn">← 返回菜单</button>
+    </div>
+    <h2>对局准备中</h2>
+    <p class="help">你正在观战：双方正在部署飞机，开战后自动进入对局</p>
+    <div id="wait-spectator-badge" class="spectator-badge hidden">👁 <span id="wait-spectator-count">0</span> 人观战中</div>
   </section>
 
   <!-- ============ 结束页 ============ -->
