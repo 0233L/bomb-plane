@@ -122,7 +122,8 @@ const state = {
   winner: null, winReason: null,
   rematchVotes: [false, false],
   curDir: 'up',              // 部署页当前选中的朝向
-  draft: []                  // 部署草稿 [{headRow, headCol, dir}]
+  draft: [],                 // 部署草稿 [{headRow, headCol, dir}]
+  inviteRoomId: null         // 从邀请链接读到的房间号（受邀加入页用）
 };
 
 // ---------- 棋盘渲染 ----------
@@ -742,6 +743,19 @@ function bindUIEvents() {
     state.socket.emit('leaveRoom');
   });
 
+  // 受邀加入页：确认加入 / 返回菜单
+  $('#btn-invite-join').addEventListener('click', function () {
+    const name = $('#invite-name-input').value;
+    localStorage.setItem('bp_name', name.trim());
+    // 房间号存在 state 里（而不是网址里），即使加入失败清掉了网址也能重试
+    state.socket.emit('joinRoom', { roomId: state.inviteRoomId, name: name });
+  });
+  $('#btn-invite-back').addEventListener('click', function () {
+    state.inviteRoomId = null;
+    clearRoomFromUrl();
+    showView('home');
+  });
+
   // 首页「游戏规则」弹窗：打开 / 关闭（点深色背景也能关闭）
   $('#btn-rules').addEventListener('click', function () {
     $('#rules-modal').classList.remove('hidden');
@@ -799,7 +813,7 @@ function init() {
     state.socket.emit('checkRooms', { roomIds: history.map(function (e) { return e.roomId; }) });
   }
 
-  // 邀请链接：网址带 ?room=XXXX 时的自动处理
+  // 邀请链接：网址带 ?room=XXXX 时的处理
   const urlRoom = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
   if (/^[A-Z0-9]{4}$/.test(urlRoom)) {
     const entry = loadRoomHistory().find(function (e) { return e.roomId === urlRoom; });
@@ -807,15 +821,13 @@ function init() {
       // 这个房间我进去过：走重连恢复自己的座位（而不是重新加入被「房间已满」挡掉）
       state.socket.emit('rejoin', { token: entry.token, roomId: entry.roomId });
     } else {
-      // 新朋友点开的邀请链接：房间号先填好；浏览器记得昵称就直接自动加入，
-      // 没玩过才需要先输昵称
-      $('#room-input').value = urlRoom;
-      if (savedName) {
-        state.socket.emit('joinRoom', { roomId: urlRoom, name: savedName });
-      } else {
-        $('#name-input').focus();
-        toast('输入昵称，加入房间 ' + urlRoom);
-      }
+      // 朋友点开的邀请链接：显示专属「受邀加入」界面（不是菜单，没有创建房间等选项），
+      // 房间号和昵称都填好，等 ta 点「加入房间」确认；也可以点「返回菜单」回普通首页
+      state.inviteRoomId = urlRoom;
+      $('#invite-room-id').textContent = urlRoom;
+      $('#invite-name-input').value = savedName;
+      showView('invite');
+      if (!savedName) $('#invite-name-input').focus();
     }
   }
 }

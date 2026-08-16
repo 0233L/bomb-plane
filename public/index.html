@@ -32,6 +32,19 @@
     <p class="help">创建房间后把房间号告诉朋友即可开始对战</p>
   </section>
 
+  <!-- ============ 受邀加入页：朋友点邀请链接后看到的专属界面 ============ -->
+  <section id="view-invite" class="view">
+    <h1>✈️ 炸飞机</h1>
+    <p class="subtitle">你被邀请加入房间 <b id="invite-room-id" class="invite-room-id"></b></p>
+
+    <div class="card">
+      <label for="invite-name-input">昵称</label>
+      <input id="invite-name-input" type="text" maxlength="12" placeholder="输入昵称">
+      <button id="btn-invite-join" class="primary">加入房间</button>
+      <button id="btn-invite-back">← 返回菜单</button>
+    </div>
+  </section>
+
   <!-- ============ 部署页：摆放 3 架飞机 ============ -->
   <section id="view-deploy" class="view">
     <div class="topbar">

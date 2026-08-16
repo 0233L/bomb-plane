@@ -47,6 +47,14 @@ h2 { text-align: center; margin: 8px 0; }
 .card button { width: 100%; margin-top: 4px; }
 .divider { text-align: center; color: #94a3b8; margin: 12px 0; font-size: 13px; }
 
+/* ---------- 受邀加入页 ---------- */
+.invite-room-id {
+  color: #2563eb;
+  font-size: 20px;
+  letter-spacing: 2px;
+}
+#view-invite .card button { margin-top: 8px; }
+
 /* ---------- 按钮 ---------- */
 button {
   padding: 10px 18px;
