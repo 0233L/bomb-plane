@@ -4,3 +4,6 @@ node_modules/
 # 各种临时文件
 *.log
 .DS_Store
+
+# 本地截图等临时文件
+screenshot*
