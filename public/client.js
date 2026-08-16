@@ -773,7 +773,9 @@ function bindUIEvents() {
 
 // ---------- 启动 ----------
 function init() {
-  state.socket = io();
+  // 优先用 WebSocket 长连接（一次建立、持续复用，消息更快更稳）；
+  // 万一网络环境不支持再退回 polling 模式
+  state.socket = io({ transports: ['websocket', 'polling'] });
   bindSocketEvents();
   bindUIEvents();
 
