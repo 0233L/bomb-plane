@@ -22,6 +22,9 @@ const { BOARD_SIZE, CELL_HEAD, CELL_BODY, buildBoard, validateDeployment } = sha
 // 人机对战的 AI 决策模块（精确枚举 + 机头概率图）
 const ai = require('./ai.js');
 
+// 访客统计的 GitHub 保险柜（未配置 GITHUB_TOKEN/GITHUB_REPO 时自动跳过）
+const githubBackup = require('./stats-github.js');
+
 // ---------- 常量 ----------
 const PORT = process.env.PORT || 3000;  // 部署到 Render 等平台时会自动注入 PORT
 const RECYCLE_SECONDS = Number(process.env.RECYCLE_SECONDS) || 600; // 双方都离线后回收房间的等待时间（秒，默认 10 分钟）；可用环境变量覆盖（测试用）
@@ -790,6 +793,35 @@ function flushSaveStats() {
   } catch (e) {
     statsDirty = true; // 写失败（磁盘满/只读）：留着脏标记，下次访问再试
     console.error('访客统计写盘失败（忽略，不影响游戏）：' + e.message);
+    return;
+  }
+  // 写盘成功后顺便同步到 GitHub 保险柜（异步执行，失败只记日志）
+  githubBackup.upload(visitors);
+}
+
+// 启动时从 GitHub 保险柜拉回上次的统计，与本地合并后继续累计
+async function syncFromGitHub() {
+  if (!githubBackup.enabled) return;
+  console.log('GitHub 保险柜：尝试拉取上次的统计…');
+  const remote = await githubBackup.download();
+  if (!remote.records) return; // 拉取失败：用本地的继续（日志已打）
+  let merged = 0;
+  remote.records.forEach(function (r) {
+    const rec = visitors.get(r.id);
+    if (!rec) {
+      visitors.set(r.id, { platform: r.platform, firstVisit: r.firstVisit, lastVisit: r.lastVisit, visits: r.visits });
+      merged++;
+    } else {
+      if (r.firstVisit < rec.firstVisit) { rec.firstVisit = r.firstVisit; merged++; }
+      if (r.lastVisit > rec.lastVisit) { rec.lastVisit = r.lastVisit; merged++; }
+      if (r.visits > rec.visits) { rec.visits = r.visits; merged++; }
+    }
+  });
+  if (merged > 0) {
+    console.log('GitHub 保险柜：从远程合并了 ' + merged + ' 条记录，当前共 ' + visitors.size + ' 位访客');
+    scheduleSaveStats(); // 合并结果写回本地 + 上传 GitHub（两边保持一致）
+  } else {
+    console.log('GitHub 保险柜：与远程一致，当前共 ' + visitors.size + ' 位访客');
   }
 }
 
@@ -924,6 +956,7 @@ wss.on('close', function () { clearInterval(heartbeatTimer); });
 
 server.listen(PORT, function () {
   loadStats(); // 启动时加载历史访客统计
+  syncFromGitHub(); // 再从 GitHub 保险柜拉回合并（未配置时自动跳过）
   console.log('炸飞机服务器已启动：http://localhost:' + PORT);
   console.log('提示：开两个浏览器窗口（一个普通 + 一个无痕）即可自己和自己对战测试');
   console.log('访客统计明细页：http://localhost:' + PORT + '/stats?key=' + STATS_KEY);
