@@ -31,6 +31,7 @@
 
   <view class="card footer-card">
     <view class="btn" bindtap="onRulesTap">📖 游戏规则</view>
+    <text class="footer-stats" wx:if="{{visitorCount > 0}}">👥 已有 {{visitorCount}} 位玩家访问过</text>
   </view>
 
   <!-- 规则弹窗 -->

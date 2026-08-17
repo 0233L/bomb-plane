@@ -38,7 +38,8 @@ const state = {
   ai: false,
   over: false,
   revealedPlanes: null,
-  phase: ''           // 服务器当前阶段（deploy/battle/over/waiting），导航和渲染用
+  phase: '',           // 服务器当前阶段（deploy/battle/over/waiting），导航和渲染用
+  totalVisitors: 0     // 首页底部「已有 X 位玩家访问过」（服务端 visitResult 回报）
 };
 
 // ---------- 本地事件总线：app.on(事件, 回调)，页面订阅用 ----------
@@ -86,6 +87,16 @@ function saveRoomToHistory(roomId, token, name) {
 function removeRoomFromHistory(roomId) {
   saveStorage('bp_room_history',
     loadRoomHistory().filter(function (e) { return e.roomId !== roomId; }));
+}
+
+// ---------- 匿名访客 ID（访客统计用，不存任何个人信息） ----------
+// 首次访问生成一次，之后一直复用；清掉小程序存储 = 算一个新访客（可接受）
+function getVisitorId() {
+  let id = loadStorage('bp_visitor_id', '');
+  if (id) return id;
+  id = 'v' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  saveStorage('bp_visitor_id', id);
+  return id;
 }
 
 // ---------- 主题（跟随系统 / 浅色 / 深色，对应网页右上角按钮） ----------
@@ -229,10 +240,17 @@ function enemyBoardCells() {
 const socket = new WSClient(SERVER_URL);
 
 socket.on('connect', function () {
+  socket.emit('visit', { visitorId: getVisitorId(), platform: 'mini' }); // 访客统计：每次连上服务器上报一次
   // 断线重连成功：如果之前正处在某个房间里（有 roomId + token），自动恢复现场
   if (state.roomId && state.token) {
     socket.emit('rejoin', { token: state.token, roomId: state.roomId });
   }
+});
+
+// 访客统计：服务器回报当前唯一访客总数，首页订阅后实时更新
+socket.on('visitResult', function (d) {
+  state.totalVisitors = d.total || 0;
+  emitLocal('visitResult', d);
 });
 socket.on('disconnect', function () {
   wx.showToast({ title: '连接断开，正在重连…', icon: 'none' });

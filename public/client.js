@@ -104,6 +104,18 @@ function removeRoomFromHistory(roomId) {
   renderRecentRooms();
 }
 
+// ---------- 匿名访客 ID（访客统计用，不存任何个人信息） ----------
+// 首次访问生成一次，之后一直复用；清掉浏览器存储 = 算一个新访客（可接受）
+function getVisitorId() {
+  const id = localStorage.getItem('bp_visitor_id');
+  if (id) return id;
+  const gen = (window.crypto && window.crypto.randomUUID)
+    ? window.crypto.randomUUID()
+    : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem('bp_visitor_id', 'v' + gen);
+  return 'v' + gen;
+}
+
 // ---------- 网址中的房间号（邀请链接） ----------
 
 // 把地址栏更新为带房间号的链接（?room=XXXX），不刷新页面
@@ -605,9 +617,16 @@ function bindSocketEvents() {
   // 如果之前正处在某个房间里（有 roomId + token），自动恢复现场——
   // 等价于刷新页面后按网址恢复，顺便修复网络闪断后页面僵住的问题
   s.on('connect', function () {
+    s.emit('visit', { visitorId: getVisitorId(), platform: 'web' }); // 访客统计：每次连上服务器上报一次
     if (state.roomId && state.token) {
       s.emit('rejoin', { token: state.token, roomId: state.roomId });
     }
+  });
+
+  // 访客统计：服务器回报当前唯一访客总数，显示在首页底部
+  s.on('visitResult', function (d) {
+    const el = $('#visitor-count');
+    if (el) el.textContent = '👥 已有 ' + (d.total || 0) + ' 位玩家访问过';
   });
 
   // 连接断开：提示正在重连（ws.js 会按指数退避自动重连）

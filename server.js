@@ -11,6 +11,7 @@
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs'); // 访客统计的落盘读写
 const express = require('express');
 const { WebSocketServer } = require('ws');
 
@@ -28,8 +29,17 @@ const AI_THINK_MIN_MS = Number(process.env.AI_THINK_MIN_MS) || 800; // AI 每步
 const AI_THINK_MAX_MS = Number(process.env.AI_THINK_MAX_MS) || 1500;
 const ROOM_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 房间号字符表（去掉易混淆的 I/O/0/1）
 
+// ---------- 访客统计常量 ----------
+const STATS_KEY = process.env.STATS_KEY || 'bombplane-stats-2026'; // /stats 明细页的钥匙（数据无个人信息，默认值见 README；可在 Render 后台改）
+const STATS_FILE = path.join(__dirname, 'stats.json');
+const STATS_TMP_FILE = STATS_FILE + '.tmp'; // 先写临时文件再改名，保证不会写坏原文件
+const STATS_SAVE_DELAY_MS = 1000; // 防抖：1 秒内的多次访问合并成一次写盘
+const MIN_VISIT_GAP_MS = 5 * 60 * 1000; // 同一访客 5 分钟内的重复连接不算一次新访问（防重连刷频次）
+const MAX_VISITORS = 20000; // 上限：防止恶意刷大量假 ID 撑爆内存
+
 // ---------- 数据 ----------
 const rooms = new Map(); // 房间号 -> 房间对象（内存存储，服务器重启后清空，当前规模够用）
+const visitors = new Map(); // visitorId -> { platform, firstVisit, lastVisit, visits }（匿名，无任何个人信息）
 
 // ---------- 工具函数 ----------
 
@@ -693,7 +703,8 @@ function handleWsMessage(conn, raw) {
     deployCancel: handleDeployCancel,
     reveal: handleReveal,
     rematch: handleRematch,
-    leaveRoom: handleLeaveRoom
+    leaveRoom: handleLeaveRoom,
+    visit: handleVisit
   };
   const handler = handlers[msg.type];
   if (handler) handler(conn, data);
@@ -733,10 +744,124 @@ function handleDisconnect(conn) {
   onDisconnect(loc.room, loc.seat);
 }
 
+// ---------- 访客统计（匿名 ID，无任何个人信息） ----------
+let statsDirty = false; // 是否有未落盘的改动
+let statsSaveTimer = null; // 防抖定时器
+
+// 启动时加载 stats.json；文件不存在或损坏都从空开始（不影响服务器启动）
+function loadStats() {
+  try {
+    const data = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+    if (!data || typeof data.visitors !== 'object') throw new Error('格式不对');
+    Object.keys(data.visitors).forEach(function (id) {
+      const v = data.visitors[id];
+      if (v && typeof v.firstVisit === 'number' && typeof v.lastVisit === 'number' &&
+          typeof v.visits === 'number' && v.visits >= 1 &&
+          (v.platform === 'web' || v.platform === 'mini')) {
+        visitors.set(id, v); // 逐条校验，坏条目直接丢弃
+      }
+    });
+    console.log('访客统计已加载：' + visitors.size + ' 位访客');
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('访客统计文件损坏，从零开始：' + e.message);
+    // ENOENT = 文件不存在；两种情况都静默从空开始
+  }
+}
+
+// 防抖：有访问就安排一次落盘，1 秒内的访问合并成一次写
+function scheduleSaveStats() {
+  statsDirty = true;
+  if (statsSaveTimer) return;
+  statsSaveTimer = setTimeout(function () {
+    statsSaveTimer = null;
+    flushSaveStats();
+  }, STATS_SAVE_DELAY_MS);
+}
+
+// 立即写盘：先写 .tmp 再 rename（原子替换）；失败只记日志，绝不影响游戏
+function flushSaveStats() {
+  if (!statsDirty) return;
+  statsDirty = false;
+  const payload = { version: 1, visitors: {} };
+  visitors.forEach(function (v, id) { payload.visitors[id] = v; });
+  try {
+    fs.writeFileSync(STATS_TMP_FILE, JSON.stringify(payload, null, 2));
+    fs.renameSync(STATS_TMP_FILE, STATS_FILE);
+  } catch (e) {
+    statsDirty = true; // 写失败（磁盘满/只读）：留着脏标记，下次访问再试
+    console.error('访客统计写盘失败（忽略，不影响游戏）：' + e.message);
+  }
+}
+
+// 收到客户端的 visit 事件：登记/更新访客，回复当前总人数
+function handleVisit(conn, data) {
+  const vid = typeof data.visitorId === 'string' ? data.visitorId.trim() : '';
+  if (!vid || vid.length > 64) return; // 空 / 异常 ID：直接忽略，不计数
+  const platform = data.platform === 'mini' ? 'mini' : 'web'; // 只认两种端，其它一律按 web
+  const now = Date.now();
+
+  const rec = visitors.get(vid);
+  if (!rec) {
+    if (visitors.size >= MAX_VISITORS) return conn.emit('visitResult', { total: visitors.size });
+    visitors.set(vid, { platform: platform, firstVisit: now, lastVisit: now, visits: 1 });
+  } else {
+    rec.platform = platform; // 同一 ID 换了端再连（极少见）：记最新端
+    if (now - rec.lastVisit >= MIN_VISIT_GAP_MS) rec.visits += 1; // 5 分钟内重连不刷频次
+    rec.lastVisit = now;
+  }
+  scheduleSaveStats();
+  conn.emit('visitResult', { total: visitors.size }); // 首页显示「已有 X 位玩家访问过」
+}
+
+// HTML 转义（/stats 页面里显示的 visitorId 是客户端传的字符串，必须转义防注入）
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 渲染 /stats 明细页（纯字符串拼 HTML，不用任何前端框架/JS）
+function renderStatsHtml() {
+  const list = Array.from(visitors.entries()).sort(function (a, b) { return b[1].firstVisit - a[1].firstVisit; });
+  let rows = '';
+  list.forEach(function (entry) {
+    const id = entry[0], v = entry[1];
+    rows += '<tr><td>' + (v.platform === 'mini' ? '小程序' : '网页') + '</td>' +
+      '<td>' + escapeHtml(id) + '</td>' +
+      '<td>' + new Date(v.firstVisit).toLocaleString('zh-CN', { hour12: false }) + '</td>' +
+      '<td>' + new Date(v.lastVisit).toLocaleString('zh-CN', { hour12: false }) + '</td>' +
+      '<td>' + v.visits + '</td></tr>';
+  });
+  let webCount = 0, miniCount = 0, totalVisits = 0;
+  visitors.forEach(function (v) {
+    if (v.platform === 'mini') miniCount++; else webCount++;
+    totalVisits += v.visits;
+  });
+  return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>访客统计</title>' +
+    '<style>body{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 16px;color:#333}' +
+    'table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}' +
+    '.note{color:#888;font-size:13px}</style></head><body>' +
+    '<h1>访客统计</h1>' +
+    '<p>共 ' + visitors.size + ' 位访客（网页 ' + webCount + ' / 小程序 ' + miniCount + '），累计访问 ' + totalVisits + ' 次。</p>' +
+    '<table><tr><th>平台</th><th>访客 ID</th><th>首次访问</th><th>最后访问</th><th>访问次数</th></tr>' + rows + '</table>' +
+    '<p class="note">时间显示为服务器本地时间。数据只含平台与时间戳，无任何个人信息。' +
+    'Render 免费版磁盘是临时的：休眠/重启/重新部署后统计会从零开始。</p>' +
+    '</body></html>';
+}
+
 // ---------- 服务器启动 ----------
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 访客统计明细页（私有：必须带正确的 ?key= 才看得到，数据只含平台与时间）
+app.get('/stats', function (req, res) {
+  if (req.query.key !== STATS_KEY) {
+    res.status(403).send('<h1>403 禁止访问</h1><p>需要正确的 ?key= 参数</p>');
+    return;
+  }
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(renderStatsHtml());
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
@@ -779,6 +904,12 @@ const heartbeatTimer = setInterval(function () {
 wss.on('close', function () { clearInterval(heartbeatTimer); });
 
 server.listen(PORT, function () {
+  loadStats(); // 启动时加载历史访客统计
   console.log('炸飞机服务器已启动：http://localhost:' + PORT);
   console.log('提示：开两个浏览器窗口（一个普通 + 一个无痕）即可自己和自己对战测试');
+  console.log('访客统计明细页：http://localhost:' + PORT + '/stats?key=' + STATS_KEY);
 });
+
+// 关服前把还没落盘的访客统计写掉（Render 重启发 SIGTERM，本地 Ctrl+C 发 SIGINT）
+process.on('SIGTERM', function () { flushSaveStats(); process.exit(0); });
+process.on('SIGINT', function () { flushSaveStats(); process.exit(0); });

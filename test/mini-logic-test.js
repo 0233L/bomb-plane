@@ -124,10 +124,16 @@ async function main() {
   await waitUntil(function () { return app.globalData.socket.connected; }, 5000, '小程序 socket 连接');
   console.log('— 首页 —');
 
+  // 访客统计：小程序连接后自动上报匿名访客 ID，服务器回报总数
+  await waitUntil(function () { return state.totalVisitors >= 1; }, 5000, '小程序访客统计回报');
+  check('小程序自动上报匿名访客', state.totalVisitors >= 1);
+  check('匿名访客 ID 已存入本地', typeof storage.get('bp_visitor_id') === 'string' && storage.get('bp_visitor_id').length > 0);
+
   index.onLoad({});
   index.onShow();
   check('首页渲染出 4 张飞机朝向图（各 25 格）',
     index.data.diagrams.length === 4 && index.data.diagrams.every(function (d) { return d.cells.length === 25; }));
+  check('首页显示访客总数', index.data.visitorCount >= 1);
   index.onNameInput({ detail: { value: '小程序玩家' } });
   check('昵称写入本地存储', storage.get('bp_name') === '小程序玩家');
 

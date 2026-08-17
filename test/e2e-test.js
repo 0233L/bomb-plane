@@ -72,6 +72,43 @@ async function main() {
   const A = new WSClient(URL);
   const B = new WSClient(URL);
   await Promise.all([waitFor(A, 'connect'), waitFor(B, 'connect')]);
+
+  // 0. 访客统计（服务端匿名 ID 计数 + /stats 明细页 + stats.json 落盘）
+  //    注意：ID 用 Date.now() 生成，stats.json 跨运行持久，断言必须相对（不能写死总数）
+  console.log('— 访客统计 —');
+  const fsx = require('fs');
+  const pathx = require('path');
+  const vidA = 'e2e-' + Date.now() + '-A';
+  const vidB = 'e2e-' + Date.now() + '-B';
+  A.emit('visit', { visitorId: vidA, platform: 'web' });
+  const vrA = await waitFor(A, 'visitResult');
+  check('首次访问被计数', vrA.total >= 1);
+  B.emit('visit', { visitorId: vidB, platform: 'web' });
+  const vrB = await waitFor(B, 'visitResult');
+  check('第二个访客让总数 +1', vrB.total === vrA.total + 1);
+  A.emit('visit', { visitorId: vidA, platform: 'web' }); // 5 分钟内重复连接
+  const vrA2 = await waitFor(A, 'visitResult');
+  check('重复连接不增加唯一总数', vrA2.total === vrB.total);
+
+  // /stats 明细页（Node 18+ 自带 fetch）
+  const STATS_KEY = process.env.STATS_KEY || 'bombplane-stats-2026';
+  const okRes = await fetch('http://localhost:3000/stats?key=' + encodeURIComponent(STATS_KEY));
+  check('/stats 正确钥匙返回 200', okRes.status === 200);
+  const html = await okRes.text();
+  check('/stats 列出两位访客记录', html.indexOf(vidA) !== -1 && html.indexOf(vidB) !== -1);
+  check('/stats 不泄露任何飞机坐标', html.indexOf('headRow') === -1);
+  const badRes = await fetch('http://localhost:3000/stats?key=wrong');
+  const noKeyRes = await fetch('http://localhost:3000/stats');
+  check('/stats 错误或缺失钥匙返回 403', badRes.status === 403 && noKeyRes.status === 403);
+
+  // stats.json 落盘（等过 1 秒防抖再读）
+  await sleep(1500);
+  const saved = JSON.parse(fsx.readFileSync(pathx.join(__dirname, '..', 'stats.json'), 'utf8'));
+  check('stats.json 已写入两位访客', !!(saved.visitors[vidA] && saved.visitors[vidB]));
+  check('重复连接未增加该访客频次', saved.visitors[vidA].visits === 1);
+  check('记录含平台与时间戳', saved.visitors[vidB].platform === 'web' &&
+    typeof saved.visitors[vidB].firstVisit === 'number' && typeof saved.visitors[vidB].lastVisit === 'number');
+
   console.log('— 房间与部署 —');
 
   // 1. 建房 + 加入

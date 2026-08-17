@@ -15,7 +15,8 @@ Page({
     roomInput: '',           // 房间号输入框
     rooms: [],               // 最近加入的房间列表
     showRules: false,        // 规则弹窗
-    diagrams: []             // 规则弹窗里的 4 张飞机朝向图
+    diagrams: [],            // 规则弹窗里的 4 张飞机朝向图
+    visitorCount: 0          // 底部「已有 X 位玩家访问过」
   },
 
   onShow() {
@@ -31,10 +32,14 @@ Page({
     // 服务器校验完「最近加入的房间」后，失效的已被 app.js 删除，这里重新渲染
     this._roomsAliveRefresh = this.refresh.bind(this);
     app.on('roomsAlive', this._roomsAliveRefresh);
+    // 访客统计回报（可能早于本页订阅到达，所以 refresh() 里也直接读全局 state）
+    this._visitRefresh = this.refresh.bind(this);
+    app.on('visitResult', this._visitRefresh);
   },
 
   onUnload() {
     if (this._roomsAliveRefresh) app.off('roomsAlive', this._roomsAliveRefresh);
+    if (this._visitRefresh) app.off('visitResult', this._visitRefresh);
   },
 
   refresh() {
@@ -45,7 +50,8 @@ Page({
       rooms: history.map(function (e) {
         return { roomId: e.roomId, token: e.token, name: e.name };
       }),
-      diagrams: app.rulesDiagrams()
+      diagrams: app.rulesDiagrams(),
+      visitorCount: app.globalData.state.totalVisitors
     });
     this.updateThemeLabel();
   },
