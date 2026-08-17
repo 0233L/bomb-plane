@@ -1,0 +1,78 @@
+<!-- 对战页：双棋盘 + 抢步揭示 + 观战等待页 + 结束横幅 -->
+<view class="page {{themeClass}}">
+  <view class="topbar">
+    <text class="side link" bindtap="onBackTap">← 菜单</text>
+    <text class="title">{{spectator ? '观战' : '对战'}}</text>
+    <text class="side link" bindtap="onCopyRoomTap">邀请</text>
+  </view>
+  <view class="room-row">
+    <text>房间号 <text class="room-tag">{{roomId}}</text></text>
+    <text wx:if="{{spectatorCount > 0}}" class="spec-badge">👁 {{spectatorCount}} 观战中</text>
+  </view>
+
+  <!-- 观战等待页：双方还在部署（或等待对手），开战后自动进入对战 -->
+  <view wx:if="{{showWait}}" class="card wait-card">
+    <view class="wait-title">⏳ 双方还在部署飞机…</view>
+    <view class="wait-sub">开战后自动进入观战</view>
+    <view class="btn" bindtap="onBackTap">退出观战</view>
+  </view>
+
+  <block wx:else>
+    <!-- 双方累计比分：从第二局起显示 -->
+    <view class="score-row" wx:if="{{scoreVisible}}">
+      <text class="score-num">{{scoreA}}</text>
+      <text class="score-sep">:</text>
+      <text class="score-num">{{scoreB}}</text>
+    </view>
+
+    <!-- 我方信息面板 -->
+    <view class="battle-panel">
+      <view class="panel-left">
+        <text class="dot {{myDot ? 'dot-on' : 'dot-off'}}"></text>
+        <text class="panel-name">{{myName}}</text>
+      </view>
+      <view class="panel-right">
+        <text class="panel-stat">步数 {{mySteps}} · 击中机头 {{myHeads}}</text>
+        <text class="panel-turn">{{myTurn}}</text>
+      </view>
+    </view>
+
+    <view class="board-title">{{boardTitleMy}}</view>
+    <view class="board-wrap">
+      <view class="board">
+        <view wx:for="{{myCells}}" wx:key="index" class="board-cell {{item.cls}}"></view>
+      </view>
+    </view>
+
+    <!-- 对方信息面板 -->
+    <view class="battle-panel">
+      <view class="panel-left">
+        <text class="dot {{enemyDot ? 'dot-on' : 'dot-off'}}"></text>
+        <text class="panel-name">{{enemyName}}</text>
+      </view>
+      <view class="panel-right">
+        <text class="panel-stat">步数 {{enemySteps}} · 击中机头 {{enemyHeads}}</text>
+        <text class="panel-turn">{{enemyTurn}}</text>
+      </view>
+    </view>
+
+    <view class="board-title">
+      <text>{{boardTitleEnemy}}</text>
+      <text class="board-note">{{boardNote}}</text>
+    </view>
+    <view class="board-wrap">
+      <view class="board">
+        <view wx:for="{{enemyCells}}" wx:key="index" class="board-cell {{item.cls}}"
+              data-r="{{item.r}}" data-c="{{item.c}}" bindtap="onEnemyCellTap"></view>
+      </view>
+    </view>
+
+    <!-- 结束横幅：棋盘保留，飞机公开 -->
+    <view class="over-banner" wx:if="{{over}}">
+      <view class="over-title">{{overTitle}}</view>
+      <view class="over-detail">{{overDetail}}</view>
+      <view wx:if="{{showRematchBtn}}" class="btn primary" bindtap="onRematchTap">{{rematchText}}</view>
+      <view class="over-status">{{overStatus}}</view>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,67 @@
+<!-- 首页：昵称、创建房间、人机、加入房间、最近房间、规则弹窗、主题切换 -->
+<view class="page {{themeClass}}">
+  <view class="topbar">
+    <text class="title">✈️ 炸飞机</text>
+    <text class="side link" bindtap="onThemeTap">{{themeLabel}}</text>
+  </view>
+  <view class="subtitle">双人实时联机 · 先击中 3 个机头者获胜</view>
+
+  <view class="card">
+    <text class="label">你的昵称</text>
+    <input class="input" placeholder="输入昵称" value="{{name}}" bindinput="onNameInput" maxlength="12" />
+    <view class="btn primary" bindtap="onCreateTap">创建房间</view>
+    <view class="btn" bindtap="onAITap">人机对战</view>
+
+    <text class="label">加入房间（输入 4 位房间号）</text>
+    <input class="input" placeholder="例如 1234" value="{{roomInput}}" bindinput="onRoomInput" maxlength="4" />
+    <view class="btn" bindtap="onJoinTap">加入房间</view>
+  </view>
+
+  <view class="card" wx:if="{{rooms.length > 0}}">
+    <view class="card-title">最近加入的房间</view>
+    <view class="room-item" wx:for="{{rooms}}" wx:key="index" wx:for-item="item">
+      <text class="room-tag">房间 {{item.roomId}}</text>
+      <text class="names-tag">{{item.name}}</text>
+      <view class="room-actions">
+        <text class="link" bindtap="onRoomJoin" data-room="{{item.roomId}}" data-token="{{item.token}}">进入</text>
+        <text class="link danger" bindtap="onRoomDel" data-room="{{item.roomId}}">删除</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card footer-card">
+    <view class="btn" bindtap="onRulesTap">📖 游戏规则</view>
+  </view>
+
+  <!-- 规则弹窗 -->
+  <view class="modal-mask" wx:if="{{showRules}}" bindtap="onRulesClose">
+    <view class="modal" catchtap="noop">
+      <view class="rules-h3">目标</view>
+      <view class="rules-p">双方各部署 3 架飞机，轮流探路：先击中对方全部 3 个机头者获胜。任何情况都不判负。</view>
+
+      <view class="rules-h3">部署</view>
+      <view class="rules-p">把 3 架飞机放进 10×10 棋盘：点空格放置（以点击处为机头）、点机身旋转、点机头移除。飞机可以挨着放，但不能重叠、不能越界。</view>
+
+      <view class="rules-h3">飞机的 4 种朝向</view>
+      <view class="rules-planes">
+        <view class="rules-plane" wx:for="{{diagrams}}" wx:key="index" wx:for-item="plane">
+          <view class="mini-board">
+            <view wx:for="{{plane.cells}}" wx:key="index" wx:for-item="cell" class="mini-cell {{cell.cls}}"></view>
+          </view>
+          <text>{{plane.label}}</text>
+        </view>
+      </view>
+
+      <view class="rules-h3">抢步规则</view>
+      <view class="rules-list">
+        <text>· 步数少（或相等）的一方可以随时行动</text>
+        <text>· 步数领先的一方只能等待对方</text>
+      </view>
+
+      <view class="rules-h3">揭示</view>
+      <view class="rules-p">打中的格子会揭示「机头 / 机身 / 空」。空 = 纯运气；机头 = 赢关键。断线会自动重连，也可从「最近加入的房间」回到对局。</view>
+
+      <view class="btn primary" bindtap="onRulesClose">知道了</view>
+    </view>
+  </view>
+</view>

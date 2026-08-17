@@ -1,0 +1,38 @@
+/* 部署页 */
+.room-row {
+  text-align: center;
+  color: var(--muted);
+  font-size: 26rpx;
+  margin: 8rpx 0;
+}
+.room-tag { color: var(--primary); font-weight: bold; }
+.count-row { text-align: center; margin: 16rpx 0 8rpx; color: var(--text-3); font-size: 26rpx; }
+
+.dir-row { display: flex; justify-content: center; margin: 20rpx 0 8rpx; }
+.dir-btn {
+  width: 110rpx;
+  padding: 14rpx 0;
+  margin: 0 12rpx;
+  text-align: center;
+  border-radius: 12rpx;
+  background: var(--surface);
+  color: var(--text-2);
+  border: 1rpx solid var(--faint);
+}
+.dir-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+.opponent-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 28rpx;
+  color: var(--text-3);
+  font-size: 26rpx;
+}
+.ready-status {
+  text-align: center;
+  margin-top: 10rpx;
+  color: var(--muted);
+  font-size: 26rpx;
+  min-height: 36rpx;
+}

@@ -13,7 +13,9 @@
 // ============================================
 'use strict';
 
-const { io } = require('socket.io-client');
+// 原生 WebSocket 客户端：复用 public/ws.js（Node 里先提供一个全局 WebSocket）
+global.WebSocket = require('ws').WebSocket;
+const WSClient = require('../public/ws.js');
 const shared = require('../public/shared.js');
 
 const URL = 'http://localhost:3000';
@@ -67,8 +69,8 @@ function randomDeployment() {
 }
 
 async function main() {
-  const A = io(URL);
-  const B = io(URL);
+  const A = new WSClient(URL);
+  const B = new WSClient(URL);
   await Promise.all([waitFor(A, 'connect'), waitFor(B, 'connect')]);
   console.log('— 房间与部署 —');
 
@@ -197,7 +199,7 @@ async function main() {
     shared.validateDeployment(gameOver.planes[1]) === null);
 
   // 结束后才进入的观战者：快照也带双方飞机
-  const G0 = io(URL);
+  const G0 = new WSClient(URL);
   await waitFor(G0, 'connect');
   G0.emit('joinRoom', { roomId: created.roomId, name: '事后观众' });
   const specOver = await waitFor(G0, 'spectatorJoined');
@@ -236,7 +238,7 @@ async function main() {
   const disconn = await disconnP;
   check('A 断线后 B 收到离线状态通知', disconn.seat === 0 && disconn.connected === false);
 
-  const A2 = io(URL);
+  const A2 = new WSClient(URL);
   await waitFor(A2, 'connect');
   // 注意：B 端的监听要先注册好，再发 rejoin（事件发出得很快，先发后听会漏掉）
   const reconnB = waitFor(B, 'playerStatus');
@@ -258,7 +260,7 @@ async function main() {
   check('断线超过回收计时也没有判负', gameOver2 === null);
 
   // B 重连回来，对局还能继续
-  const B2 = io(URL);
+  const B2 = new WSClient(URL);
   await waitFor(B2, 'connect');
   B2.on('gameOver', function (d) { gameOver2 = d; });
   const reconnA2 = waitFor(A2, 'playerStatus');
@@ -293,7 +295,7 @@ async function main() {
   check('A 主动离开也没有判负', gameOver2 === null);
 
   // A 从菜单回来继续
-  const A3 = io(URL);
+  const A3 = new WSClient(URL);
   await waitFor(A3, 'connect');
   const stP3 = waitFor(B2, 'playerStatus');
   A3.emit('rejoin', { token: created.token, roomId: created.roomId });
@@ -317,7 +319,7 @@ async function main() {
 
   // 9. 异常输入
   console.log('— 异常输入 —');
-  const C = io(URL);
+  const C = new WSClient(URL);
   await waitFor(C, 'connect');
   C.emit('joinRoom', { roomId: 'ZZZZ', name: '路人' });
   const errRoom = await waitFor(C, 'error');
@@ -329,7 +331,7 @@ async function main() {
 
   C.emit('createRoom', { name: '小明' });
   const created2 = await waitFor(C, 'roomCreated');
-  const D = io(URL);
+  const D = new WSClient(URL);
   await waitFor(D, 'connect');
   D.emit('joinRoom', { roomId: created2.roomId, name: '小明' });
   const errDup = await waitFor(D, 'error');
@@ -352,7 +354,7 @@ async function main() {
   D.emit('joinRoom', { roomId: created2.roomId, name: '小刚' });
   await waitFor(D, 'joinedRoom');
 
-  const E = io(URL);
+  const E = new WSClient(URL);
   await waitFor(E, 'connect');
   const errE = [];
   E.on('error', function (d) { errE.push(d.message); });
@@ -389,7 +391,7 @@ async function main() {
   check('观战者不能确认部署', errE.length > errE2);
 
   // 第二个观战者在对局中进入：快照应带上已公开的揭示记录
-  const F = io(URL);
+  const F = new WSClient(URL);
   await waitFor(F, 'connect');
   const errF = [];
   F.on('error', function (d) { errF.push(d.message); });
@@ -419,7 +421,7 @@ async function main() {
 
   // 12. 房间回收通知观战者：双方都离开后房间回收，还挂着的观战者收到 roomClosed
   console.log('— 房间回收通知观战者 —');
-  const G = io(URL);
+  const G = new WSClient(URL);
   await waitFor(G, 'connect');
   G.emit('joinRoom', { roomId: created.roomId, name: '观众丙' });
   const specG = await waitFor(G, 'spectatorJoined');
@@ -473,7 +475,7 @@ async function main() {
   check('rollout 打中机身后也顺藤摸瓜（10 次中 ' + nearCount3 + ' 次在附近）', nearCount3 >= 6);
 
   // B. 人机房间完整流程
-  const P = io(URL);
+  const P = new WSClient(URL);
   await waitFor(P, 'connect');
   P.on('error', function () {}); // 领先时被拒等预期内的错误，吞掉即可
 
@@ -559,7 +561,7 @@ async function main() {
   // 断线重连：AI 不掉线，玩家回来继续
   P.disconnect();
   await sleep(200);
-  const P2 = io(URL);
+  const P2 = new WSClient(URL);
   await waitFor(P2, 'connect');
   P2.on('error', function () {});
   P2.emit('rejoin', { token: aiRoom.token, roomId: aiRoom.roomId });
@@ -573,7 +575,7 @@ async function main() {
   check('重连后 AI 继续走棋', afterRejoin.attacker === 1);
 
   // 观战兼容：第三人进入人机房间观战
-  const S = io(URL);
+  const S = new WSClient(URL);
   await waitFor(S, 'connect');
   const errS = [];
   S.on('error', function (d) { errS.push(d.message); });
@@ -597,7 +599,7 @@ async function main() {
   S.disconnect();
 
   // 回收后重连失败（房间已删除）
-  const P3 = io(URL);
+  const P3 = new WSClient(URL);
   await waitFor(P3, 'connect');
   P3.emit('rejoin', { token: aiRoom.token, roomId: aiRoom.roomId });
   const rejFail = await waitFor(P3, 'rejoinFailed');
@@ -605,12 +607,35 @@ async function main() {
   P3.disconnect();
 
   // 异常输入：空昵称被拒
-  const P4 = io(URL);
+  const P4 = new WSClient(URL);
   await waitFor(P4, 'connect');
   P4.emit('createRoomAI', { name: '   ' });
   const errAI = await waitFor(P4, 'error');
   check('人机房间空昵称被拒绝', errAI.message.indexOf('昵称') !== -1);
   P4.disconnect();
+
+  // 容错：非法 JSON 会被服务器关闭连接（1003）
+  {
+    const raw = new WebSocket('ws://localhost:3000/ws');
+    const badClosed = new Promise(function (resolve) {
+      const t = setTimeout(function () { resolve(-1); }, 3000);
+      raw.onopen = function () { raw.send('这不是JSON{{{'); };
+      raw.onclose = function (e) { clearTimeout(t); resolve(e.code); };
+    });
+    const code = await badClosed;
+    check('非法 JSON 会被服务器关闭连接（1003）', code === 1003);
+  }
+
+  // 容错：未知事件名被忽略，连接不被关闭，还能正常建房
+  const Z = new WSClient(URL);
+  await waitFor(Z, 'connect');
+  Z.emit('noSuchEvent', { hello: 1 });
+  Z.emit('createRoom', { name: '容错测试' });
+  const zRoom = await waitFor(Z, 'roomCreated');
+  check('未知事件名被忽略，连接不被关闭', /^[A-Z0-9]{4}$/.test(zRoom.roomId));
+  Z.emit('leaveRoom', {});
+  await waitFor(Z, 'leftRoom');
+  Z.disconnect();
 
   C.disconnect(); D.disconnect();
   await sleep(200);

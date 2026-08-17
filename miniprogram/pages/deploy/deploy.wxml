@@ -1,0 +1,38 @@
+<!-- 部署页：100 格棋盘 + 朝向按钮 + 随机/清空/确认 + 对方状态 -->
+<view class="page {{themeClass}}">
+  <view class="topbar">
+    <text class="side link" bindtap="onBackTap">← 菜单</text>
+    <text class="title">部署飞机</text>
+    <text class="side link" bindtap="onCopyRoomTap">邀请</text>
+  </view>
+  <view class="room-row">房间号 <text class="room-tag">{{roomId}}</text></view>
+
+  <view class="count-row">{{countText}}</view>
+
+  <view class="board-wrap">
+    <view class="board">
+      <view wx:for="{{cells}}" wx:key="index" class="board-cell {{item.cls}}"
+            data-r="{{item.r}}" data-c="{{item.c}}" bindtap="onCellTap"></view>
+    </view>
+  </view>
+
+  <view class="dir-row">
+    <view wx:for="{{dirs}}" wx:key="key"
+          class="dir-btn {{item.active ? 'active' : ''}}"
+          data-dir="{{item.key}}" bindtap="onDirTap">{{item.label}}</view>
+  </view>
+
+  <view class="btn-row">
+    <view class="btn small" bindtap="onRandomTap">随机布局</view>
+    <view class="btn small" bindtap="onClearTap">清空</view>
+  </view>
+
+  <view wx:if="{{showUnconfirm}}" class="btn" bindtap="onUnconfirmTap">取消确认</view>
+  <view wx:else class="btn primary" bindtap="onConfirmTap">确认部署</view>
+
+  <view class="opponent-row">
+    <text class="dot {{oppOnline ? 'dot-on' : 'dot-off'}}" wx:if="{{hasOpp}}"></text>
+    <text class="opp-name">{{oppName}}</text>
+  </view>
+  <view class="ready-status">{{readyStatus}}</view>
+</view>

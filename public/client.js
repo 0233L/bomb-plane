@@ -601,6 +601,20 @@ function onEnemyCellClick(r, c) {
 function bindSocketEvents() {
   const s = state.socket;
 
+  // 连接建立（原生 WebSocket 自动重连成功后也会触发）：
+  // 如果之前正处在某个房间里（有 roomId + token），自动恢复现场——
+  // 等价于刷新页面后按网址恢复，顺便修复网络闪断后页面僵住的问题
+  s.on('connect', function () {
+    if (state.roomId && state.token) {
+      s.emit('rejoin', { token: state.token, roomId: state.roomId });
+    }
+  });
+
+  // 连接断开：提示正在重连（ws.js 会按指数退避自动重连）
+  s.on('disconnect', function () {
+    toast('连接断开，正在重连…');
+  });
+
   s.on('error', function (d) {
     toast(d.message);
     // 清除所有"处理中"格子的样式（比如领先方点击被拒绝，格子不会收到揭示结果）
@@ -995,9 +1009,9 @@ function bindUIEvents() {
 
 // ---------- 启动 ----------
 function init() {
-  // 优先用 WebSocket 长连接（一次建立、持续复用，消息更快更稳）；
-  // 万一网络环境不支持再退回 polling 模式
-  state.socket = io({ transports: ['websocket', 'polling'] });
+  // 用原生 WebSocket 长连接（一次建立、持续复用，消息更快更稳）
+  // ws.js 的 WSClient 接口与 socket.io 兼容，断开后自动重连
+  state.socket = new WSClient();
   bindSocketEvents();
   bindUIEvents();
   applyTheme(); // 按上次选择 / 系统偏好设置主题（含右上角按钮图标）

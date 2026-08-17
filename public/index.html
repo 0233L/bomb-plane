@@ -193,8 +193,8 @@
     </div>
   </div>
 
-  <!-- 脚本加载顺序：socket.io 客户端 → 共用游戏逻辑 → 前端逻辑 -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- 脚本加载顺序：WebSocket 客户端（替代 socket.io）→ 共用游戏逻辑 → 前端逻辑 -->
+  <script src="ws.js"></script>
   <script src="shared.js"></script>
   <script src="client.js"></script>
 </body>

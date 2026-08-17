@@ -1,0 +1,13 @@
+/* 首页：最近房间列表样式 */
+.room-item {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid var(--grid);
+}
+.room-item:last-child { border-bottom: none; }
+.room-tag { color: var(--text-3); flex: 1; }
+.names-tag { color: var(--muted); margin-right: 20rpx; max-width: 200rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-actions { display: flex; }
+.room-actions .link { margin-left: 24rpx; }
+.footer-card { margin-top: 20rpx; }

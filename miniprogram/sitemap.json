@@ -1,0 +1,9 @@
+{
+  "desc": "炸飞机小程序",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
-const { Server } = require('socket.io');
+const { WebSocketServer } = require('ws');
 
 // 前后端共用的游戏逻辑（飞机形状、摆放校验等）
 const shared = require('./public/shared.js');
@@ -75,9 +75,11 @@ function headsLeftOf(room) {
   });
 }
 
-// 给房间里所有在线玩家广播事件
+// 给房间里所有在线玩家广播事件（roomConns 注册表见文件尾「连接层」）
 function emitToRoom(room, event, data) {
-  io.to(room.id).emit(event, data);
+  const set = roomConns.get(room.id);
+  if (!set) return;
+  set.forEach(function (conn) { conn.emit(event, data); });
 }
 
 // 给单个 socket 发中文错误提示（客户端会弹小提示条）
@@ -196,7 +198,7 @@ function scheduleRoomCleanup(room) {
     r.cleanupTimer = null;
     if (allHumansOffline(r)) {
       console.log(`[${room.id}] 真人离线超时，回收房间`);
-      io.to(room.id).emit('roomClosed', { message: '双方都已离开，房间已回收' }); // 提醒还挂着的观战者
+      emitToRoom(r, 'roomClosed', { message: '双方都已离开，房间已回收' }); // 提醒还挂着的观战者
       // 清掉 AI 的定时器，防止回收后还触发
       if (r.aiTimer) clearTimeout(r.aiTimer);
       if (r.aiRematchTimer) clearTimeout(r.aiRematchTimer);
@@ -382,7 +384,7 @@ function handleJoinRoom(socket, data) {
     online: [room.players[0].connected, true] // 房主可能正处于断线中
   });
   // 通知房主：对手来了
-  socket.to(room.id).emit('opponentJoined', { names: [room.players[0].name, name] });
+  emitToOthers(socket, room.id, 'opponentJoined', { names: [room.players[0].name, name] });
 }
 
 // 观战席：房间已满时进入。能看双方已揭示的格子，不能下棋；
@@ -436,12 +438,12 @@ function handleRejoin(socket, data) {
 
   // 如果旧连接还活着（比如在另一个标签页），先顶掉它，
   // 清空它的房间绑定，这样它的 disconnect 事件不会误触断线流程
-  const oldSocket = io.sockets.sockets.get(player.socketId);
-  if (oldSocket && oldSocket.id !== socket.id) {
-    oldSocket.data.roomId = null;
-    oldSocket.data.seat = null;
-    oldSocket.data.token = null;
-    oldSocket.disconnect(true);
+  const oldConn = allConns.get(player.socketId);
+  if (oldConn && oldConn.id !== socket.id) {
+    oldConn.data.roomId = null;
+    oldConn.data.seat = null;
+    oldConn.data.token = null;
+    oldConn.disconnect(); // ws.close() → onclose → handleDisconnect，此时 locate 查不到它，忽略
   }
 
   // 把新连接绑定到房间
@@ -610,59 +612,171 @@ function handleRematch(socket) {
   }
 }
 
+// ---------- 连接层：原生 WebSocket（替代 socket.io，2026-08 全站迁移） ----------
+// 协议：客户端发 { type: 事件名, data: 数据 }，服务器按 type 分发到
+// 同一个 handleXxx 处理函数；服务器广播同样发 { type, data }。
+// 事件名与 socket.io 时代完全一致，业务逻辑一行没改。
+// 网页端、小程序端（wx.connectSocket）、测试脚本走同一个协议。
+
+// 两个注册表，替代 socket.io 的 io.to / io.sockets.sockets.get：
+const allConns = new Map();   // 连接 id -> 连接对象（重连时按 id 顶掉旧连接用）
+const roomConns = new Map();  // 房间号 -> 连接对象 Set（给房间广播用）
+let connSeq = 0;              // 连接 id 递增计数器
+
+// 给房间里除了自己以外的连接广播（替代 socket.to(room.id).emit）
+function emitToOthers(conn, roomId, event, data) {
+  const set = roomConns.get(roomId);
+  if (!set) return;
+  set.forEach(function (c) { if (c !== conn) c.emit(event, data); });
+}
+
+// 把一条原生 WebSocket 包装成 handler 认识的「连接对象」：
+// 接口与 socket.io 的 socket 一致（id / data / join / leave / emit / to().emit / disconnect）
+function wrapWs(ws) {
+  const conn = {
+    id: 'ws_' + (++connSeq),
+    data: {},              // 绑定 roomId / seat / token / spectator（和原来一样）
+    _rooms: new Set(),     // 加入过的房间，断线时清理注册表用
+    _ws: ws
+  };
+  conn.join = function (roomId) {
+    conn._rooms.add(roomId);
+    if (!roomConns.has(roomId)) roomConns.set(roomId, new Set());
+    roomConns.get(roomId).add(conn);
+  };
+  conn.leave = function (roomId) {
+    conn._rooms.delete(roomId);
+    const set = roomConns.get(roomId);
+    if (set) set.delete(conn);
+  };
+  conn.emit = function (event, data) {
+    if (ws.readyState === 1 /* OPEN */) {
+      ws.send(JSON.stringify({ type: event, data: data === undefined ? {} : data }));
+    }
+  };
+  conn.to = function (roomId) {
+    return { emit: function (event, data) { emitToOthers(conn, roomId, event, data); } };
+  };
+  conn.disconnect = function () { try { ws.close(); } catch (e) { /* 忽略 */ } };
+  return conn;
+}
+
+// 断开连接时清理注册表（连接从所有房间移除后，广播就再也碰不到它）
+function cleanupConns(conn) {
+  allConns.delete(conn.id);
+  conn._rooms.forEach(function (roomId) {
+    const set = roomConns.get(roomId);
+    if (set) {
+      set.delete(conn);
+      if (set.size === 0) roomConns.delete(roomId);
+    }
+  });
+  conn._rooms.clear();
+}
+
+// 收到一条消息：JSON -> {type, data} -> 分发到对应 handler；坏 JSON 关连接
+function handleWsMessage(conn, raw) {
+  let msg;
+  try { msg = JSON.parse(raw); } catch (e) {
+    conn._ws.close(1003, 'invalid json');
+    return;
+  }
+  if (!msg || typeof msg.type !== 'string') return; // 未知格式忽略（容错测试覆盖）
+  const data = (msg.data && typeof msg.data === 'object') ? msg.data : {};
+  const handlers = {
+    createRoom: handleCreateRoom,
+    createRoomAI: handleCreateRoomAI,
+    joinRoom: handleJoinRoom,
+    rejoin: handleRejoin,
+    checkRooms: handleCheckRooms,
+    deployConfirm: handleDeployConfirm,
+    deployCancel: handleDeployCancel,
+    reveal: handleReveal,
+    rematch: handleRematch,
+    leaveRoom: handleLeaveRoom
+  };
+  const handler = handlers[msg.type];
+  if (handler) handler(conn, data);
+  // 未知事件名：忽略不崩
+}
+
+// 批量查询房间是否还存在（客户端启动时校验「最近加入的房间」列表，自动删掉失效条目）
+function handleCheckRooms(conn, data) {
+  const ids = Array.isArray(data.roomIds) ? data.roomIds : [];
+  conn.emit('roomsAlive', { alive: ids.filter(function (id) { return rooms.has(String(id)); }) });
+}
+
+// 主动离开房间（玩家离开 / 观战者退出共用）
+function handleLeaveRoom(conn) {
+  if (conn.data.spectator) {
+    // 观战者离开：只从观战席移除，不影响对局
+    removeSpectator(conn);
+    conn.leave(conn.data.roomId);
+    conn.data.roomId = null;
+    conn.data.spectator = false;
+    conn.emit('leftRoom', {});
+    return;
+  }
+  const loc = locate(conn);
+  if (loc) onLeave(loc.room, loc.seat, conn);
+}
+
+// 连接断开：观战者移除；玩家标记离线（不判负）
+function handleDisconnect(conn) {
+  if (conn.data.spectator) {
+    // 观战者断线：从观战席移除（观战者不重连，刷新后重新进即可）
+    removeSpectator(conn);
+    return;
+  }
+  const loc = locate(conn);
+  if (!loc) return; // 没有绑定房间（比如刚被新连接顶掉），忽略
+  onDisconnect(loc.room, loc.seat);
+}
+
 // ---------- 服务器启动 ----------
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
-const io = new Server(server, {
-  pingInterval: 5000,   // 心跳间隔 5 秒
-  pingTimeout: 15000    // 15 秒没心跳判定断线（断网后能较快察觉）
+const wss = new WebSocketServer({ noServer: true });
+
+// 升级握手：只接管 /ws 路径（其它路径的升级请求直接断开）
+server.on('upgrade', function (request, socket, head) {
+  if (request.url.split('?')[0] === '/ws') {
+    wss.handleUpgrade(request, socket, head, function (ws) {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
-io.on('connection', function (socket) {
-  console.log(`新连接 ${socket.id}`);
+// 心跳：每 5 秒 ping 一次，15 秒没等到 pong 就判死关闭（断网后能较快察觉）
+wss.on('connection', function (ws) {
+  ws.isAlive = true;
+  ws.on('pong', function () { ws.isAlive = true; });
 
-  socket.on('createRoom', function (data) { handleCreateRoom(socket, data || {}); });
-  socket.on('createRoomAI', function (data) { handleCreateRoomAI(socket, data || {}); }); // 人机对战房间
-  socket.on('joinRoom', function (data) { handleJoinRoom(socket, data || {}); });
-  socket.on('rejoin', function (data) { handleRejoin(socket, data || {}); });
+  const conn = wrapWs(ws);
+  allConns.set(conn.id, conn);
+  console.log(`新连接 ${conn.id}`);
 
-  // 批量查询房间是否还存在（客户端启动时校验「最近加入的房间」列表，自动删掉失效条目）
-  socket.on('checkRooms', function (data) {
-    const ids = Array.isArray(data && data.roomIds) ? data.roomIds : [];
-    socket.emit('roomsAlive', { alive: ids.filter(function (id) { return rooms.has(String(id)); }) });
+  ws.on('message', function (raw) { handleWsMessage(conn, raw); });
+  ws.on('close', function () {
+    cleanupConns(conn);      // 先从注册表移除，广播不再碰到它
+    handleDisconnect(conn);  // 再走断线流程（观战者移除 / 玩家标记离线）
   });
-  socket.on('deployConfirm', function (data) { handleDeployConfirm(socket, data || {}); });
-  socket.on('deployCancel', function () { handleDeployCancel(socket); });
-  socket.on('reveal', function (data) { handleReveal(socket, data || {}); });
-  socket.on('rematch', function () { handleRematch(socket); });
-  socket.on('leaveRoom', function () {
-    if (socket.data.spectator) {
-      // 观战者离开：只从观战席移除，不影响对局
-      removeSpectator(socket);
-      socket.leave(socket.data.roomId);
-      socket.data.roomId = null;
-      socket.data.spectator = false;
-      socket.emit('leftRoom', {});
-      return;
-    }
-    const loc = locate(socket);
-    if (loc) onLeave(loc.room, loc.seat, socket);
-  });
-
-  socket.on('disconnect', function () {
-    if (socket.data.spectator) {
-      // 观战者断线：从观战席移除（观战者不重连，刷新后重新进即可）
-      removeSpectator(socket);
-      return;
-    }
-    const loc = locate(socket);
-    if (!loc) return; // 没有绑定房间（比如刚被新连接顶掉），忽略
-    onDisconnect(loc.room, loc.seat);
-  });
+  ws.on('error', function () { /* 出错后 close 一定会跟着来，由 close 统一处理 */ });
 });
+
+const heartbeatTimer = setInterval(function () {
+  wss.clients.forEach(function (ws) {
+    if (ws.isAlive === false) { ws.terminate(); return; } // 上次 ping 没回应：判死
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 5000);
+wss.on('close', function () { clearInterval(heartbeatTimer); });
 
 server.listen(PORT, function () {
   console.log('炸飞机服务器已启动：http://localhost:' + PORT);

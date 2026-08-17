@@ -1,0 +1,59 @@
+/* 对战页 */
+.room-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 26rpx;
+  margin: 8rpx 0 16rpx;
+}
+.room-tag { color: var(--primary); font-weight: bold; }
+.spec-badge {
+  margin-left: 20rpx;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999rpx;
+  padding: 2rpx 16rpx;
+  font-size: 24rpx;
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8rpx 0 16rpx;
+}
+.score-num { font-size: 44rpx; font-weight: bold; }
+.score-sep { margin: 0 30rpx; color: var(--faint); font-size: 32rpx; }
+
+.battle-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: 12rpx;
+  padding: 14rpx 20rpx;
+  margin: 16rpx 0 8rpx;
+}
+.panel-left { display: flex; align-items: center; min-width: 0; }
+.panel-name {
+  font-size: 28rpx;
+  max-width: 320rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-right { display: flex; align-items: center; }
+.panel-stat { font-size: 24rpx; color: var(--text-3); margin-right: 16rpx; }
+.panel-turn { font-size: 24rpx; color: var(--primary); }
+
+.board-title {
+  text-align: center;
+  font-size: 28rpx;
+  margin: 8rpx 0;
+}
+.board-note { font-size: 22rpx; color: var(--faint); margin-left: 10rpx; }
+
+.wait-card { text-align: center; padding: 80rpx 24rpx; }
+.wait-title { font-size: 34rpx; }
+.wait-sub { color: var(--muted); font-size: 26rpx; margin: 16rpx 0 40rpx; }

@@ -1,0 +1,181 @@
+/* ============================================
+   app.wxss —— 全局样式：主题（浅色/深色）+ 棋盘格子 + 通用组件
+   颜色取自网页版 public/style.css，两边视觉一致。
+   ============================================ */
+
+/* ---------- 主题：页面根节点挂 theme-light / theme-dark 两个类 ---------- */
+.theme-light {
+  --bg: #f0f4f8;                /* 页面背景 */
+  --surface: #ffffff;           /* 卡片 / 面板 / 棋盘底色 */
+  --text: #1f2937;              /* 主文字 */
+  --text-2: #334155;            /* 次要文字 */
+  --text-3: #475569;            /* 辅助文字 */
+  --muted: #64748b;             /* 小注释 */
+  --faint: #94a3b8;             /* 最淡 */
+  --primary: #2563eb;           /* 主色 */
+  --cell-empty: #f5f5f5;        /* 棋盘：空格 */
+  --cell-unknown: #1e293b;      /* 棋盘：未知格 */
+  --cell-pending: #3b5bdb;      /* 棋盘：等待服务器回复 */
+  --edge: #64748b;              /* 飞机轮廓线 */
+  --grid: #cbd5e1;              /* 棋盘网格线 */
+  --dimmed-opacity: 0.45;       /* 没被打过的格子调暗程度 */
+}
+
+.theme-dark {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #e2e8f0;
+  --text-2: #cbd5e1;
+  --text-3: #94a3b8;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --primary: #3b82f6;
+  --cell-empty: #334155;
+  --cell-unknown: #0f172a;
+  --cell-pending: #3b82f6;
+  --edge: #94a3b8;
+  --grid: #334155;
+  --dimmed-opacity: 0.5;
+}
+
+page {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 28rpx;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 24rpx 32rpx 60rpx;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---------- 顶部条 ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+.topbar .title { font-size: 40rpx; font-weight: bold; }
+.topbar .side { font-size: 28rpx; color: var(--primary); }
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--surface);
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-top: 20rpx;
+}
+.card-title { font-size: 30rpx; font-weight: bold; margin-bottom: 12rpx; }
+.subtitle { text-align: center; color: var(--muted); font-size: 26rpx; }
+
+/* ---------- 输入框 / 按钮 ---------- */
+.input {
+  background: var(--bg);
+  border-radius: 12rpx;
+  padding: 18rpx 20rpx;
+  color: var(--text);
+  margin: 12rpx 0 20rpx;
+}
+.label { display: block; font-size: 26rpx; color: var(--text-3); margin: 16rpx 0 4rpx; }
+
+.btn {
+  background: var(--surface);
+  color: var(--text-2);
+  border: 1rpx solid var(--faint);
+  border-radius: 12rpx;
+  padding: 20rpx 0;
+  text-align: center;
+  font-size: 30rpx;
+  margin-top: 16rpx;
+}
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.small { display: inline-block; padding: 12rpx 28rpx; font-size: 26rpx; margin-top: 0; }
+.btn.disabled { opacity: 0.5; }
+.btn-row { display: flex; justify-content: space-between; margin-top: 16rpx; }
+
+.link { color: var(--primary); }
+.link.danger { color: #ef5350; }
+
+/* ---------- 在线状态点 ---------- */
+.dot { display: inline-block; width: 18rpx; height: 18rpx; border-radius: 50%; margin-right: 10rpx; }
+.dot-on { background: #22c55e; }
+.dot-off { background: #ef4444; }
+
+/* ---------- 棋盘 ---------- */
+.board-wrap { display: flex; justify-content: center; }
+.board {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+.board-cell {
+  position: relative;
+  width: 10%;
+  height: 68rpx;   /* 与 10% 宽度近似相等，所有屏幕下都接近正方形 */
+  box-sizing: border-box;
+  border: 1rpx solid var(--grid);
+  background: var(--surface);
+}
+.board-cell.cell-head { background: #ef5350; }
+.board-cell.cell-body { background: #66bb6a; }
+.board-cell.cell-empty { background: var(--cell-empty); }
+.board-cell.cell-unknown { background: var(--cell-unknown); }
+/* 没被打过的格子调暗（己方棋盘常驻；对方棋盘对局结束后公开飞机时） */
+.board-cell.dimmed { opacity: var(--dimmed-opacity); }
+/* 飞机外轮廓线（深色，统一一种颜色，只画在外边缘） */
+.board-cell.edge-t { border-top: 4rpx solid var(--edge); }
+.board-cell.edge-b { border-bottom: 4rpx solid var(--edge); }
+.board-cell.edge-l { border-left: 4rpx solid var(--edge); }
+.board-cell.edge-r { border-right: 4rpx solid var(--edge); }
+/* 上一手揭示的格子：蓝色框框选 */
+.board-cell.last-reveal { box-shadow: inset 0 0 0 5rpx var(--primary); z-index: 1; }
+/* 已点击、等待服务器回复的格子：立即变色反馈 */
+.board-cell.cell-pending { background: var(--cell-pending); }
+
+/* ---------- 结束横幅 ---------- */
+.over-banner {
+  background: var(--surface);
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-top: 20rpx;
+  text-align: center;
+}
+.over-title { font-size: 40rpx; font-weight: bold; }
+.over-detail { color: var(--muted); margin-top: 8rpx; font-size: 26rpx; }
+.over-status { color: var(--muted); margin-top: 12rpx; font-size: 24rpx; }
+
+/* ---------- 弹窗 ---------- */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 16rpx;
+  padding: 32rpx;
+  width: 86%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.rules-h3 { font-size: 30rpx; font-weight: bold; margin: 20rpx 0 8rpx; }
+.rules-p { font-size: 26rpx; color: var(--text-2); line-height: 1.8; }
+.rules-list { font-size: 26rpx; color: var(--text-2); line-height: 2; padding-left: 28rpx; }
+.rules-planes { display: flex; flex-wrap: wrap; justify-content: space-between; margin: 12rpx 0; }
+.rules-plane { width: 48%; margin-bottom: 16rpx; text-align: center; font-size: 24rpx; color: var(--muted); }
+.mini-board { display: flex; flex-wrap: wrap; border-radius: 6rpx; overflow: hidden; margin-bottom: 6rpx; }
+.mini-cell { width: 20%; height: 56rpx; box-sizing: border-box; border: 1rpx solid var(--grid); background: var(--surface); }
+.mini-cell.cell-head { background: #ef5350; }
+.mini-cell.cell-body { background: #66bb6a; }

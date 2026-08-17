@@ -1,0 +1,17 @@
+{
+  "description": "炸飞机（BombPlane）微信小程序版，与网页版共用同一台服务器、同一个房间，可以跨端联机对战",
+  "compileType": "miniprogram",
+  "appid": "",
+  "projectname": "bomb-plane-miniprogram",
+  "libVersion": "3.0.0",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false,
+    "coverView": true,
+    "ignoreUploadUnusedFiles": true
+  },
+  "condition": {}
+}
