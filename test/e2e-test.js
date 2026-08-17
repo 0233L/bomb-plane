@@ -101,6 +101,16 @@ async function main() {
   const noKeyRes = await fetch('http://localhost:3000/stats');
   check('/stats 错误或缺失钥匙返回 403', badRes.status === 403 && noKeyRes.status === 403);
 
+  // /stats.json（本地备份脚本用的 JSON 接口）
+  const jsonRes = await fetch('http://localhost:3000/stats.json?key=' + encodeURIComponent(STATS_KEY));
+  const jsonData = await jsonRes.json();
+  check('/stats.json 返回 JSON 且含两位访客明细', jsonRes.status === 200 &&
+    jsonData.total >= 1 && Array.isArray(jsonData.visitors) &&
+    jsonData.visitors.some(function (v) { return v.id === vidA; }) &&
+    jsonData.visitors.some(function (v) { return v.id === vidB; }));
+  const jsonBad = await fetch('http://localhost:3000/stats.json?key=wrong');
+  check('/stats.json 错误钥匙返回 403', jsonBad.status === 403);
+
   // stats.json 落盘（等过 1 秒防抖再读）
   await sleep(1500);
   const saved = JSON.parse(fsx.readFileSync(pathx.join(__dirname, '..', 'stats.json'), 'utf8'));

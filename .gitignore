@@ -14,3 +14,4 @@ screenshot*
 # 本地访客统计数据（运行时自动生成；Render 上是临时的，本地开发时保留）
 stats.json
 stats.json.tmp
+stats-backup.jsonl

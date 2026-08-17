@@ -863,6 +863,25 @@ app.get('/stats', function (req, res) {
   res.send(renderStatsHtml());
 });
 
+// 访客统计 JSON 接口（本地备份脚本 backup-stats.js 用；同样要 ?key= 才能看）
+app.get('/stats.json', function (req, res) {
+  if (req.query.key !== STATS_KEY) {
+    res.status(403).json({ error: '需要正确的 ?key= 参数' });
+    return;
+  }
+  const list = [];
+  visitors.forEach(function (v, id) {
+    list.push({ id: id, platform: v.platform, firstVisit: v.firstVisit, lastVisit: v.lastVisit, visits: v.visits });
+  });
+  list.sort(function (a, b) { return b.firstVisit - a.firstVisit; });
+  let webCount = 0, miniCount = 0, totalVisits = 0;
+  visitors.forEach(function (v) {
+    if (v.platform === 'mini') miniCount++; else webCount++;
+    totalVisits += v.visits;
+  });
+  res.json({ total: visitors.size, web: webCount, mini: miniCount, totalVisits: totalVisits, visitors: list });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
