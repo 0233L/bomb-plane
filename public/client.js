@@ -578,22 +578,29 @@ function renderBattleBoards() {
     } else {
       td.style.boxShadow = ''; // 无声呐框：清掉内联样式，class 标记正常生效
     }
-    // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）；
-    // 毁灭菇选区画「十字轮廓」（doomShadows 地图：4 个臂格各 3 条外缘线，内联
-    // box-shadow，与声呐外圈框逗号合并），中心格无框线 → 走下方 cell-pick 高亮；
-    // 其他道具保持每格独立 outline 描边。
-    const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
-    const doomKeys = isDoomPick && (state.pickCells.length ? state.pickCells : state.pickHover);
-    const doomShadows = doomKeys && doomKeys.length ? doomPickShadows(doomKeys) : null;
-    const doomKey = r + ',' + c;
-    const doomEdge = doomShadows && doomShadows[doomKey];
-    if (doomEdge) {
-      // 毁灭菇十字轮廓的臂格（轮廓线格不在 pickCells/pickHover 外的角格，就是臂格本身）
-      td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomEdge : doomEdge;
-    } else {
-      if (state.pickCells.indexOf(doomKey) !== -1) td.classList.add('cell-pick');
-      if (state.pickHover.indexOf(doomKey) !== -1) td.classList.add('cell-pick-hover');
+    // 道具选区高亮：区域型道具（声呐/探测者/吞噬者/毁灭菇）只画区域「外部轮廓」——
+    // 外缘线内联 box-shadow（3×3 = 外圈 12 条边、毁灭菇 = 十字外缘），区域内部无线条；
+    // 锚点格（3×3 左上角 / 毁灭菇中心）用浅金背景填充指示——锚点格若画完整方框，
+    // 就形成「内部轮廓」（用户实测反馈过）。非区域型道具（双发/无所遁形）是单格或
+    // 双格，没有内部线问题，保持每格独立 outline 描边。
+    const isRegionPick = state.itemPick && (state.itemPick.itemId === 'sonar' ||
+      state.itemPick.itemId === 'pro' || state.itemPick.itemId === 'devour' ||
+      state.itemPick.itemId === 'doom');
+    const pickKeys = isRegionPick && (state.pickCells.length ? state.pickCells : state.pickHover);
+    const regionShadows = pickKeys && pickKeys.length ?
+      regionPickShadows(state.itemPick.itemId, pickKeys) : null;
+    const regionKey = r + ',' + c;
+    const regionEdge = regionShadows && regionShadows[regionKey];
+    if (regionEdge) {
+      // 轮廓线格（与声呐外圈框、上一步蓝框等已有阴影逗号合并）
+      td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + regionEdge : regionEdge;
+    } else if (!isRegionPick) {
+      if (state.pickCells.indexOf(regionKey) !== -1) td.classList.add('cell-pick');
+      if (state.pickHover.indexOf(regionKey) !== -1) td.classList.add('cell-pick-hover');
     }
+    // 锚点格：浅金背景填充（无线条）。注意它可能同时是轮廓角格（3×3 左上角），
+    // 两样都加：外圈角线 + 填充，互不冲突
+    if (pickKeys && regionKey === pickKeys[0]) td.classList.add('cell-pick-anchor');
   });
 
   // ---- 上一手揭示的格子：蓝色框框选 ----
@@ -811,35 +818,33 @@ function crossKeys(row, col) {
   return [row + ',' + col, (row - 1) + ',' + col, (row + 1) + ',' + col, row + ',' + (col - 1), row + ',' + (col + 1)];
 }
 
-// 毁灭菇十字选区：3×3 完整外圈方框（和声呐外圈框完全同款差集模型——inset 阴影的
-// 可见区在偏移相反侧：0 3px 画顶部、0 -3px 画底部、3px 0 画左侧、-3px 0 画右侧）。
-// 毁灭菇选区的「十字轮廓」：只画十字 5 格的外缘线（每臂 3 条边），中心格无线条
-// （走 cell-pick 高亮）；轮廓内部没有任何线条。inset 阴影 = 线画在方格内部。
-// keys[0] 是十字中心（'r,c'）；返回 {'r,c': box-shadow}，与声呐外圈框逗号合并
-function doomPickShadows(keys) {
+// 区域型道具（声呐/探测者/吞噬者 3×3、毁灭菇十字）选区的「外部轮廓」阴影地图。
+// 只画区域最外缘的线（3×3 = 外圈 12 条边；十字 = 4 个臂格各 3 条边），区域内部
+// 无线条——内部任何线条（含锚点格的完整方框）都会形成「内部轮廓」。
+// 锚点格（keys[0]：3×3 左上角 / 十字中心）不加框线，由调用方加 cell-pick-anchor
+// 浅金填充指示。inset 阴影的可见区在偏移相反侧：0 3px 画顶部、0 -3px 画底部、
+// 3px 0 画左侧、-3px 0 画右侧（与声呐外圈框同款差集模型），线画在方格内部。
+// keys 是选区的 'r,c' 数组（固定选区 = pickCells，悬停预览 = pickHover，keys[0]
+// 都是锚点）；返回 {'r,c': box-shadow}，与已有阴影逗号合并
+function regionPickShadows(itemId, keys) {
   const c = keys[0].split(',');
-  const cr = +c[0], cc = +c[1];
+  const r0 = +c[0], c0 = +c[1];
   const map = {};
-  const addEdge = function (rr, cc2, shadow) {
-    const k = rr + ',' + cc2;
+  const addEdge = function (rr, cc, shadow) {
+    const k = rr + ',' + cc;
     map[k] = (map[k] ? map[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f59e0b';
   };
-  // 上臂（中心正上方）：顶边 + 左右两条竖边
-  addEdge(cr - 1, cc, '0 3px');
-  addEdge(cr - 1, cc, '3px 0');
-  addEdge(cr - 1, cc, '-3px 0');
-  // 下臂：底边 + 左右两条竖边
-  addEdge(cr + 1, cc, '0 -3px');
-  addEdge(cr + 1, cc, '3px 0');
-  addEdge(cr + 1, cc, '-3px 0');
-  // 左臂：顶边 + 底边 + 左边一条竖边
-  addEdge(cr, cc - 1, '0 3px');
-  addEdge(cr, cc - 1, '0 -3px');
-  addEdge(cr, cc - 1, '3px 0');
-  // 右臂：顶边 + 底边 + 右边一条竖边
-  addEdge(cr, cc + 1, '0 3px');
-  addEdge(cr, cc + 1, '0 -3px');
-  addEdge(cr, cc + 1, '-3px 0');
+  if (itemId === 'doom') {
+    // 毁灭菇十字：上臂顶边 + 左右竖边；下臂底边 + 左右竖边；左臂顶底 + 左边；右臂顶底 + 右边
+    addEdge(r0 - 1, c0, '0 3px'); addEdge(r0 - 1, c0, '3px 0'); addEdge(r0 - 1, c0, '-3px 0');
+    addEdge(r0 + 1, c0, '0 -3px'); addEdge(r0 + 1, c0, '3px 0'); addEdge(r0 + 1, c0, '-3px 0');
+    addEdge(r0, c0 - 1, '0 3px'); addEdge(r0, c0 - 1, '0 -3px'); addEdge(r0, c0 - 1, '3px 0');
+    addEdge(r0, c0 + 1, '0 3px'); addEdge(r0, c0 + 1, '0 -3px'); addEdge(r0, c0 + 1, '-3px 0');
+  } else {
+    // 声呐 / 探测者 / 吞噬者：3×3 外圈 12 条边（与声呐释放后的外框完全同款差集模型）
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3px'); addEdge(r0 + 2, c, '0 -3px'); } // 上下边
+    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3px 0'); addEdge(r, c0 + 2, '-3px 0'); } // 左右边
+  }
   return map;
 }
 
@@ -958,13 +963,17 @@ function confirmItem() {
   state.socket.emit('useItem', data);
 }
 
-// 悬停预览（仅区域型道具）：鼠标移到哪，预览包含它的 3×3 区域
-// 只改格子的类不动整盘渲染；点选固定选区后预览停止
+// 悬停预览（仅区域型道具）：鼠标移到哪，预览包含它的 3×3 区域 / 十字选区。
+// 区域轮廓的阴影每格不同（角格 2 条边 / 边格 1 条边 / 锚点格无线），单个 class
+// 表达不了，所以整盘重渲染；用 rAF 合并高频 mousemove 事件，避免每帧全量渲染。
+// 点选固定选区后渲染循环优先用 pickCells，悬停预览自然让位
+let hoverFrame = null;
 function updatePickHover(keys) {
   state.pickHover = keys;
-  $('#enemy-board').querySelectorAll('td').forEach(function (td) {
-    const on = keys.indexOf(td.dataset.row + ',' + td.dataset.col) !== -1;
-    td.classList.toggle('cell-pick-hover', on);
+  if (hoverFrame) return; // 上一帧还没渲染：合并本次移动，以最后位置为准
+  hoverFrame = requestAnimationFrame(function () {
+    hoverFrame = null;
+    renderBattleBoards();
   });
 }
 

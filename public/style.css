@@ -615,8 +615,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   text-shadow: 0 0 4px rgba(0, 0, 0, .6);
 }
 
-/* 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览） */
+/* 道具选区高亮：金色描边（仅非区域型道具：双发/无所遁形的单格、双格——没有内部线问题） */
 .board td.cell-pick, .board td.cell-pick-hover { outline: 3px solid #f59e0b; z-index: 1; }
+/* 区域型道具选区的锚点格（3×3 左上角 / 毁灭菇中心）：浅金色半透明填充。
+   锚点格若画完整方框就形成「内部轮廓」，所以用填充不用线条指示位置 */
+.board td.cell-pick-anchor { background-color: rgba(245, 158, 11, .28); }
 /* 选区模式：对方棋盘十字光标，提示正在选区域 */
 #enemy-board.picking td.cell-unknown { cursor: crosshair; }
 
