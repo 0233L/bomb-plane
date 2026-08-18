@@ -138,6 +138,32 @@ page {
 .board-cell.last-reveal { box-shadow: inset 0 0 0 5rpx var(--primary); z-index: 1; }
 /* 已点击、等待服务器回复的格子：立即变色反馈 */
 .board-cell.cell-pending { background: var(--cell-pending); }
+/* 吞噬者摧毁的格子：深灰（内容保密；对局结束后公开真实内容），✕ 由 text 渲染 */
+.board-cell.cell-destroyed { background: var(--cell-unknown); color: var(--faint); }
+/* 机头被摧毁（视为已发现飞机）：灰底红边，✕ 由 text 渲染 */
+.board-cell.cell-head-destroyed { background: var(--cell-unknown); border: 4rpx solid #ef5350; }
+/* 毁灭菇冻结的格子：紫色 ❄ + 紫边（冻结期间不可揭示、不可被技能选中） */
+.board-cell.cell-frozen { color: #a78bfa; border: 4rpx solid #a78bfa; }
+/* 格子里的文字（声呐数字 / 摧毁 ✕）：居中金色小字 */
+.cell-sonar-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #fbbf24;
+}
+.board-cell.cell-destroyed .cell-sonar-text,
+.board-cell.cell-head-destroyed .cell-sonar-text { color: inherit; font-size: 34rpx; }
+/* 注释标记：长按在未揭示格上标的预期内容（红=机头 绿=机身 灰=空）。
+   用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
+.board-cell.cell-mark-head { box-shadow: inset 0 0 0 5rpx #ef5350; }
+.board-cell.cell-mark-body { box-shadow: inset 0 0 0 5rpx #66bb6a; }
+.board-cell.cell-mark-empty { box-shadow: inset 0 0 0 5rpx var(--cell-empty); }
+/* 道具选区高亮：金色描边（选区模式下优先于注释标记显示） */
+.board-cell.cell-pick { box-shadow: inset 0 0 0 5rpx #f59e0b; z-index: 1; }
 
 /* ---------- 结束横幅 ---------- */
 .over-banner {

@@ -22,9 +22,19 @@ const state = {
   token: null, roomId: null, seat: null, name: '',
   names: ['', ''],
   online: [false, false],
+  mode: 'classic',          // 当前房间玩法：classic（经典）| props（道具版）
+  boardSize: 'S',           // 当前房间地图规格：S=10×10/3架 | M=12×12/4架 | L=14×14/6架
+  coins: [0, 0],            // 双方金币（道具版；经典版为 0）
   steps: [0, 0],
   score: [0, 0],
   headsLeft: [3, 3],
+  sonarResults: [],         // 声呐脉冲的历史结果 [{row, col, count}]（扫雷式推理用）
+  frozenCells: [],          // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己，渲染 ❄）
+  marks: {},                // 注释标记 {'r,c': 'head'|'body'|'empty'}（长按循环标注，仅本机可见，按房间持久化）
+  itemPick: null,           // 道具选区模式：null = 未选择 | {itemId}
+  pickCells: [],            // 已固定的选区格子（'r,c' 字符串数组，金色高亮）
+  pickAnchor: null,         // 3x3 道具的选区锚点（左上角，发给服务器）
+  pickReady: false,         // 选区是否已完整（完整后显示「确认使用」按钮）
   deployConfirmed: [false, false],
   myPlanes: [],
   myShotsReceived: [],
@@ -68,6 +78,15 @@ function loadStorage(key, fallback) {
 }
 function saveStorage(key, value) {
   try { wx.setStorageSync(key, value); } catch (e) { /* 忽略 */ }
+}
+// 注释标记按房间持久化：进房 / 重连恢复，对局结束清除
+function loadMarks() {
+  const saved = loadStorage('bp_marks_' + (state.roomId || ''), null);
+  state.marks = (saved && typeof saved === 'object') ? saved : {};
+}
+function clearMarks() {
+  state.marks = {};
+  saveStorage('bp_marks_' + (state.roomId || ''), {});
 }
 function loadRoomHistory() {
   const list = loadStorage('bp_room_history', []);
@@ -161,8 +180,9 @@ function outlineClassesFor(planes) {
   return result;
 }
 
-// 部署页棋盘：100 格 -> [{r, c, cls}]
+// 部署页棋盘：size×size 格 -> [{r, c, cls}]（规格跟随当前房间，10/12/14）
 function deployCells() {
+  const size = shared.getBoardSpec(state.boardSize).size;
   const cellType = {};
   state.draft.forEach(function (p) {
     shared.getPlaneCells(p.headRow, p.headCol, p.dir).forEach(function (cell, i) {
@@ -171,8 +191,8 @@ function deployCells() {
   });
   const outlines = outlineClassesFor(state.draft);
   const cells = [];
-  for (let r = 0; r < 10; r++) {
-    for (let c = 0; c < 10; c++) {
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
       const key = r + ',' + c;
       cells.push({
         r: r, c: c,
@@ -184,22 +204,30 @@ function deployCells() {
   return cells;
 }
 
+// 冻结判断：该格是否正被毁灭菇冻结（只约束施放者本人，steps 超过 expiry 后解除）
+function isFrozen(r, c) {
+  return state.frozenCells.some(function (f) {
+    return f.row === r && f.col === c && f.owner === state.seat && state.steps[state.seat] < f.expiry;
+  });
+}
+
 // 对战页己方棋盘：自己的飞机（对战阶段不画轮廓）+ 对方打过的位置高亮
 function myBoardCells() {
+  const size = shared.getBoardSpec(state.boardSize).size;
   const revealed = state.over ? state.revealedPlanes : null;
   const myPlanesSrc = (state.spectator && revealed) ? (revealed[0] || []) : state.myPlanes;
-  const myBoard = shared.buildBoard(myPlanesSrc);
+  const myBoard = shared.buildBoard(myPlanesSrc, state.boardSize);
   const myMarks = {};
   state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
   const cells = [];
-  for (let r = 0; r < 10; r++) {
-    for (let c = 0; c < 10; c++) {
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
       let cls = '';
       const cell = myBoard[r][c];
       if (cell === shared.CELL_HEAD) cls = 'cell-head';
       else if (cell === shared.CELL_BODY) cls = 'cell-body';
       if (!myMarks[r + ',' + c]) cls += ' dimmed';
-      cells.push({ r: r, c: c, cls: cls });
+      cells.push({ r: r, c: c, cls: cls, text: '' });
     }
   }
   return cells;
@@ -207,21 +235,44 @@ function myBoardCells() {
 
 // 对战页对方棋盘：未知格 + 已揭示结果；对局结束后暗色公开真实飞机
 function enemyBoardCells() {
+  const size = shared.getBoardSpec(state.boardSize).size;
   const revealed = state.over ? state.revealedPlanes : null;
   const enemySeat = state.spectator ? 1 : (1 - state.seat);
   const enemyPlanes = revealed ? (revealed[enemySeat] || []) : [];
-  const enemyBoard = shared.buildBoard(enemyPlanes);
+  const enemyBoard = shared.buildBoard(enemyPlanes, state.boardSize);
+  // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const enemyMarks = {};
-  state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s.result; });
+  state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s; });
+  // 声呐数字：显示在 3x3 锚点格上（扫雷式推理用）
+  const sonarMap = {};
+  state.sonarResults.forEach(function (sr) { sonarMap[sr.row + ',' + sr.col] = sr.count; });
   const cells = [];
-  for (let r = 0; r < 10; r++) {
-    for (let c = 0; c < 10; c++) {
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
       let cls = '';
-      const res = enemyMarks[r + ',' + c];
-      if (res === 'empty') cls = 'cell-empty';
-      else if (res === 'body') cls = 'cell-body';
-      else if (res === 'head') cls = 'cell-head';
-      else if (revealed) {
+      let text = '';
+      const s = enemyMarks[r + ',' + c];
+      if (revealed && s && (s.result === 'destroyed' || s.destroyed)) {
+        // 对局结束：被摧毁格子的真实内容公开（暗色显示，和没探测过的格子一致）
+        const cell = enemyBoard[r][c];
+        if (cell === shared.CELL_HEAD) cls = 'cell-head';
+        else if (cell === shared.CELL_BODY) cls = 'cell-body';
+        else cls = 'cell-empty';
+        cls += ' dimmed';
+      } else if (s && s.result === 'destroyed') {
+        cls = 'cell-destroyed'; // 吞噬者摧毁的格子：深灰 + ✕（内容保密）
+        text = '✕';
+      } else if (s && s.result === 'head' && s.destroyed) {
+        cls = 'cell-head-destroyed'; // 机头被摧毁：灰色机头（视为已发现）
+        text = '✕';
+      } else if (s && s.result === 'empty') cls = 'cell-empty';
+      else if (s && s.result === 'body') cls = 'cell-body';
+      else if (s && s.result === 'head') cls = 'cell-head';
+      else if (isFrozen(r, c)) {
+        // 毁灭菇冻结的格子：暗色 + 紫色 ❄（冻结期间不可揭示、不可被技能选中）
+        cls = 'cell-unknown cell-frozen';
+        text = '❄';
+      } else if (revealed) {
         const cell = enemyBoard[r][c];
         if (cell === shared.CELL_HEAD) cls = 'cell-head';
         else if (cell === shared.CELL_BODY) cls = 'cell-body';
@@ -230,7 +281,19 @@ function enemyBoardCells() {
       } else {
         cls = 'cell-unknown';
       }
-      cells.push({ r: r, c: c, cls: cls });
+      // 声呐数字（在已揭示格上也能显示；冻结格不显示——冻结期间声呐也不能探测）
+      const count = sonarMap[r + ',' + c];
+      if (count !== undefined && !isFrozen(r, c)) {
+        text = String(count);
+      }
+      // 注释标记：长按在未揭示格上标的预期内容（红=机头 绿=机身 灰=空；中间仍是暗色；
+      // 格子被揭示后自动不显示——注释只是本地猜测，揭示即作废；观战者不显示）
+      if (!s && !state.spectator && !revealed && state.marks[r + ',' + c]) {
+        cls += ' cell-mark-' + state.marks[r + ',' + c];
+      }
+      // 道具选区高亮（battle 页选区交互时设置 state.pickCells）
+      if (state.pickCells.indexOf(r + ',' + c) !== -1) cls += ' cell-pick';
+      cells.push({ r: r, c: c, cls: cls, text: text });
     }
   }
   return cells;
@@ -302,6 +365,9 @@ socket.on('spectatorJoined', function (d) {
   state.seat = 0; // 借用 1 号玩家的视角：左 = 房主，右 = 2 号玩家
   state.names = d.names;
   state.online = d.online;
+  state.mode = d.mode || 'classic';
+  state.boardSize = d.boardSize || 'S';
+  state.coins = d.coins || [0, 0];
   state.steps = d.steps;
   state.score = d.score;
   state.headsLeft = d.headsLeft;
@@ -310,6 +376,12 @@ socket.on('spectatorJoined', function (d) {
   state.rematchVotes = [false, false];
   state.myShotsReceived = d.shots[0] || [];
   state.enemyShotsReceived = d.shots[1] || [];
+  state.sonarResults = d.sonarHistory || [];
+  state.frozenCells = d.frozenCells || [];
+  state.itemPick = null;
+  state.pickCells = [];
+  state.pickAnchor = null;
+  state.pickReady = false;
   state.revealedPlanes = d.planes || null;
   state.phase = d.phase;
   emitLocal('spectatorJoined', d);
@@ -349,9 +421,19 @@ socket.on('battleStart', function (d) {
   state.steps = d.steps;
   state.score = d.score;
   state.online = d.online;
+  state.mode = d.mode || 'classic';
+  state.boardSize = d.boardSize || 'S';
+  state.coins = d.coins || [0, 0];
   state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
   state.myShotsReceived = [];
   state.enemyShotsReceived = [];
+  state.sonarResults = [];
+  state.frozenCells = [];
+  loadMarks(); // 注释标记按房间持久化：进房后恢复
+  state.itemPick = null;
+  state.pickCells = [];
+  state.pickAnchor = null;
+  state.pickReady = false;
   state.revealedPlanes = null;
   state.over = false;
   state.phase = 'battle';
@@ -367,7 +449,57 @@ socket.on('revealResult', function (d) {
   }
   state.headsLeft = d.headsLeft;
   state.steps = d.steps;
+  state.coins = d.coins || state.coins; // 道具版：金币随时同步
   emitLocal('revealResult', d);
+});
+
+// 道具结果：声呐数字 / 吞噬摧毁 / 无所遁形整机揭示
+// （探测者 Pro 和双发连射走上面的 revealResult，不在这里）
+socket.on('itemResult', function (d) {
+  if (d.attacker === state.seat) {
+    // 自己用的道具：结果已出，选区模式结束
+    state.itemPick = null;
+    state.pickCells = [];
+    state.pickAnchor = null;
+    state.pickReady = false;
+    if (d.itemId === 'devour' && d.headHit) {
+      wx.showToast({ title: '吞噬者命中机头！🎯 你找到了一架飞机', icon: 'none' });
+    }
+    if (d.itemId === 'sonar') {
+      wx.showToast({ title: '声呐：区域内有 ' + d.count + ' 个非空格', icon: 'none' });
+    }
+  }
+  if (d.itemId === 'sonar') {
+    // 声呐数字：记入历史（锚点格上显示数字，扫雷式推理用）
+    state.sonarResults.push({ row: d.row, col: d.col, count: d.count });
+  } else if (d.itemId === 'devour') {
+    // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）
+    (d.destroyed || []).forEach(function (cell) {
+      if (d.headHit && cell[0] === d.headHit[0] && cell[1] === d.headHit[1]) return; // 机头格单独处理
+      if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+      state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'destroyed' });
+    });
+    if (d.headHit && !state.enemyShotsReceived.some(function (s) { return s.row === d.headHit[0] && s.col === d.headHit[1]; })) {
+      state.enemyShotsReceived.push({ row: d.headHit[0], col: d.headHit[1], result: 'head', destroyed: true });
+    }
+  } else if (d.itemId === 'expose') {
+    // 无所遁形：整架飞机的 10 格补全揭示（都是机身，机头已揭示过）
+    (d.cells || []).forEach(function (cell) {
+      if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+      state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'body' });
+    });
+  } else if (d.itemId === 'doom') {
+    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（记录完整冻结信息，过期由 isFrozen 判断）
+    (d.cells || []).forEach(function (cell) {
+      if (state.enemyShotsReceived.some(function (s) { return s.row === cell.row && s.col === cell.col; })) return;
+      state.enemyShotsReceived.push({ row: cell.row, col: cell.col, result: cell.result });
+    });
+    state.frozenCells = state.frozenCells.concat(d.frozen || []);
+  }
+  state.headsLeft = d.headsLeft;
+  state.steps = d.steps;
+  state.coins = d.coins || state.coins; // 道具版：金币随时同步
+  emitLocal('itemResult', d);
 });
 
 socket.on('gameOver', function (d) {
@@ -377,6 +509,8 @@ socket.on('gameOver', function (d) {
   state.score = d.score;
   state.rematchVotes = [false, false];
   state.revealedPlanes = d.planes || null;
+  state.frozenCells = []; // 冻结随对局结束解除（服务器端 activeFrozenCells 也已置空）
+  clearMarks(); // 对局结束飞机全部公开，注释不再有意义；下一局从空注释开始
   state.over = true;
   state.phase = 'over';
   emitLocal('gameOver', d);
@@ -395,6 +529,9 @@ socket.on('rematchVote', function (d) {
 socket.on('rematchStart', function (d) {
   state.names = d.names;
   state.steps = [0, 0];
+  state.coins = [0, 0]; // 金币在下一局 battleStart 时由服务器下发
+  state.sonarResults = [];
+  state.frozenCells = [];
   state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
   state.myPlanes = [];
   state.myShotsReceived = [];
@@ -449,6 +586,9 @@ socket.on('reconnected', function (d) {
   state.name = d.name;
   state.names = d.names;
   state.online = d.online;
+  state.mode = d.mode || 'classic';
+  state.boardSize = d.boardSize || 'S';
+  state.coins = d.coins || [0, 0];
   state.steps = d.steps;
   state.score = d.score;
   state.headsLeft = d.headsLeft;
@@ -456,6 +596,13 @@ socket.on('reconnected', function (d) {
   state.myPlanes = d.myPlanes || [];
   state.myShotsReceived = d.myShotsReceived || [];
   state.enemyShotsReceived = d.enemyShotsReceived || [];
+  state.sonarResults = d.sonarHistory || [];
+  state.frozenCells = d.frozenCells || [];
+  loadMarks(); // 重连后从本地恢复注释标记
+  state.itemPick = null;
+  state.pickCells = [];
+  state.pickAnchor = null;
+  state.pickReady = false;
   state.winner = d.winner;
   state.winReason = d.winReason;
   state.rematchVotes = d.rematchVotes || [false, false];
@@ -525,6 +672,7 @@ App({
   deployCells: deployCells,
   myBoardCells: myBoardCells,
   enemyBoardCells: enemyBoardCells,
+  isFrozen: isFrozen,
   shared: shared,
   PLANE_COUNT: PLANE_COUNT
 });

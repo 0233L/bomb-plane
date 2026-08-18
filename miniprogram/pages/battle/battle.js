@@ -1,14 +1,30 @@
 // ============================================
-// pages/battle/battle.js —— 对战页：双棋盘 + 抢步揭示 + 观战等待 + 结束横幅
+// pages/battle/battle.js —— 对战页：双棋盘 + 抢步揭示 + 道具 + 观战等待 + 结束横幅
 // 渲染逻辑对齐网页版 client.js 的 goBattle / goWait / goOver /
 // updateBattlePanels / updateOverRematchStatus；点对方棋盘的规则
-// 对齐 onEnemyCellClick。
+// 对齐 onEnemyCellClick；道具选区交互对齐 pickItemCell。
 // ============================================
 'use strict';
 
 const app = getApp();
 const state = app.globalData.state;
-const PLANE_COUNT = app.PLANE_COUNT;
+const shared = app.shared;
+
+// 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
+const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 5, devour: 6, doom: 10 };
+// 道具的中文名 + 操作指引（选区状态条显示）
+const ITEM_NAMES = {
+  sonar: '声呐脉冲', pro: '探测者 Pro', burst: '双发连射', expose: '无所遁形', devour: '吞噬者',
+  doom: '毁灭菇'
+};
+const ITEM_TIPS = {
+  sonar: '：点对方棋盘任意格，选择包含它的 3×3 区域',
+  pro: '：点对方棋盘任意格，选择包含它的 3×3 区域',
+  devour: '：点对方棋盘任意格，选择包含它的 3×3 区域',
+  burst: '：点对方棋盘上的 2 个未知格',
+  expose: '：点对方棋盘上已揭示的机头（红色）格',
+  doom: '：点对方棋盘任意格作为十字中心（揭示 5 格，相邻未揭示格冻结 2 回合）'
+};
 
 function toast(title) {
   wx.showToast({ title: title, icon: 'none' });
@@ -29,6 +45,14 @@ Page({
     boardTitleMy: '', boardTitleEnemy: '', boardNote: '',
     myCells: [],
     enemyCells: [],
+    cellW: '10%',             // 格子宽度（按规格 10/12/14 自适应）
+    cellH: '68rpx',           // 格子高度
+    coinsVisible: false,      // 金币行（道具版显示，双方可见）
+    myCoins: 0, enemyCoins: 0,
+    items: [],                // 道具栏 [{id, label, price, disabled, active}]
+    itemStatusVisible: false, // 道具选区状态条
+    itemStatusText: '',
+    showItemConfirm: false,
     over: false,
     overTitle: '', overDetail: '', overStatus: '',
     showRematchBtn: false, rematchText: '再来一局',
@@ -45,6 +69,7 @@ Page({
       self._sub(e, function () { self.render(); });
     });
     self._sub('revealResult', function () { self.data.pending = {}; self.render(); });
+    self._sub('itemResult', function () { self.data.pending = {}; self.render(); });
     self._sub('error', function () { self.data.pending = {}; self.render(); });
   },
 
@@ -93,7 +118,8 @@ Page({
     let myName, myDot, mySteps, myHeads, myTurn;
     let enemyName, enemyDot, enemySteps, enemyHeads, enemyTurn;
     let boardTitleMy, boardTitleEnemy;
-    const headsOf = function (seat) { return (PLANE_COUNT - s.headsLeft[seat]) + '/' + PLANE_COUNT; };
+    const sp = shared.getBoardSpec(s.boardSize); // 当前房间规格（机头数按规格显示）
+    const headsOf = function (seat) { return (sp.planeCount - s.headsLeft[seat]) + '/' + sp.planeCount; };
 
     if (s.spectator) {
       myName = s.names[0]; myDot = !!s.online[0];
@@ -118,6 +144,34 @@ Page({
     // 比分条：从第二局起显示（第一局 0:0 不显示）
     const scoreVisible = (s.score[0] + s.score[1]) > 0;
     const a = s.spectator ? 0 : s.seat;
+
+    // ---- 金币（道具版双方可见；经典版隐藏该行）。观战视角左 = 1 号玩家、右 = 2 号玩家 ----
+    const coinsVisible = s.mode === 'props';
+    const myCoins = s.coins[s.spectator ? 0 : s.seat];
+    const enemyCoins = s.coins[s.spectator ? 1 : (1 - s.seat)];
+
+    // ---- 道具栏（对齐 web 端 updateItemButtons）----
+    // 道具版 + 非观战 + 非结束 + 步数不领先才可点；金币不够的单个置灰
+    const canAct = !s.spectator && !s.over && s.steps[s.seat] <= s.steps[1 - s.seat];
+    const ITEM_ORDER = [
+      { id: 'sonar', label: '🔊 声呐', price: 3 },
+      { id: 'pro', label: '🔍 探测者', price: 4 },
+      { id: 'burst', label: '💥 双发', price: 5 },
+      { id: 'expose', label: '👁 无所遁形', price: 5 },
+      { id: 'devour', label: '🧨 吞噬者', price: 6 },
+      { id: 'doom', label: '🌋 毁灭菇', price: 10 }
+    ];
+    const items = ITEM_ORDER.map(function (it) {
+      return {
+        id: it.id, label: it.label, price: it.price,
+        disabled: !canAct || s.coins[s.seat] < it.price,
+        active: !!(s.itemPick && s.itemPick.itemId === it.id)
+      };
+    });
+    // 道具选区状态条：选择道具后显示操作指引；选区完整后出现「确认使用」按钮
+    const itemStatusVisible = !!s.itemPick;
+    const itemStatusText = s.itemPick ? ITEM_NAMES[s.itemPick.itemId] + ITEM_TIPS[s.itemPick.itemId] : '';
+    const showItemConfirm = !!s.itemPick && s.pickReady;
 
     // ---- 结束横幅（对齐 goOver + updateOverRematchStatus） ----
     let overTitle = '', overDetail = '', overStatus = '', showRematchBtn = false, rematchText = '再来一局';
@@ -158,18 +212,29 @@ Page({
       boardTitleMy: boardTitleMy, boardTitleEnemy: boardTitleEnemy, boardNote: boardNote,
       myCells: myCells,
       enemyCells: enemyCells,
+      cellW: (100 / sp.size).toFixed(2) + '%',
+      cellH: Math.round(68 * 10 / sp.size) + 'rpx',
+      coinsVisible: coinsVisible, myCoins: myCoins, enemyCoins: enemyCoins,
+      items: items,
+      itemStatusVisible: itemStatusVisible,
+      itemStatusText: itemStatusText,
+      showItemConfirm: showItemConfirm,
       over: !!s.over,
       overTitle: overTitle, overDetail: overDetail, overStatus: overStatus,
       showRematchBtn: showRematchBtn, rematchText: rematchText
     });
   },
 
-  // 点对方棋盘：只有"未知 + 我有行动权"的格子才会发出揭示请求
+  // 点对方棋盘：道具选区模式优先（选区域而不是揭示），否则正常揭示
   onEnemyCellTap(e) {
     const r = e.currentTarget.dataset.r;
     const c = e.currentTarget.dataset.c;
+    if (state.itemPick) return this.pickItemCell(r, c);
     if (state.spectator) return toast('观战模式不能下棋');
     if (state.over) return toast('对局已结束，点「再来一局」继续');
+    if (app.isFrozen(r, c)) {
+      return toast('这格被毁灭菇冻结，还不能揭示');
+    }
     if (state.enemyShotsReceived.some(function (x) { return x.row === r && x.col === c; })) {
       return toast('这个格子已经揭示过了');
     }
@@ -182,6 +247,138 @@ Page({
     this.setData({ pending: pending });
     app.globalData.socket.emit('reveal', { row: r, col: c });
     this.render(); // 让 pending 样式立即上屏
+  },
+
+  // 长按对方棋盘的未揭示格：循环标注 无 → 机头（红）→ 机身（绿）→ 空（灰）→ 无
+  // 纯本地猜测，不发给服务器；格子被揭示后渲染时自动不显示
+  onEnemyMark(e) {
+    const r = e.currentTarget.dataset.r;
+    const c = e.currentTarget.dataset.c;
+    if (state.spectator) return toast('观战模式不能标注');
+    if (state.over) return toast('对局已结束');
+    const key = r + ',' + c;
+    if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+      return toast('这格已经揭示过了');
+    }
+    const idx = MARK_CYCLE.indexOf(state.marks[key]);
+    if (idx === -1) state.marks[key] = 'head';                          // 无 → 机头
+    else if (idx < MARK_CYCLE.length - 1) state.marks[key] = MARK_CYCLE[idx + 1]; // 机身 → 空
+    else delete state.marks[key];                                       // 空 → 无
+    app.saveStorage('bp_marks_' + (state.roomId || ''), state.marks);
+    this.render();
+  },
+
+  // ---------- 道具选区交互（对齐 web 端 pickItemCell / updateItemButtons） ----------
+
+  // 在道具选区模式点棋盘：按道具类型记录选区，高亮预览，完整后由用户确认执行
+  pickItemCell(r, c) {
+    const id = state.itemPick.itemId;
+    if (id === 'burst') {
+      // 双发连射：先点第 1 格再点第 2 格（点已选格 = 取消重选；点已揭示格被拒）
+      const key = r + ',' + c;
+      if (state.pickCells.indexOf(key) !== -1) {
+        state.pickCells = []; // 反悔：取消重选
+      } else {
+        if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+          return toast('这格已经揭示过了，换一格');
+        }
+        state.pickCells = state.pickCells.concat([key]);
+      }
+      state.pickReady = state.pickCells.length === 2;
+      this.render();
+      return;
+    }
+    if (id === 'expose') {
+      // 无所遁形：点已揭示的机头格（红色）
+      const hit = state.enemyShotsReceived.find(function (s) {
+        return s.row === r && s.col === c && s.result === 'head';
+      });
+      if (!hit) return toast('请点已揭示的机头（红色）格');
+      state.pickCells = [r + ',' + c];
+      state.pickAnchor = null;
+      state.pickReady = true;
+      this.render();
+      return;
+    }
+    if (id === 'doom') {
+      // 毁灭菇：点任意格作为十字中心（中心必须在 1..size-2，保证十字完整在棋盘内）
+      const size = shared.getBoardSpec(state.boardSize).size;
+      const center = clampCenter(r, c, size);
+      if (!center) return toast('十字中心必须在棋盘内（不能靠边）');
+      if (app.isFrozen(center.row, center.col)) return toast('这格被毁灭菇冻结，还不能选中');
+      if (state.enemyShotsReceived.some(function (s) { return s.row === center.row && s.col === center.col; })) {
+        return toast('这格已经揭示过了，换一格当中心');
+      }
+      state.pickAnchor = null;
+      state.pickCells = crossKeys(center.row, center.col);
+      state.pickReady = true;
+      this.render();
+      return;
+    }
+    // 声呐 / 探测者 Pro / 吞噬者：点任意格，选包含它的 3×3 区域
+    const anchor = hoverAnchor(r, c, shared.getBoardSpec(state.boardSize).size);
+    state.pickAnchor = anchor;
+    state.pickCells = regionKeys(anchor.row, anchor.col);
+    state.pickReady = true;
+    this.render();
+  },
+
+  // 点道具按钮：进入选区模式（再点同一个 = 取消）。按钮 disabled 已挡掉
+  // 金币不够/步数领先/观战/结束，这里再兜底校验一遍
+  onItemTap(e) {
+    const id = e.currentTarget.dataset.id;
+    if (state.itemPick && state.itemPick.itemId === id) {
+      this.clearItemPick();
+      this.render();
+      return;
+    }
+    if (state.spectator) return toast('观战模式不能使用道具');
+    if (state.over) return toast('对局已结束');
+    if (state.steps[state.seat] > state.steps[1 - state.seat]) return toast('你的步数已领先，等待对方');
+    if (state.coins[state.seat] < ITEM_PRICES[id]) return toast('金币不够，买不起这个道具');
+    state.itemPick = { itemId: id };
+    state.pickCells = [];
+    state.pickAnchor = null;
+    state.pickReady = false;
+    this.render();
+  },
+
+  // 确认执行：把选区发给服务器（金币在服务器扣，这里只管发送）
+  onItemConfirmTap() {
+    if (!state.itemPick || !state.pickReady) return;
+    const id = state.itemPick.itemId;
+    const data = { itemId: id };
+    if (id === 'burst') {
+      // 双发连射：2 个格子坐标
+      const a = state.pickCells[0].split(',');
+      const b = state.pickCells[1].split(',');
+      data.row = +a[0]; data.col = +a[1];
+      data.row2 = +b[0]; data.col2 = +b[1];
+    } else if (id === 'sonar' || id === 'pro' || id === 'devour') {
+      // 区域型道具：3x3 锚点（左上角）
+      data.row = state.pickAnchor.row;
+      data.col = state.pickAnchor.col;
+    } else {
+      // 无所遁形 / 毁灭菇：单个中心格（毁灭菇用十字中心）
+      const a = state.pickCells[0].split(',');
+      data.row = +a[0]; data.col = +a[1];
+    }
+    this.clearItemPick();
+    app.globalData.socket.emit('useItem', data);
+  },
+
+  // 取消道具选择：清空选区，回到普通揭示模式
+  onItemCancelTap() {
+    this.clearItemPick();
+    this.render();
+  },
+
+  // 结束道具选区（确认 / 取消 / 收到自己的道具结果 / 新局）
+  clearItemPick() {
+    state.itemPick = null;
+    state.pickCells = [];
+    state.pickAnchor = null;
+    state.pickReady = false;
   },
 
   onRematchTap() {
@@ -228,4 +425,33 @@ function addClass(cells, r, c, cls) {
       return;
     }
   }
+}
+
+// 注释标记的循环顺序（无 → 机头 → 机身 → 空 → 无）
+const MARK_CYCLE = ['head', 'body', 'empty'];
+
+// 3x3 区域锚点（左上角）：让点击的格子落在区域里，同时保证区域完整在棋盘内
+function hoverAnchor(r, c, size) {
+  return { row: Math.max(0, Math.min(size - 3, r - 1)), col: Math.max(0, Math.min(size - 3, c - 1)) };
+}
+
+// 3x3 区域的 9 个格子的 'r,c' 键（区域型道具的选区）
+function regionKeys(row, col) {
+  const keys = [];
+  for (let r = row; r < row + 3; r++) {
+    for (let c = col; c < col + 3; c++) keys.push(r + ',' + c);
+  }
+  return keys;
+}
+
+// 毁灭菇十字中心：必须在 1..size-2（保证上下左右都在棋盘内），越界返回 null
+function clampCenter(r, c, size) {
+  if (r < 1 || r > size - 2 || c < 1 || c > size - 2) return null;
+  return { row: r, col: c };
+}
+
+// 十字形的 5 个格子的 'r,c' 键（毁灭菇的选区：中心 + 上下左右）
+function crossKeys(row, col) {
+  return [row + ',' + col, (row - 1) + ',' + col, (row + 1) + ',' + col,
+    row + ',' + (col - 1), row + ',' + (col + 1)];
 }

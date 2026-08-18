@@ -122,6 +122,91 @@ h2 { text-align: center; margin: 8px 0; }
 .card button { width: 100%; margin-top: 4px; }
 .divider { text-align: center; color: var(--faint); margin: 12px 0; font-size: 13px; }
 
+/* ---------- 首页：玩法开关 + 地图规格选择（道具版实验玩法） ---------- */
+.mode-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+/* 道具模式开关：隐藏原生 checkbox，画一个滑块开关 */
+.props-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-2);
+  user-select: none;
+}
+.props-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.props-slider {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.props-slider::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left .2s;
+}
+.props-toggle input:checked + .props-slider { background: var(--primary); }
+.props-toggle input:checked + .props-slider::after { left: 21px; }
+/* 地图规格：S/M/L 三个小胶囊按钮，点击切换 */
+.spec-picker {
+  display: flex;
+  gap: 6px;
+  margin-left: auto; /* 靠右，和开关一行排开 */
+}
+.spec-btn {
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.spec-btn:hover { background: var(--hover); }
+.spec-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+/* 道具模式开启时，创建/人机/加入按钮换装（🎁 前缀 + 主色描边） */
+button.props-on {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+button.props-on:hover { background: var(--hover); }
+
+/* ---------- 房间内徽标：显示玩法与规格（如「🎁 道具版 · 12×12」） ---------- */
+.mode-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
 /* ---------- 受邀加入页 ---------- */
 .invite-room-id {
   color: var(--primary);
@@ -315,6 +400,55 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .player-panel p { font-size: 14px; color: var(--text-3); margin: 3px 0; }
 .player-panel .turn-hint { color: var(--primary); font-size: 13px; min-height: 18px; }
 
+/* 道具版金币行（经典模式隐藏）：金币数字金色突出 */
+.coins-row b { color: #f59e0b; }
+
+/* ---------- 道具版：道具面板 + 选区状态条（对战页） ---------- */
+.items-panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px auto 0;
+  max-width: 720px;
+}
+/* 每个道具一个按钮：图标 + 名称 + 价格（价格金色） */
+.item-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px;
+  font-size: 13px;
+  min-width: 96px;
+  border-radius: 10px;
+}
+.item-btn b { color: #f59e0b; font-size: 14px; }
+.item-btn:disabled b { color: var(--faint); }
+/* 选中进入选区模式：主色描边 */
+.item-btn.active {
+  border-color: var(--primary);
+  background: var(--hover);
+  box-shadow: 0 0 0 2px var(--primary) inset;
+}
+/* 选区状态条：操作指引 + 确认/取消 */
+.item-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  max-width: 640px;
+  background: var(--surface);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text-2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+}
+.item-status button { padding: 6px 14px; font-size: 13px; }
+#item-status-text { flex: 1; }
+
 /* 对局结束横幅：留在对战页上方，棋盘保持可见 */
 .over-banner {
   text-align: center;
@@ -378,6 +512,36 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
    用 outline 画：起点就在格子边界（棋盘线）上，向外 3px，与格子对齐；
    outline 不会被表格裁掉，显示稳定（z-index 保证盖住相邻格线） */
 .board td.last-reveal { outline: 3px solid var(--primary); z-index: 1; }
+
+/* 吞噬者摧毁的格子：深灰 + ✕（内容保密；对局结束后公开真实内容） */
+.board td.cell-destroyed { background: var(--cell-unknown); color: var(--faint); }
+.board td.cell-destroyed::after { content: '✕'; font-size: 20px; color: var(--faint); }
+/* 机头被摧毁（视为已发现飞机）：灰底红边 + 红色 ✕ */
+.board td.cell-head-destroyed { background: var(--cell-unknown); border: 2px solid #ef5350; }
+.board td.cell-head-destroyed::after { content: '✕'; font-size: 20px; color: #ef5350; }
+
+/* 毁灭菇冻结的格子：紫色 ❄ + 紫边（冻结期间不可揭示、不可被技能选中） */
+.board td.cell-frozen { color: #a78bfa; }
+.board td.cell-frozen::after { content: '❄'; font-size: 16px; }
+
+/* 注释标记：右键在未揭示格上标的预期内容（红=机头 绿=机身 灰=空）。
+   用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
+.board td.cell-mark-head { box-shadow: inset 0 0 0 3px #ef5350; z-index: 1; }
+.board td.cell-mark-body { box-shadow: inset 0 0 0 3px #66bb6a; z-index: 1; }
+.board td.cell-mark-empty { box-shadow: inset 0 0 0 3px var(--cell-empty); z-index: 1; }
+
+/* 声呐脉冲的数字：显示在 3x3 锚点格上，金色小字（扫雷式推理用） */
+.board td.cell-sonar {
+  color: #fbbf24;
+  font-size: 16px;
+  font-weight: bold;
+  text-shadow: 0 0 4px rgba(0, 0, 0, .6);
+}
+
+/* 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览） */
+.board td.cell-pick, .board td.cell-pick-hover { outline: 3px solid #f59e0b; z-index: 1; }
+/* 选区模式：对方棋盘十字光标，提示正在选区域 */
+#enemy-board.picking td.cell-unknown { cursor: crosshair; }
 
 /* 对方棋盘：只有未知格可以点（未知格更深，已揭示的更突出） */
 #enemy-board td.cell-unknown { cursor: pointer; }

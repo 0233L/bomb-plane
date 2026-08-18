@@ -284,20 +284,25 @@ const POS_INDEX = buildPosIndex();
 
 // ---------- 部署生成（AI 自己布置飞机用） ----------
 
-// 随机生成一份合法的 3 架部署（逐架从摆放表随机抽、不重叠即可）
-function randomDeployment() {
+// 随机生成一份合法部署。spec = 'S'|'M'|'L'（默认 S，与旧行为一致）：
+// 全棋盘随机位置 + 摆放校验，对任意规格都成立（旧版只从 10×10 摆放表抽样，功能等价）
+function randomDeployment(spec) {
+  const sp = shared.getBoardSpec(spec);
+  const dirs = ['up', 'down', 'left', 'right'];
   const planes = [];
-  for (let attempt = 0; attempt < 20000 && planes.length < PLANE_COUNT; attempt++) {
-    const p = PLACEMENTS[Math.floor(Math.random() * PLACEMENTS.length)];
+  for (let attempt = 0; attempt < 20000 && planes.length < sp.planeCount; attempt++) {
+    const dir = dirs[Math.floor(Math.random() * 4)];
+    const headRow = Math.floor(Math.random() * sp.size);
+    const headCol = Math.floor(Math.random() * sp.size);
     const occupied = [];
     planes.forEach(function (q) {
       getPlaneCells(q.headRow, q.headCol, q.dir).forEach(function (cell) { occupied.push(cell); });
     });
-    if (canPlacePlane(occupied, p.headRow, p.headCol, p.dir)) {
-      planes.push({ headRow: p.headRow, headCol: p.headCol, dir: p.dir });
+    if (shared.canPlacePlane(occupied, headRow, headCol, dir, spec)) {
+      planes.push({ headRow: headRow, headCol: headCol, dir: dir });
     }
   }
-  return planes.length === PLANE_COUNT ? planes : null;
+  return planes.length === sp.planeCount ? planes : null;
 }
 
 // ---------- 决策 ----------
@@ -1023,6 +1028,51 @@ const LIVE_OPTS = {
   w: parseFloat(process.env.AI_RW || String(INFO_WEIGHT)),
   race: process.env.AI_RRACE === '1'
 };
+// 简单贪心（任意规格通用；M/L 规格和道具模式下的 AI 用，「能用就行」档）：
+//   1. 候选 = 未揭示且未冻结的格子
+//   2. 优先打与已揭示机身相邻（4 邻域）的格子，相邻机身越多越优先（顺藤摸瓜）
+//   3. 没有就随机打一个未揭示格
+// 返回 {row, col}；无可走格子返回 null。excludeKey（可选）= 要排除的格子号
+// （双发连射选第二格时排除第一格用）
+function chooseTargetSimple(shotsReceived, size, frozenCells, excludeKey) {
+  const revealed = new Set();
+  shotsReceived.forEach(function (s) { revealed.add(s.row * size + s.col); });
+  const frozen = new Set();
+  (frozenCells || []).forEach(function (f) { frozen.add(f.row * size + f.col); });
+
+  let bestAdj = 0;
+  const bests = [];   // 相邻机身最多的候选（并列时随机挑一个）
+  const randoms = []; // 无相邻机身的候选（随机扫射用）
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const key = r * size + c;
+      if (key === excludeKey) continue;
+      if (revealed.has(key) || frozen.has(key)) continue;
+      let adj = 0;
+      [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].forEach(function (n) {
+        const nr = n[0], nc = n[1];
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) return;
+        if (shotsReceived.some(function (s) { return s.row === nr && s.col === nc && s.result === 'body'; })) adj++;
+      });
+      if (adj > 0) {
+        if (adj > bestAdj) { bestAdj = adj; bests.length = 0; }
+        if (adj === bestAdj) bests.push([r, c]);
+      } else {
+        randoms.push([r, c]);
+      }
+    }
+  }
+  if (bests.length) {
+    const pick = bests[Math.floor(Math.random() * bests.length)];
+    return { row: pick[0], col: pick[1] };
+  }
+  if (randoms.length) {
+    const pick = randoms[Math.floor(Math.random() * randoms.length)];
+    return { row: pick[0], col: pick[1] };
+  }
+  return null; // 全揭示/全冻结：AI 无子可走
+}
+
 function chooseTargetLive(shotsReceived) {
   if (AI_USE_ROLLOUT) return chooseTargetRollout(shotsReceived, LIVE_OPTS);
   return chooseTargetHeadSet(shotsReceived);
@@ -1037,6 +1087,7 @@ module.exports = {
   HEAD_SET_IDS: HEAD_SET_IDS,            // 每组合的机头三元组打包 id（分析用）
   comboKindAt: comboKindAt,              // 组合在格子处的取值：0 空 / 1 身 / 2 头（分析用）
   randomDeployment: randomDeployment,
+  chooseTargetSimple: chooseTargetSimple,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,
   chooseTargetShots: chooseTargetShots,

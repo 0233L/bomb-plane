@@ -33,6 +33,7 @@
       </view>
       <view class="panel-right">
         <text class="panel-stat">步数 {{mySteps}} · 击中机头 {{myHeads}}</text>
+        <text class="panel-coins" wx:if="{{coinsVisible}}">🪙 {{myCoins}}</text>
         <text class="panel-turn">{{myTurn}}</text>
       </view>
     </view>
@@ -40,7 +41,10 @@
     <view class="board-title">{{boardTitleMy}}</view>
     <view class="board-wrap">
       <view class="board">
-        <view wx:for="{{myCells}}" wx:key="index" class="board-cell {{item.cls}}"></view>
+        <view wx:for="{{myCells}}" wx:key="index" class="board-cell {{item.cls}}"
+              style="width:{{cellW}};height:{{cellH}}">
+          <text wx:if="{{item.text}}" class="cell-sonar-text">{{item.text}}</text>
+        </view>
       </view>
     </view>
 
@@ -52,6 +56,7 @@
       </view>
       <view class="panel-right">
         <text class="panel-stat">步数 {{enemySteps}} · 击中机头 {{enemyHeads}}</text>
+        <text class="panel-coins" wx:if="{{coinsVisible}}">🪙 {{enemyCoins}}</text>
         <text class="panel-turn">{{enemyTurn}}</text>
       </view>
     </view>
@@ -63,8 +68,31 @@
     <view class="board-wrap">
       <view class="board">
         <view wx:for="{{enemyCells}}" wx:key="index" class="board-cell {{item.cls}}"
-              data-r="{{item.r}}" data-c="{{item.c}}" bindtap="onEnemyCellTap"></view>
+              style="width:{{cellW}};height:{{cellH}}"
+              data-r="{{item.r}}" data-c="{{item.c}}" bindtap="onEnemyCellTap"
+              bindlongpress="onEnemyMark">
+          <text wx:if="{{item.text}}" class="cell-sonar-text">{{item.text}}</text>
+        </view>
       </view>
+    </view>
+
+    <!-- 道具栏（道具版专属）：点道具 → 点对方棋盘选区域 → 确认执行（金币不够的置灰） -->
+    <scroll-view class="items-panel" wx:if="{{coinsVisible}}" scroll-x>
+      <view class="items-row">
+        <view wx:for="{{items}}" wx:key="id"
+              class="item-btn {{item.active ? 'active' : ''}} {{item.disabled ? 'disabled' : ''}}"
+              data-id="{{item.id}}" bindtap="onItemTap">
+          <text class="item-label">{{item.label}}</text>
+          <text class="item-price">{{item.price}}🪙</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <!-- 道具选区状态条：操作指引 + 确认/取消 -->
+    <view wx:if="{{itemStatusVisible}}" class="item-status">
+      <text class="item-status-text">{{itemStatusText}}</text>
+      <view wx:if="{{showItemConfirm}}" class="btn primary small" bindtap="onItemConfirmTap">✓ 确认使用</view>
+      <view class="btn small" bindtap="onItemCancelTap">✕ 取消</view>
     </view>
 
     <!-- 结束横幅：棋盘保留，飞机公开 -->

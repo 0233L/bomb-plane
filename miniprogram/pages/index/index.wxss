@@ -1,3 +1,29 @@
+/* 首页：玩法开关 + 地图规格选择（道具版实验玩法） */
+.mode-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin: 16rpx 0 4rpx;
+}
+.props-toggle { display: flex; align-items: center; gap: 8rpx; }
+.props-toggle switch { transform: scale(0.8); margin-left: -12rpx; }
+.props-label { font-size: 28rpx; color: var(--text-2); }
+.spec-picker { display: flex; gap: 10rpx; margin-left: auto; }
+.spec-btn {
+  padding: 6rpx 18rpx;
+  font-size: 26rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid var(--border);
+  color: var(--text-2);
+}
+.spec-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.mode-help { display: block; font-size: 24rpx; color: var(--muted); margin-bottom: 8rpx; }
+
 /* 首页：最近房间列表样式 */
 .room-item {
   display: flex;

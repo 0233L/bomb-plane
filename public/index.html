@@ -27,6 +27,22 @@
     <div class="card">
       <label for="name-input">昵称</label>
       <input id="name-input" type="text" maxlength="12" placeholder="输入昵称">
+
+      <!-- 玩法与地图规格：玩法（经典/道具）和规格（10/12/14）自由组合 -->
+      <div class="mode-row">
+        <label class="props-toggle">
+          <input type="checkbox" id="props-toggle">
+          <span class="props-slider"></span>
+          <span class="props-label">🎁 道具模式</span>
+        </label>
+        <div class="spec-picker" id="spec-picker">
+          <button class="spec-btn active" data-spec="S">10×10</button>
+          <button class="spec-btn" data-spec="M">12×12</button>
+          <button class="spec-btn" data-spec="L">14×14</button>
+        </div>
+      </div>
+      <p class="help" id="mode-help">经典玩法 · 10×10 地图 · 3 架飞机</p>
+
       <button id="btn-create" class="primary">创建房间</button>
       <button id="btn-ai">🤖 人机对战</button>
       <p class="help">和会推理的电脑对战（每步枚举所有可能的飞机布局，打「机头概率 + 信息量」评分最高的格子）</p>
@@ -63,6 +79,7 @@
   <section id="view-deploy" class="view">
     <div class="topbar">
       <span class="room-tag">房间 <b id="deploy-room-id"></b></span>
+      <span class="mode-badge hidden"></span>
       <button class="btn-copy-link small-btn">📋 复制邀请链接</button>
       <span class="names-tag">对手：<b id="deploy-opponent-name">等待加入…</b><span id="deploy-opponent-dot" class="dot hidden"></span></span>
       <button class="btn-back-menu small-btn">← 返回菜单</button>
@@ -96,6 +113,7 @@
   <section id="view-battle" class="view">
     <div class="topbar">
       <span class="room-tag">房间 <b id="battle-room-id"></b></span>
+      <span class="mode-badge hidden"></span>
       <button class="btn-copy-link small-btn">📋 复制邀请链接</button>
       <button class="btn-back-menu small-btn">← 返回菜单</button>
     </div>
@@ -115,6 +133,7 @@
         <h3><span id="panel-my-name"></span> <span id="panel-my-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-my-steps">0</b></p>
         <p>已找到机头：<b id="panel-my-heads">0/3</b></p>
+        <p class="coins-row hidden" id="panel-my-coins-row">金币：<b id="panel-my-coins">0</b> 🪙</p>
         <p class="turn-hint" id="panel-my-turn"></p>
       </div>
       <div id="battle-score" class="battle-score hidden">
@@ -126,6 +145,7 @@
         <h3><span id="panel-enemy-name"></span> <span id="panel-enemy-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-enemy-steps">0</b></p>
         <p>已找到机头：<b id="panel-enemy-heads">0/3</b></p>
+        <p class="coins-row hidden" id="panel-enemy-coins-row">金币：<b id="panel-enemy-coins">0</b> 🪙</p>
         <p class="turn-hint" id="panel-enemy-turn"></p>
       </div>
     </div>
@@ -138,6 +158,21 @@
         <h3><span id="board-title-enemy">对方棋盘</span> <span class="small" id="board-title-enemy-note">（点击未知格子揭示）</span></h3>
         <table id="enemy-board" class="board"></table>
       </div>
+    </div>
+    <!-- 道具面板（道具版专属）：点道具 → 点对方棋盘选区域 → 确认执行（金币不够的置灰） -->
+    <div id="items-panel" class="items-panel hidden">
+      <button class="item-btn" data-item="sonar">🔊 声呐脉冲<b>3</b></button>
+      <button class="item-btn" data-item="pro">🔍 探测者 Pro<b>4</b></button>
+      <button class="item-btn" data-item="burst">💥 双发连射<b>5</b></button>
+      <button class="item-btn" data-item="expose">👁 无所遁形<b>5</b></button>
+      <button class="item-btn" data-item="devour">🧨 吞噬者<b>6</b></button>
+      <button class="item-btn" data-item="doom">🌋 毁灭菇<b>10</b></button>
+    </div>
+    <!-- 道具选区状态条：操作指引 + 确认/取消 -->
+    <div id="item-status" class="item-status hidden">
+      <span id="item-status-text"></span>
+      <button id="item-confirm" class="primary hidden">✓ 确认使用</button>
+      <button id="item-cancel" class="hidden">✕ 取消</button>
     </div>
   </section>
 

@@ -25,6 +25,23 @@ function showView(name) {
   });
 }
 
+// 部署页/对战页顶部的玩法徽标：道具版才显示（含地图规格），经典模式隐藏
+function renderModeBadge() {
+  const spec = curSpec();
+  const isProps = state.mode === 'props';
+  document.querySelectorAll('.mode-badge').forEach(function (el) {
+    el.textContent = '🎁 道具版 · ' + spec.size + '×' + spec.size + ' · ' + spec.planeCount + ' 架';
+    el.classList.toggle('hidden', !isProps);
+  });
+}
+
+// 按当前房间规格重建三张棋盘（进房/开战/重连时规格可能不同，10×10 老房间无感）
+function rebuildBoards() {
+  makeBoard($('#deploy-board'), onDeployCellClick);
+  makeBoard($('#my-board'), null);
+  makeBoard($('#enemy-board'), onEnemyCellClick);
+}
+
 // ---------- 主题切换（右上角按钮） ----------
 // 三种模式循环：跟随系统 → 浅色 → 深色。选择存在 localStorage 里，默认跟随系统
 const THEME_ORDER = ['auto', 'light', 'dark'];
@@ -162,9 +179,20 @@ const state = {
   token: null, roomId: null, seat: null, name: '',
   names: ['', ''],           // 双方昵称
   online: [false, false],    // 双方是否在线（绿点/红点）
+  mode: 'classic',           // 当前房间玩法：classic（经典）| props（道具版）
+  boardSize: 'S',            // 当前房间地图规格：S=10×10/3架 | M=12×12/4架 | L=14×14/6架
+  coins: [0, 0],             // 双方金币（道具版；经典版为 0）
   steps: [0, 0],             // 双方步数（各自揭示了多少格）
   score: [0, 0],             // 双方累计胜场（同一房间连续对局，第二局起显示）
   headsLeft: [3, 3],         // 双方还剩几个机头没被打中
+  sonarResults: [],          // 声呐脉冲的历史结果 [{row, col, count}]（扫雷式推理用）
+  frozenCells: [],           // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己，渲染 ❄）
+  marks: {},                 // 注释标记 {'r,c': 'head'|'body'|'empty'}（右键循环标注，仅本机可见，按房间持久化）
+  itemPick: null,            // 道具选区模式：null = 未选择 | {itemId}
+  pickCells: [],             // 已固定的选区格子（'r,c' 字符串数组，金色高亮）
+  pickAnchor: null,          // 3x3 道具的选区锚点（左上角，发给服务器）
+  pickReady: false,          // 选区是否已完整（完整后显示「确认使用」按钮）
+  pickHover: [],             // 鼠标悬停预览的格子（'r,c' 数组，仅区域型道具）
   deployConfirmed: [false, false],
   myPlanes: [],              // 自己已确认的 3 架飞机（battle 阶段必有）
   myShotsReceived: [],       // 对方打我的记录 [{row, col, result}]
@@ -181,23 +209,73 @@ const state = {
   revealedPlanes: null       // 对局结束后服务器公开的双方飞机 [A 的, B 的]
 };
 
+// 当前房间的规格（未进房或未知规格 = 经典 10×10/3 架）
+function curSpec() {
+  return (BOARD_SPECS[state.boardSize] || BOARD_SPECS.S);
+}
+
+// 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
+const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 5, devour: 6, doom: 10 };
+// 道具的中文名 + 操作指引（选区状态条显示）
+const ITEM_NAMES = {
+  sonar: '声呐脉冲', pro: '探测者 Pro', burst: '双发连射', expose: '无所遁形', devour: '吞噬者', doom: '毁灭菇'
+};
+const ITEM_TIPS = {
+  sonar: '：点对方棋盘任意格，选择包含它的 3×3 区域',
+  pro: '：点对方棋盘任意格，选择包含它的 3×3 区域',
+  devour: '：点对方棋盘任意格，选择包含它的 3×3 区域',
+  burst: '：点对方棋盘上的 2 个未知格',
+  expose: '：点对方棋盘上已揭示的机头（红色）格',
+  doom: '：点对方棋盘任意格作为十字中心（揭示 5 格，相邻未揭示格冻结 2 回合）'
+};
+
 // ---------- 棋盘渲染 ----------
 
-// 生成一个 10×10 的空棋盘表格；onCellClick 不为空时格子可点击
+// 生成一个 size×size 的空棋盘表格；onCellClick 不为空时格子可点击
+// 棋盘大小跟随当前房间规格（进房后按规格重建）
 function makeBoard(tableEl, onCellClick) {
+  const size = curSpec().size;
   tableEl.innerHTML = '';
-  for (let r = 0; r < BOARD_SIZE; r++) {
+  for (let r = 0; r < size; r++) {
     const tr = document.createElement('tr');
-    for (let c = 0; c < BOARD_SIZE; c++) {
+    for (let c = 0; c < size; c++) {
       const td = document.createElement('td');
       td.dataset.row = r;
       td.dataset.col = c;
       if (onCellClick) {
         td.addEventListener('click', function () { onCellClick(r, c); });
       }
+      // 对方棋盘右键 = 循环标注（无 → 机头 → 机身 → 空 → 无），注释是纯本地标记
+      if (tableEl.id === 'enemy-board') {
+        td.addEventListener('contextmenu', function (e) {
+          e.preventDefault();
+          onEnemyMark(r, c);
+        });
+      }
+      // 道具选区的悬停预览（只在对方棋盘 + 区域型道具选区模式时生效）
+      td.addEventListener('mousemove', onBoardHover);
+      td.addEventListener('mouseleave', function () { updatePickHover([]); });
       tr.appendChild(td);
     }
     tableEl.appendChild(tr);
+  }
+}
+
+// 鼠标移到对方棋盘上：预览包含它的 3×3 区域（声呐/Pro/吞噬）或十字 5 格（毁灭菇）
+function onBoardHover(e) {
+  if (!state.itemPick || state.pickReady) return; // 点选固定选区后不再预览
+  const id = state.itemPick.itemId;
+  if (id !== 'sonar' && id !== 'pro' && id !== 'devour' && id !== 'doom') return;
+  if (e.currentTarget.closest('#enemy-board') !== $('#enemy-board')) return;
+  const r = +e.currentTarget.dataset.row, c = +e.currentTarget.dataset.col;
+  if (id === 'doom') {
+    // 毁灭菇：十字中心 = 点击的格子（距边至少 1 格，十字完整落盘）
+    const size = curSpec().size;
+    const center = { row: Math.max(1, Math.min(size - 2, r)), col: Math.max(1, Math.min(size - 2, c)) };
+    updatePickHover(crossKeys(center.row, center.col));
+  } else {
+    const anchor = hoverAnchor(r, c);
+    updatePickHover(regionKeys(anchor.row, anchor.col));
   }
 }
 
@@ -215,17 +293,18 @@ function allPlaneCells(planes, exceptIdx) {
 
 // 随机生成一份合法布局（点「随机布局」按钮时用，可反复点击换方案）
 function randomDraft() {
+  const spec = curSpec();
   const dirs = ['up', 'down', 'left', 'right'];
   const planes = [];
-  for (let attempt = 0; attempt < 20000 && planes.length < PLANE_COUNT; attempt++) {
+  for (let attempt = 0; attempt < 20000 && planes.length < spec.planeCount; attempt++) {
     const dir = dirs[Math.floor(Math.random() * 4)];
-    const headRow = Math.floor(Math.random() * BOARD_SIZE);
-    const headCol = Math.floor(Math.random() * BOARD_SIZE);
-    if (canPlacePlane(allPlaneCells(planes), headRow, headCol, dir)) {
+    const headRow = Math.floor(Math.random() * spec.size);
+    const headCol = Math.floor(Math.random() * spec.size);
+    if (canPlacePlane(allPlaneCells(planes), headRow, headCol, dir, state.boardSize)) {
       planes.push({ headRow: headRow, headCol: headCol, dir: dir });
     }
   }
-  return planes.length === PLANE_COUNT ? planes : null;
+  return planes.length === spec.planeCount ? planes : null;
 }
 
 // 给若干飞机计算轮廓：返回 map（'r,c' -> 'edge-t edge-l …'）
@@ -279,13 +358,14 @@ function renderBattleBoards() {
   // ---- 己方棋盘：自己的飞机（对战阶段不画轮廓）+ 对方打过的位置高亮 ----
   // 观战者平时看不到任何飞机；对局结束后公开 1 号玩家的飞机
   const myPlanesSrc = (state.spectator && revealed) ? (revealed[0] || []) : state.myPlanes;
-  const myBoard = buildBoard(myPlanesSrc);
+  const myBoard = buildBoard(myPlanesSrc, state.boardSize);
   const myMarks = {};
   state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
 
   $('#my-board').querySelectorAll('td').forEach(function (td) {
     const r = +td.dataset.row, c = +td.dataset.col;
     td.className = '';
+    td.textContent = ''; // 清掉上次渲染留下的文字（如声呐数字）
     const cell = myBoard[r][c];
     if (cell === CELL_HEAD) td.classList.add('cell-head');
     else if (cell === CELL_BODY) td.classList.add('cell-body');
@@ -299,18 +379,36 @@ function renderBattleBoards() {
   // 对局结束后：没被探测到的格子按己方棋盘同款样式公开（暗色），探测过的保持结果颜色
   const enemySeat = state.spectator ? 1 : (1 - state.seat);
   const enemyPlanes = revealed ? (revealed[enemySeat] || []) : [];
-  const enemyBoard = buildBoard(enemyPlanes);
+  const enemyBoard = buildBoard(enemyPlanes, state.boardSize);
+  // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const enemyMarks = {};
-  state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s.result; });
+  state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s; });
+  // 声呐数字：显示在 3x3 锚点格上（金色小字，扫雷式推理用）
+  const sonarMap = {};
+  state.sonarResults.forEach(function (sr) { sonarMap[sr.row + ',' + sr.col] = sr.count; });
 
   $('#enemy-board').classList.toggle('revealed', !!revealed);
+  // 选区模式：对方棋盘用十字光标提示正在选区域
+  $('#enemy-board').classList.toggle('picking', !!state.itemPick);
   $('#enemy-board').querySelectorAll('td').forEach(function (td) {
     const r = +td.dataset.row, c = +td.dataset.col;
     td.className = '';
-    const res = enemyMarks[r + ',' + c];
-    if (res === 'empty') td.classList.add('cell-empty');
-    else if (res === 'body') td.classList.add('cell-body');
-    else if (res === 'head') td.classList.add('cell-head');
+    td.textContent = '';
+    const s = enemyMarks[r + ',' + c];
+    if (revealed && s && (s.result === 'destroyed' || s.destroyed)) {
+      // 对局结束：被摧毁格子的真实内容公开（和没探测过的格子一样暗色显示）
+      const cell = enemyBoard[r][c];
+      if (cell === CELL_HEAD) td.classList.add('cell-head');
+      else if (cell === CELL_BODY) td.classList.add('cell-body');
+      else td.classList.add('cell-empty');
+      td.classList.add('dimmed');
+    } else if (s && s.result === 'destroyed') {
+      td.classList.add('cell-destroyed'); // 吞噬者摧毁的格子：深灰 + ✕（内容保密）
+    } else if (s && s.result === 'head' && s.destroyed) {
+      td.classList.add('cell-head-destroyed'); // 机头被摧毁：灰色机头（视为已发现）
+    } else if (s && s.result === 'empty') td.classList.add('cell-empty');
+    else if (s && s.result === 'body') td.classList.add('cell-body');
+    else if (s && s.result === 'head') td.classList.add('cell-head');
     else if (revealed) {
       // 没探测过的格子：公开真实飞机（暗色遮罩，和己方棋盘同款显示方式）
       const cell = enemyBoard[r][c];
@@ -318,9 +416,27 @@ function renderBattleBoards() {
       else if (cell === CELL_BODY) td.classList.add('cell-body');
       else td.classList.add('cell-unknown');
       td.classList.add('dimmed');
+    } else if (isFrozen(r, c)) {
+      // 毁灭菇冻结的格子：中间仍是暗色，❄ 标记（施放者接下来 2 回合不能碰）
+      td.classList.add('cell-unknown', 'cell-frozen');
+      td.textContent = '❄';
     } else {
       td.classList.add('cell-unknown');
     }
+    // 注释标记：右键在未揭示格上标的预期内容（红=机头 绿=机身 灰=空，中间仍是暗色；
+    // 格子被揭示后自动不显示——注释只是本地猜测，揭示即作废；观战视角不显示）
+    if (!s && !revealed && !state.spectator && state.marks[r + ',' + c]) {
+      td.classList.add('cell-mark-' + state.marks[r + ',' + c]);
+    }
+    // 声呐数字（在已揭示格上也能显示；冻结格显示 ❄ 不显示数字）
+    const count = sonarMap[r + ',' + c];
+    if (count !== undefined && !isFrozen(r, c)) {
+      td.classList.add('cell-sonar');
+      td.textContent = count;
+    }
+    // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）
+    if (state.pickCells.indexOf(r + ',' + c) !== -1) td.classList.add('cell-pick');
+    if (state.pickHover.indexOf(r + ',' + c) !== -1) td.classList.add('cell-pick-hover');
   });
 
   // ---- 上一手揭示的格子：蓝色框框选 ----
@@ -344,9 +460,9 @@ function renderBattleBoards() {
 
 // 部署页：更新计数、按钮状态、双方确认状态
 function updateDeployUI() {
-  $('#deploy-count').textContent = '已放置 ' + state.draft.length + ' / ' + PLANE_COUNT + ' 架';
+  $('#deploy-count').textContent = '已放置 ' + state.draft.length + ' / ' + curSpec().planeCount + ' 架';
   const confirmed = state.deployConfirmed[state.seat];
-  $('#btn-confirm').disabled = state.draft.length !== PLANE_COUNT || confirmed;
+  $('#btn-confirm').disabled = state.draft.length !== curSpec().planeCount || confirmed;
   $('#btn-clear').disabled = confirmed;
   $('#btn-random').disabled = confirmed;
   $('#btn-unconfirm').classList.toggle('hidden', !confirmed);
@@ -367,6 +483,8 @@ function updateDeployUI() {
 // 进入部署页
 function goDeploy() {
   $('#deploy-room-id').textContent = state.roomId;
+  rebuildBoards(); // 房间规格确定后重建棋盘（经典 10×10 无变化）
+  renderModeBadge();
   if (state.myPlanes.length) {
     // 已确认过部署（比如刷新后重连回来）：直接用已确认的飞机
     state.draft = state.myPlanes.map(function (p) {
@@ -404,27 +522,28 @@ function renderSpectatorBadge() {
 function updateBattlePanels() {
   const mine = state.steps[state.seat], theirs = state.steps[1 - state.seat];
 
+  const planeCount = curSpec().planeCount;
   if (state.spectator) {
     // 观战视角：固定按 1 号玩家（房主）在左、2 号玩家在右显示，昵称不加「（我）」
     $('#panel-my-name').textContent = state.names[0];
     setDot($('#panel-my-dot'), state.online[0]);
     $('#panel-my-steps').textContent = state.steps[0];
-    $('#panel-my-heads').textContent = (PLANE_COUNT - state.headsLeft[1]) + '/' + PLANE_COUNT;
+    $('#panel-my-heads').textContent = (planeCount - state.headsLeft[1]) + '/' + planeCount;
     $('#panel-enemy-name').textContent = state.names[1];
     setDot($('#panel-enemy-dot'), state.online[1]);
     $('#panel-enemy-steps').textContent = state.steps[1];
-    $('#panel-enemy-heads').textContent = (PLANE_COUNT - state.headsLeft[0]) + '/' + PLANE_COUNT;
+    $('#panel-enemy-heads').textContent = (planeCount - state.headsLeft[0]) + '/' + planeCount;
     $('#panel-my-turn').textContent = '👁 观战中';
     $('#panel-enemy-turn').textContent = '';
   } else {
     $('#panel-my-name').textContent = state.names[state.seat] + '（我）';
     setDot($('#panel-my-dot'), state.online[state.seat]);
     $('#panel-my-steps').textContent = mine;
-    $('#panel-my-heads').textContent = (PLANE_COUNT - state.headsLeft[1 - state.seat]) + '/' + PLANE_COUNT;
+    $('#panel-my-heads').textContent = (planeCount - state.headsLeft[1 - state.seat]) + '/' + planeCount;
     $('#panel-enemy-name').textContent = state.names[1 - state.seat];
     setDot($('#panel-enemy-dot'), state.online[1 - state.seat]);
     $('#panel-enemy-steps').textContent = theirs;
-    $('#panel-enemy-heads').textContent = (PLANE_COUNT - state.headsLeft[state.seat]) + '/' + PLANE_COUNT;
+    $('#panel-enemy-heads').textContent = (planeCount - state.headsLeft[state.seat]) + '/' + planeCount;
 
     // 行动提示：步数少（或相等）的一方可以下棋
     const myTurnText = mine <= theirs ? (mine === theirs ? '⚡ 双方抢步中' : '✓ 可行动') : '⏳ 等待对方';
@@ -438,6 +557,14 @@ function updateBattlePanels() {
     $('#panel-my-turn').textContent = '🏁 对局结束';
     $('#panel-enemy-turn').textContent = '';
   }
+
+  // 金币（道具版双方可见；经典版隐藏该行）。观战视角左 = 1 号玩家、右 = 2 号玩家
+  const coinsVisible = state.mode === 'props';
+  $('#panel-my-coins-row').classList.toggle('hidden', !coinsVisible);
+  $('#panel-enemy-coins-row').classList.toggle('hidden', !coinsVisible);
+  $('#panel-my-coins').textContent = state.coins[state.spectator ? 0 : state.seat];
+  $('#panel-enemy-coins').textContent = state.coins[state.spectator ? 1 : (1 - state.seat)];
+  updateItemButtons();
 
   // 双方累计比分：从第二局起显示，居中在棋盘上端（第一局 0:0 不显示）
   // 只显示数字，玩家视角左边永远是「我」的比分；观战视角按 1 号玩家在左、2 号在右
@@ -457,11 +584,147 @@ function updateBattlePanels() {
   renderSpectatorBadge();
 }
 
+// ---------- 道具（道具版对战页） ----------
+
+// 道具面板状态：道具版才显示；观战/结束/步数领先时全部禁用；金币不够的单个置灰
+function updateItemButtons() {
+  $('#items-panel').classList.toggle('hidden', state.mode !== 'props');
+  const canAct = !state.spectator && !state.over &&
+    state.steps[state.seat] <= state.steps[1 - state.seat];
+  document.querySelectorAll('.item-btn').forEach(function (btn) {
+    const id = btn.dataset.item;
+    btn.classList.toggle('active', !!(state.itemPick && state.itemPick.itemId === id));
+    btn.disabled = !canAct || state.coins[state.seat] < ITEM_PRICES[id];
+  });
+  updateItemStatus();
+}
+
+// 选区状态条：选择道具后显示操作指引；选区完整后出现「确认使用」按钮
+function updateItemStatus() {
+  const bar = $('#item-status');
+  const text = $('#item-status-text');
+  if (!state.itemPick) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  text.textContent = ITEM_NAMES[state.itemPick.itemId] + ITEM_TIPS[state.itemPick.itemId];
+  $('#item-confirm').classList.toggle('hidden', !state.pickReady);
+  $('#item-cancel').classList.toggle('hidden', false);
+}
+
+// 结束道具选区（确认 / 取消 / 收到自己的道具结果 / 新局）
+function clearItemPick() {
+  state.itemPick = null;
+  state.pickCells = [];
+  state.pickAnchor = null;
+  state.pickReady = false;
+  state.pickHover = [];
+}
+
+// 3x3 区域锚点（左上角）：让点击的格子落在区域里，同时保证区域完整在棋盘内
+function hoverAnchor(r, c) {
+  const size = curSpec().size;
+  return { row: Math.max(0, Math.min(size - 3, r - 1)), col: Math.max(0, Math.min(size - 3, c - 1)) };
+}
+
+// 3x3 区域的 9 个格子的 'r,c' 键（区域型道具的选区）
+function regionKeys(row, col) {
+  const keys = [];
+  for (let r = row; r < row + 3; r++) {
+    for (let c = col; c < col + 3; c++) keys.push(r + ',' + c);
+  }
+  return keys;
+}
+
+// 毁灭菇十字 5 格的 'r,c' 键（中心 + 上下左右）
+function crossKeys(row, col) {
+  return [row + ',' + col, (row - 1) + ',' + col, (row + 1) + ',' + col, row + ',' + (col - 1), row + ',' + (col + 1)];
+}
+
+// 这个格子是否还在毁灭菇冻结期（只查自己视角的对方棋盘；渲染 ❄ 与点击拦截共用）
+function isFrozen(r, c) {
+  return state.frozenCells.some(function (f) {
+    return f.owner === state.seat && state.steps[state.seat] < f.expiry && f.row === r && f.col === c;
+  });
+}
+
+// 在道具选区模式点对方棋盘：按道具类型记录选区，高亮预览，完整后由用户确认执行
+function pickItemCell(r, c) {
+  const id = state.itemPick.itemId;
+  if (id === 'burst') {
+    // 双发连射：先点第 1 格再点第 2 格（点已选格 = 取消重选；点已揭示格被拒）
+    const key = r + ',' + c;
+    if (state.pickCells.indexOf(key) !== -1) {
+      state.pickCells = []; // 反悔：取消重选
+    } else {
+      if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+        return toast('这格已经揭示过了，换一格');
+      }
+      state.pickCells = state.pickCells.concat([key]);
+    }
+    state.pickReady = state.pickCells.length === 2;
+    renderBattleBoards();
+    updateItemStatus();
+    return;
+  }
+  if (id === 'expose') {
+    // 无所遁形：点已揭示的机头格（红色）
+    const hit = state.enemyShotsReceived.find(function (s) {
+      return s.row === r && s.col === c && s.result === 'head';
+    });
+    if (!hit) return toast('请点已揭示的机头（红色）格');
+    state.pickCells = [r + ',' + c];
+    state.pickAnchor = null;
+    state.pickReady = true;
+    renderBattleBoards();
+    updateItemStatus();
+    return;
+  }
+  if (id === 'doom') {
+    // 毁灭菇：点任意格作为十字中心（中心距边至少 1 格，十字 5 格完整落盘）
+    const size = curSpec().size;
+    if (r < 1 || r > size - 2 || c < 1 || c > size - 2) {
+      return toast('十字中心离棋盘边太近，换个格子');
+    }
+    if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+      return toast('这格已经揭示过了，换一格');
+    }
+    if (isFrozen(r, c)) return toast('这格被毁灭菇冻结，还不能选中');
+    state.pickAnchor = null; // 毁灭菇用中心格，不用 3×3 锚点
+    state.pickCells = crossKeys(r, c);
+    state.pickReady = true;
+    renderBattleBoards();
+    updateItemStatus();
+    return;
+  }
+  // 声呐 / 探测者 Pro / 吞噬者：点任意格，选包含它的 3×3 区域
+  const anchor = hoverAnchor(r, c);
+  state.pickAnchor = anchor;
+  state.pickCells = regionKeys(anchor.row, anchor.col);
+  state.pickReady = true;
+  renderBattleBoards();
+  updateItemStatus();
+}
+
+// 悬停预览（仅区域型道具）：鼠标移到哪，预览包含它的 3×3 区域
+// 只改格子的类不动整盘渲染；点选固定选区后预览停止
+function updatePickHover(keys) {
+  state.pickHover = keys;
+  $('#enemy-board').querySelectorAll('td').forEach(function (td) {
+    const on = keys.indexOf(td.dataset.row + ',' + td.dataset.col) !== -1;
+    td.classList.toggle('cell-pick-hover', on);
+  });
+}
+
 // 进入对战页
 function goBattle() {
   state.over = false;
+  clearItemPick();      // 新一局：清掉上一局的选区状态
+  state.sonarResults = [];
+  state.frozenCells = [];
+  loadMarks();          // 注释标记按房间持久化：再来一局 / 重连后恢复
   $('#over-banner').classList.add('hidden');
   $('#battle-room-id').textContent = state.roomId;
+  rebuildBoards(); // 房间规格确定后重建棋盘（经典 10×10 无变化）
+  renderModeBadge();
   if (state.spectator) {
     // 观战视角：棋盘标题改成双方昵称，而不是「我的 / 对方的」
     $('#board-title-my').textContent = state.names[0] + ' 的棋盘';
@@ -488,20 +751,25 @@ function goWait() {
 // （只有击中 3 个机头一种结束方式，任何情况都不判负）
 function goOver() {
   state.over = true;
+  clearItemPick(); // 对局结束：清掉未执行的选区
+  state.frozenCells = []; // 冻结随对局结束解除（服务器端 activeFrozenCells 也已置空）
+  state.marks = {}; // 对局结束飞机全部公开，注释不再有意义；下一局从空注释开始
+  try { localStorage.removeItem('bp_marks_' + state.roomId); } catch (e) { /* 忽略 */ }
+  const planeCount = curSpec().planeCount;
   if (state.spectator) {
     // 观战视角：标题显示获胜者昵称，不参与再来一局投票
     $('#over-title').textContent = '🏁 ' + state.names[state.winner] + ' 获胜';
-    const hitsA = PLANE_COUNT - state.headsLeft[1]; // 1 号玩家打中对方的机头数
-    const hitsB = PLANE_COUNT - state.headsLeft[0];
+    const hitsA = planeCount - state.headsLeft[1]; // 1 号玩家打中对方的机头数
+    const hitsB = planeCount - state.headsLeft[0];
     $('#over-detail').textContent =
-      state.names[0] + ' 击中机头 ' + hitsA + '/3 · ' + state.names[1] + ' 击中机头 ' + hitsB + '/3';
+      state.names[0] + ' 击中机头 ' + hitsA + '/' + planeCount + ' · ' + state.names[1] + ' 击中机头 ' + hitsB + '/' + planeCount;
     $('#btn-rematch').classList.add('hidden');
   } else {
     $('#over-title').textContent = state.winner === state.seat ? '🎉 你赢了！' : '你输了';
 
-    const myHits = PLANE_COUNT - state.headsLeft[1 - state.seat];
-    const theirHits = PLANE_COUNT - state.headsLeft[state.seat];
-    $('#over-detail').textContent = '你击中机头 ' + myHits + '/3 · 对方击中机头 ' + theirHits + '/3';
+    const myHits = planeCount - state.headsLeft[1 - state.seat];
+    const theirHits = planeCount - state.headsLeft[state.seat];
+    $('#over-detail').textContent = '你击中机头 ' + myHits + '/' + planeCount + ' · 对方击中机头 ' + theirHits + '/' + planeCount;
 
     $('#btn-rematch').classList.remove('hidden');
   }
@@ -558,8 +826,8 @@ function onDeployCellClick(r, c) {
 
   if (planeIdx === -1) {
     // 空白格：放新飞机
-    if (state.draft.length >= PLANE_COUNT) return toast('已放满 ' + PLANE_COUNT + ' 架飞机');
-    if (!canPlacePlane(allPlaneCells(state.draft), r, c, state.curDir)) {
+    if (state.draft.length >= curSpec().planeCount) return toast('已放满 ' + curSpec().planeCount + ' 架飞机');
+    if (!canPlacePlane(allPlaneCells(state.draft), r, c, state.curDir, state.boardSize)) {
       return toast('这里放不下（越界或与其它飞机重叠）');
     }
     state.draft.push({ headRow: r, headCol: c, dir: state.curDir });
@@ -571,7 +839,7 @@ function onDeployCellClick(r, c) {
     const p = state.draft[planeIdx];
     const dirs = ['up', 'right', 'down', 'left'];
     const next = dirs[(dirs.indexOf(p.dir) + 1) % 4];
-    if (!canPlacePlane(allPlaneCells(state.draft, planeIdx), p.headRow, p.headCol, next)) {
+    if (!canPlacePlane(allPlaneCells(state.draft, planeIdx), p.headRow, p.headCol, next, state.boardSize)) {
       return toast('转不过去（越界或与其它飞机重叠）');
     }
     p.dir = next;
@@ -588,13 +856,17 @@ function saveDraft() {
 
 // ---------- 对战页交互 ----------
 
-// 点对方棋盘：只有"未知 + 我有行动权"的格子才会发出揭示请求
+// 点对方棋盘：道具选区模式优先（选区域而不是揭示），否则正常揭示
 function onEnemyCellClick(r, c) {
+  if (state.itemPick) return pickItemCell(r, c);
   if (state.spectator) {
     return toast('观战模式不能下棋');
   }
   if (state.over) {
     return toast('对局已结束，点「再来一局」继续');
+  }
+  if (isFrozen(r, c)) {
+    return toast('这个格子被毁灭菇冻结，还不能揭示');
   }
   if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
     return toast('这个格子已经揭示过了');
@@ -607,6 +879,38 @@ function onEnemyCellClick(r, c) {
     'td[data-row="' + r + '"][data-col="' + c + '"]');
   if (td) td.classList.add('cell-pending');
   state.socket.emit('reveal', { row: r, col: c });
+}
+
+// ---------- 注释标记（纯本地功能，不进服务器） ----------
+// 右键在对方棋盘的未揭示格上循环标注：无 → 机头（红）→ 机身（绿）→ 空（灰）→ 无
+// 猜测的颜色画在格子四周一圈，中间保持未揭示的暗色；格子被揭示后标记自动不再显示。
+// 按房间号持久化到 localStorage（重新进房 / 重连后标记还在，刷新页面也不丢）。
+const MARK_CYCLE = ['head', 'body', 'empty'];
+
+function saveMarks() {
+  try {
+    localStorage.setItem('bp_marks_' + state.roomId, JSON.stringify(state.marks));
+  } catch (e) { /* 本地存储满 / 不可用时静默失败，标记只在本页有效 */ }
+}
+
+function loadMarks() {
+  state.marks = {};
+  try {
+    const raw = localStorage.getItem('bp_marks_' + state.roomId);
+    if (raw) state.marks = JSON.parse(raw) || {};
+  } catch (e) { state.marks = {}; }
+}
+
+function onEnemyMark(r, c) {
+  if (state.spectator || state.over) return; // 观战 / 对局结束不标注
+  const key = r + ',' + c;
+  if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) return; // 已揭示格不标
+  const idx = MARK_CYCLE.indexOf(state.marks[key]);
+  if (idx === -1) state.marks[key] = 'head';                        // 无 → 机头
+  else if (idx < MARK_CYCLE.length - 1) state.marks[key] = MARK_CYCLE[idx + 1]; // 机身 → 空
+  else delete state.marks[key];                                     // 空 → 无
+  saveMarks();
+  renderBattleBoards();
 }
 
 // ---------- Socket 事件 ----------
@@ -660,6 +964,9 @@ function bindSocketEvents() {
     state.spectator = false;
     state.inviteRoomId = null;
     state.ai = !!d.isAI;      // 人机对战房间标记
+    state.mode = d.mode || 'classic';
+    state.boardSize = d.boardSize || 'S';
+    state.coins = [0, 0];
     localStorage.removeItem('bp_draft');
     goDeploy();
   });
@@ -677,6 +984,9 @@ function bindSocketEvents() {
     state.spectator = false;
     state.inviteRoomId = null;
     state.ai = false; // 人机房间满员，真人不可能走到这里
+    state.mode = d.mode || 'classic';
+    state.boardSize = d.boardSize || 'S';
+    state.coins = [0, 0];
     localStorage.removeItem('bp_draft');
     goDeploy();
   });
@@ -688,6 +998,9 @@ function bindSocketEvents() {
     setRoomInUrl(d.roomId); // 观战者不写历史，但网址带上房间号，刷新后能重新进入
     state.inviteRoomId = null;
     state.seat = 0; // 借用 1 号玩家（房主）的视角：左 = 房主，右 = 2 号玩家
+    state.mode = d.mode || 'classic';
+    state.boardSize = d.boardSize || 'S';
+    state.coins = d.coins || [0, 0];
     state.names = d.names;
     state.online = d.online;
     state.steps = d.steps;
@@ -698,6 +1011,8 @@ function bindSocketEvents() {
     state.rematchVotes = [false, false];
     state.myShotsReceived = d.shots[0] || [];   // 打在 1 号玩家棋盘上的记录
     state.enemyShotsReceived = d.shots[1] || []; // 打在 2 号玩家棋盘上的记录
+    state.sonarResults = d.sonarHistory || [];  // 声呐数字历史（观战者也能看到）
+    state.frozenCells = d.frozenCells || [];    // 毁灭菇冻结格（观战者也能看到 ❄）
     state.revealedPlanes = d.planes || null;    // 对局结束后才有的双方飞机
     if (d.phase === 'battle') goBattle();
     else if (d.phase === 'over') goOver();
@@ -741,7 +1056,10 @@ function bindSocketEvents() {
     state.steps = d.steps;
     state.score = d.score;
     state.online = d.online;
-    state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
+    state.mode = d.mode || 'classic';
+    state.boardSize = d.boardSize || 'S';
+    state.coins = d.coins || [0, 0];
+    state.headsLeft = [curSpec().planeCount, curSpec().planeCount];
     state.myShotsReceived = [];
     state.enemyShotsReceived = [];
     state.revealedPlanes = null; // 新一局：上一局公开的飞机作废
@@ -757,6 +1075,58 @@ function bindSocketEvents() {
     }
     state.headsLeft = d.headsLeft;
     state.steps = d.steps;
+    state.coins = d.coins || state.coins; // 道具版：金币随时同步
+    renderBattleBoards();
+    updateBattlePanels();
+  });
+
+  // 道具结果：声呐数字 / 吞噬摧毁 / 无所遁形整机揭示
+  // （探测者 Pro 和双发连射走上面的 revealResult，不在这里）
+  s.on('itemResult', function (d) {
+    if (d.attacker === state.seat) {
+      // 自己用的道具：结果已出，选区模式结束
+      state.itemPick = null;
+      state.pickCells = [];
+      state.pickAnchor = null;
+      state.pickReady = false;
+      state.pickHover = [];
+      if (d.itemId === 'devour' && d.headHit) {
+        toast('吞噬者命中机头！🎯 你找到了一架飞机');
+      }
+      if (d.itemId === 'sonar') {
+        toast('声呐：区域内有 ' + d.count + ' 个非空格');
+      }
+    }
+    if (d.itemId === 'sonar') {
+      // 声呐数字：记入历史（锚点格上显示数字，扫雷式推理用）
+      state.sonarResults.push({ row: d.row, col: d.col, count: d.count });
+    } else if (d.itemId === 'devour') {
+      // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）
+      (d.destroyed || []).forEach(function (cell) {
+        if (d.headHit && cell[0] === d.headHit[0] && cell[1] === d.headHit[1]) return; // 机头格单独处理
+        if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+        state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'destroyed' });
+      });
+      if (d.headHit && !state.enemyShotsReceived.some(function (s) { return s.row === d.headHit[0] && s.col === d.headHit[1]; })) {
+        state.enemyShotsReceived.push({ row: d.headHit[0], col: d.headHit[1], result: 'head', destroyed: true });
+      }
+    } else if (d.itemId === 'expose') {
+      // 无所遁形：整架飞机的 10 格补全揭示（都是机身，机头已揭示过）
+      (d.cells || []).forEach(function (cell) {
+        if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+        state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'body' });
+      });
+    } else if (d.itemId === 'doom') {
+      // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（记录完整冻结信息，过期由 isFrozen 判断）
+      (d.cells || []).forEach(function (cell) {
+        if (state.enemyShotsReceived.some(function (s) { return s.row === cell.row && s.col === cell.col; })) return;
+        state.enemyShotsReceived.push({ row: cell.row, col: cell.col, result: cell.result });
+      });
+      state.frozenCells = state.frozenCells.concat(d.frozen || []);
+    }
+    state.headsLeft = d.headsLeft;
+    state.steps = d.steps;
+    state.coins = d.coins || state.coins; // 道具版：金币随时同步
     renderBattleBoards();
     updateBattlePanels();
   });
@@ -789,7 +1159,8 @@ function bindSocketEvents() {
   s.on('rematchStart', function (d) {
     state.names = d.names;
     state.steps = [0, 0];
-    state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
+    state.coins = [0, 0]; // 每局金币在 battleStart 时由服务器下发
+    state.headsLeft = [curSpec().planeCount, curSpec().planeCount];
     state.myPlanes = [];
     state.myShotsReceived = [];
     state.enemyShotsReceived = [];
@@ -844,11 +1215,16 @@ function bindSocketEvents() {
     state.online = d.online;
     state.steps = d.steps;
     state.score = d.score;
+    state.mode = d.mode || 'classic';
+    state.boardSize = d.boardSize || 'S';
+    state.coins = d.coins || [0, 0];
     state.headsLeft = d.headsLeft;
     state.deployConfirmed = d.deployConfirmed;
     state.myPlanes = d.myPlanes || [];
     state.myShotsReceived = d.myShotsReceived || [];
     state.enemyShotsReceived = d.enemyShotsReceived || [];
+    state.sonarResults = d.sonarHistory || []; // 声呐数字历史（重连后还能看到）
+    state.frozenCells = d.frozenCells || [];   // 毁灭菇冻结格（重连后还能看到 ❄）
     state.winner = d.winner;
     state.winReason = d.winReason;
     state.rematchVotes = d.rematchVotes || [false, false];
@@ -909,27 +1285,83 @@ function renderRulesDiagram() {
   });
 }
 
+// ---------- 首页玩法与规格选择（道具版实验玩法） ----------
+// 玩法（经典/道具）和地图规格（S/M/L）相互独立、自由组合。
+// 记忆：bp_mode = 上次玩法；bp_spec = 上次规格；
+//       bp_spec_manual = 用户是否手动改过规格（手动改过后，开关联动不再强制跳规格）
+function savedMode() { return localStorage.getItem('bp_mode') === 'props' ? 'props' : 'classic'; }
+function savedSpec() {
+  const s = localStorage.getItem('bp_spec');
+  return (s === 'S' || s === 'M' || s === 'L') ? s : 'S';
+}
+
+// 首页当前选择的玩法/规格（创建、加入房间时读取）
+function currentMode() { return $('#props-toggle').checked ? 'props' : 'classic'; }
+function currentSpec() {
+  const btn = document.querySelector('.spec-btn.active');
+  return (btn && btn.dataset.spec) ? btn.dataset.spec : 'S';
+}
+
+// 同步首页 UI：开关状态、规格高亮、提示文字、创建/加入按钮图标
+function renderHomeMode() {
+  const props = currentMode();
+  const spec = currentSpec();
+  const sp = BOARD_SPECS[spec];
+  $('#props-toggle').checked = props;
+  document.querySelectorAll('.spec-btn').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.spec === spec);
+  });
+  $('#mode-help').textContent = props
+    ? '🎁 道具版 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架 · 金币买道具更刺激'
+    : '经典玩法 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架';
+  // 道具模式开启时，创建/人机/加入三个按钮换装（🎁 前缀 + 强调样式）
+  document.querySelectorAll('#btn-create, #btn-ai, #btn-join').forEach(function (b) {
+    const hasGift = b.textContent.indexOf('🎁') !== -1;
+    b.classList.toggle('props-on', props);
+    if (props && !hasGift) b.textContent = '🎁 ' + b.textContent;
+    if (!props && hasGift) b.textContent = b.textContent.replace('🎁 ', '');
+  });
+}
+
 // ---------- 按钮事件 ----------
 function bindUIEvents() {
   // 右上角主题切换：跟随系统 → 浅色 → 深色 循环
   $('#btn-theme').addEventListener('click', cycleTheme);
 
+  // 首页：玩法开关（经典/道具）+ 地图规格选择（S/M/L 自由组合）
+  // 开关变化：记住选择；首次开道具时规格跳到道具版默认 M（用户手动改过规格后不再强制跳）
+  $('#props-toggle').addEventListener('change', function () {
+    localStorage.setItem('bp_mode', currentMode());
+    if (currentMode() === 'props' && !localStorage.getItem('bp_spec_manual')) {
+      localStorage.setItem('bp_spec', 'M');
+    }
+    renderHomeMode();
+  });
+  document.querySelectorAll('.spec-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      localStorage.setItem('bp_spec', btn.dataset.spec);
+      localStorage.setItem('bp_spec_manual', '1'); // 手动改过规格：以后开关联动不再强制跳
+      renderHomeMode();
+    });
+  });
+
   // 首页
   $('#btn-create').addEventListener('click', function () {
     const name = $('#name-input').value;
     localStorage.setItem('bp_name', name.trim());
-    state.socket.emit('createRoom', { name: name });
+    state.socket.emit('createRoom', { name: name, mode: currentMode(), boardSize: currentSpec() });
   });
-  // 人机对战：直接创建人机房间（唯一的 AI 已是最强档）
+  // 人机对战：直接创建人机房间，玩法×规格自由组合
+  // （经典/S 走最强算法，其余组合 AI 用简单贪心，见 server.js scheduleAITurn）
   $('#btn-ai').addEventListener('click', function () {
     const name = $('#name-input').value;
     localStorage.setItem('bp_name', name.trim());
-    state.socket.emit('createRoomAI', { name: name });
+    state.socket.emit('createRoomAI', { name: name, mode: currentMode(), boardSize: currentSpec() });
   });
   $('#btn-join').addEventListener('click', function () {
     const name = $('#name-input').value;
     localStorage.setItem('bp_name', name.trim());
-    state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name });
+    state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name, mode: currentMode(), boardSize: currentSpec() });
   });
   // 对局中的「返回菜单」按钮（部署页 + 对战页 + 观战等待页各一个）
   document.querySelectorAll('.btn-back-menu').forEach(function (btn) {
@@ -972,7 +1404,7 @@ function bindUIEvents() {
     updateDeployUI();
   });
   $('#btn-confirm').addEventListener('click', function () {
-    if (state.draft.length !== PLANE_COUNT) return toast('请先放满 ' + PLANE_COUNT + ' 架飞机');
+    if (state.draft.length !== curSpec().planeCount) return toast('请先放满 ' + curSpec().planeCount + ' 架飞机');
     state.socket.emit('deployConfirm', { planes: state.draft });
   });
   $('#btn-unconfirm').addEventListener('click', function () {
@@ -982,6 +1414,65 @@ function bindUIEvents() {
   // 结束横幅：再来一局（返回菜单用对战页顶部的「← 返回菜单」按钮）
   $('#btn-rematch').addEventListener('click', function () {
     state.socket.emit('rematch');
+  });
+
+  // 道具面板：点道具进入选区模式（再点同一个 = 取消）。按钮 disabled 已挡掉
+  // 金币不够/步数领先/观战/结束，这里再兜底校验一遍
+  document.querySelectorAll('.item-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const id = btn.dataset.item;
+      if (state.itemPick && state.itemPick.itemId === id) {
+        clearItemPick();
+        renderBattleBoards();
+        updateItemButtons();
+        return;
+      }
+      if (state.spectator) return toast('观战模式不能使用道具');
+      if (state.over) return toast('对局已结束');
+      if (state.steps[state.seat] > state.steps[1 - state.seat]) return toast('你的步数已领先，等待对方');
+      if (state.coins[state.seat] < ITEM_PRICES[id]) return toast('金币不够，买不起这个道具');
+      state.itemPick = { itemId: id };
+      state.pickCells = [];
+      state.pickAnchor = null;
+      state.pickReady = false;
+      renderBattleBoards(); // 进入选区模式：棋盘十字光标 + 清掉旧的悬停预览
+      updateItemButtons();
+    });
+  });
+
+  // 道具确认执行：把选区发给服务器（金币在服务器扣，这里只管发送）
+  $('#item-confirm').addEventListener('click', function () {
+    if (!state.itemPick || !state.pickReady) return;
+    const id = state.itemPick.itemId;
+    const data = { itemId: id };
+    if (id === 'burst') {
+      // 双发连射：2 个格子坐标
+      const a = state.pickCells[0].split(',');
+      const b = state.pickCells[1].split(',');
+      data.row = +a[0]; data.col = +a[1];
+      data.row2 = +b[0]; data.col2 = +b[1];
+    } else if (id === 'sonar' || id === 'pro' || id === 'devour') {
+      // 区域型道具：3x3 锚点（左上角）
+      data.row = state.pickAnchor.row;
+      data.col = state.pickAnchor.col;
+    } else if (id === 'doom') {
+      // 毁灭菇：十字中心格（pickCells[0] 就是中心）
+      const a = state.pickCells[0].split(',');
+      data.row = +a[0]; data.col = +a[1];
+    } else {
+      // 无所遁形：已揭示的机头格
+      const a = state.pickCells[0].split(',');
+      data.row = +a[0]; data.col = +a[1];
+    }
+    clearItemPick();
+    state.socket.emit('useItem', data);
+  });
+
+  // 取消道具选择：清空选区，回到普通揭示模式
+  $('#item-cancel').addEventListener('click', function () {
+    clearItemPick();
+    renderBattleBoards();
+    updateItemButtons();
   });
 
   // 受邀加入页：确认加入 / 返回菜单
@@ -1046,6 +1537,13 @@ function init() {
   // 记住上次用的昵称
   const savedName = (localStorage.getItem('bp_name') || '').trim();
   if (savedName) $('#name-input').value = savedName;
+
+  // 恢复上次选择的玩法/规格（首页控件 + 按钮图标）
+  $('#props-toggle').checked = savedMode() === 'props';
+  document.querySelectorAll('.spec-btn').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.spec === savedSpec());
+  });
+  renderHomeMode();
 
   renderRecentRooms();
 

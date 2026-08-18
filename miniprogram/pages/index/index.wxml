@@ -9,6 +9,21 @@
   <view class="card">
     <text class="label">你的昵称</text>
     <input class="input" placeholder="输入昵称" value="{{name}}" bindinput="onNameInput" maxlength="12" />
+
+    <!-- 玩法（经典/道具）与地图规格（10/12/14）自由组合 -->
+    <view class="mode-row">
+      <view class="props-toggle">
+        <switch checked="{{propsOn}}" bindchange="onPropsToggle" color="#4a9eff" />
+        <text class="props-label">🎁 道具模式</text>
+      </view>
+      <view class="spec-picker">
+        <view class="spec-btn {{spec === 'S' ? 'active' : ''}}" data-spec="S" bindtap="onSpecTap">10×10</view>
+        <view class="spec-btn {{spec === 'M' ? 'active' : ''}}" data-spec="M" bindtap="onSpecTap">12×12</view>
+        <view class="spec-btn {{spec === 'L' ? 'active' : ''}}" data-spec="L" bindtap="onSpecTap">14×14</view>
+      </view>
+    </view>
+    <text class="mode-help">{{modeHelp}}</text>
+
     <view class="btn primary" bindtap="onCreateTap">创建房间</view>
     <view class="btn" bindtap="onAITap">人机对战</view>
 

@@ -1,5 +1,5 @@
 // ============================================
-// pages/deploy/deploy.js —— 部署页：100 格棋盘摆放 3 架飞机
+// pages/deploy/deploy.js —— 部署页：按房间规格的棋盘摆放飞机
 // 交互规则与网页版 client.js 的 onDeployCellClick 完全一致：
 //   空白格 → 放新飞机（以点击处为机头）
 //   机头格 → 移除该架飞机
@@ -10,7 +10,9 @@
 const app = getApp();
 const state = app.globalData.state;
 const shared = app.shared;
-const PLANE_COUNT = app.PLANE_COUNT;
+
+// 当前房间规格（S=10×10/3架 | M=12×12/4架 | L=14×14/6架）
+function spec() { return shared.getBoardSpec(state.boardSize); }
 
 // 收集若干飞机占的所有格子（exceptIdx 表示跳过第几架，旋转时用）
 function allPlaneCells(planes, exceptIdx) {
@@ -26,17 +28,18 @@ function allPlaneCells(planes, exceptIdx) {
 
 // 随机生成一份合法布局（点「随机布局」按钮时用，可反复点击换方案）
 function randomDraft() {
+  const sp = spec();
   const dirs = ['up', 'down', 'left', 'right'];
   const planes = [];
-  for (let attempt = 0; attempt < 20000 && planes.length < PLANE_COUNT; attempt++) {
+  for (let attempt = 0; attempt < 20000 && planes.length < sp.planeCount; attempt++) {
     const dir = dirs[Math.floor(Math.random() * 4)];
-    const headRow = Math.floor(Math.random() * 10);
-    const headCol = Math.floor(Math.random() * 10);
-    if (shared.canPlacePlane(allPlaneCells(planes), headRow, headCol, dir)) {
+    const headRow = Math.floor(Math.random() * sp.size);
+    const headCol = Math.floor(Math.random() * sp.size);
+    if (shared.canPlacePlane(allPlaneCells(planes), headRow, headCol, dir, state.boardSize)) {
       planes.push({ headRow: headRow, headCol: headCol, dir: dir });
     }
   }
-  return planes.length === PLANE_COUNT ? planes : null;
+  return planes.length === sp.planeCount ? planes : null;
 }
 
 function toast(title) {
@@ -47,6 +50,8 @@ Page({
   data: {
     themeClass: app.getThemeClass(),
     cells: [],
+    cellW: '10%',           // 格子宽度（按规格 10/12/14 自适应）
+    cellH: '68rpx',         // 格子高度
     countText: '',
     roomId: '',
     dirs: [],               // [{key, label, active}]
@@ -120,7 +125,9 @@ Page({
 
     this.setData({
       cells: app.deployCells(),
-      countText: '已放置 ' + s.draft.length + ' / ' + PLANE_COUNT + ' 架',
+      cellW: (100 / spec().size).toFixed(2) + '%',
+      cellH: Math.round(68 * 10 / spec().size) + 'rpx',
+      countText: '已放置 ' + s.draft.length + ' / ' + spec().planeCount + ' 架',
       roomId: s.roomId,
       dirs: dirKeys.map(function (d, i) { return { key: d, label: names[i], active: s.curDir === d }; }),
       confirmed: confirmed,
@@ -157,8 +164,8 @@ Page({
 
     if (planeIdx === -1) {
       // 空白格：放新飞机
-      if (state.draft.length >= PLANE_COUNT) return toast('已放满 ' + PLANE_COUNT + ' 架飞机');
-      if (!shared.canPlacePlane(allPlaneCells(state.draft), r, c, state.curDir)) {
+      if (state.draft.length >= spec().planeCount) return toast('已放满 ' + spec().planeCount + ' 架飞机');
+      if (!shared.canPlacePlane(allPlaneCells(state.draft), r, c, state.curDir, state.boardSize)) {
         return toast('这里放不下（越界或与其它飞机重叠）');
       }
       state.draft.push({ headRow: r, headCol: c, dir: state.curDir });
@@ -170,7 +177,7 @@ Page({
       const p = state.draft[planeIdx];
       const dirs = ['up', 'right', 'down', 'left'];
       const next = dirs[(dirs.indexOf(p.dir) + 1) % 4];
-      if (!shared.canPlacePlane(allPlaneCells(state.draft, planeIdx), p.headRow, p.headCol, next)) {
+      if (!shared.canPlacePlane(allPlaneCells(state.draft, planeIdx), p.headRow, p.headCol, next, state.boardSize)) {
         return toast('转不过去（越界或与其它飞机重叠）');
       }
       p.dir = next;
@@ -204,7 +211,7 @@ Page({
   },
 
   onConfirmTap() {
-    if (state.draft.length !== PLANE_COUNT) return toast('请先放满 ' + PLANE_COUNT + ' 架飞机');
+    if (state.draft.length !== spec().planeCount) return toast('请先放满 ' + spec().planeCount + ' 架飞机');
     app.globalData.socket.emit('deployConfirm', { planes: state.draft });
   },
 

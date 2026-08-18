@@ -17,7 +17,25 @@ const { WebSocketServer } = require('ws');
 
 // 前后端共用的游戏逻辑（飞机形状、摆放校验等）
 const shared = require('./public/shared.js');
-const { BOARD_SIZE, CELL_HEAD, CELL_BODY, buildBoard, validateDeployment } = shared;
+const { BOARD_SIZE, CELL_EMPTY, CELL_HEAD, CELL_BODY, buildBoard, validateDeployment, getBoardSpec, getPlaneCells } = shared;
+
+// ---------- 道具版经济常量（经典模式不用，仅 room.mode === 'props' 时生效） ----------
+const COIN_START = 8;   // 开局每人金币
+const COIN_EMPTY = 0;   // 揭示到空格的金币
+const COIN_BODY = 1;    // 揭示到机身
+const COIN_HEAD = 5;    // 揭示到机头（找到机头离胜利最近，奖励最丰厚）
+
+// ---------- 道具表（道具版） ----------
+// 道具没有「持有」概念：使用时才购买，校验通过当场扣金币、立即生效。
+// 价格初版，标注待实测调整；道具使用 = 一次标准行动（steps +1，双发连射 +2）。
+const ITEM_PRICES = {
+  sonar: 3,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
+  pro: 4,     // 探测者 Pro：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格）
+  burst: 5,   // 双发连射：一次行动揭示 2 格（steps +2）
+  expose: 5,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
+  devour: 6,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
+  doom: 10    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
+};
 
 // 人机对战的 AI 决策模块（精确枚举 + 机头概率图）
 const ai = require('./ai.js');
@@ -64,6 +82,11 @@ function createRoom() {
     id: generateRoomId(),
     players: [],              // 下标即座位 seat：先加入=0，后加入=1
     phase: 'waiting',         // waiting（等人）| deploy（部署）| battle（对战）| over（结束）
+    mode: 'classic',          // classic（经典推理）| props（道具版：金币 + 道具）
+    boardSize: 'S',           // 地图规格：S=10×10/3架 | M=12×12/4架 | L=14×14/6架
+    coins: [COIN_START, COIN_START], // 道具版金币（开局各 8，每局重置；经典版不用）
+    sonarHistory: [],         // 声呐脉冲的历史结果 [{row, col, count}]（观战/重连时补发）
+    frozenCells: [],          // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己）
     steps: [0, 0],            // 双方各揭示了多少格（步数）
     score: [0, 0],            // 双方累计胜场（同一房间连续对局，从第二局起显示）
     winner: null,             // 结束时的胜者 seat
@@ -77,14 +100,23 @@ function createRoom() {
   };
 }
 
+// 解析前端传来的玩法 + 规格（非法值一律回落经典默认，防篡改）
+function parseMode(data) {
+  return {
+    mode: data.mode === 'props' ? 'props' : 'classic',
+    boardSize: shared.BOARD_SPECS[data.boardSize] ? data.boardSize : 'S'
+  };
+}
+
 // 计算双方还剩几个机头没被打中（随时从被揭示记录重算，避免状态不一致）
 function headsLeftOf(room) {
+  const planeCount = getBoardSpec(room.boardSize).planeCount;
   return [0, 1].map(function (seat) {
     const p = room.players[seat];
     if (!p) return 0;
     let heads = 0;
     p.shotsReceived.forEach(function (s) { if (s.result === 'head') heads++; });
-    return shared.PLANE_COUNT - heads;
+    return planeCount - heads;
   });
 }
 
@@ -171,6 +203,9 @@ function resetToDeploy(room) {
   if (room.aiTimer) { clearTimeout(room.aiTimer); room.aiTimer = null; }
   room.phase = 'deploy';
   room.steps = [0, 0];
+  room.coins = [COIN_START, COIN_START]; // 每局金币清零重发（道具版）
+  room.sonarHistory = [];                // 声呐历史每局清零
+  room.frozenCells = [];                 // 毁灭菇冻结每局清零
   room.winner = null;
   room.winReason = null;
   room.rematchVotes = [false, false];
@@ -250,6 +285,9 @@ function handleCreateRoom(socket, data) {
   if (err) return sendError(socket, err);
 
   const room = createRoom();
+  const p = parseMode(data);
+  room.mode = p.mode;
+  room.boardSize = p.boardSize;
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
     name: name, token: token,
@@ -263,13 +301,15 @@ function handleCreateRoom(socket, data) {
   socket.data.seat = 0;
   socket.data.token = token;
   socket.join(room.id);
-  console.log(`[${room.id}] 房间创建，玩家：${name}`);
+  console.log(`[${room.id}] 房间创建（${p.mode}/${p.boardSize}），玩家：${name}`);
 
   socket.emit('roomCreated', {
     roomId: room.id, token: token, seat: 0, name: name,
     names: [name, ''],
     online: [true, false],
     isAI: false,
+    mode: p.mode,
+    boardSize: p.boardSize,
     deployConfirmed: [false, false]
   });
 }
@@ -282,6 +322,11 @@ function handleCreateRoomAI(socket, data) {
 
   const room = createRoom();
   room.isAI = true;
+  // 玩法 × 规格自由组合：经典规格走 ai.js 的精确枚举算法，其余组合走简单贪心
+  // （ai.js 提供两种决策：chooseTargetLive = S 规格最优算法；chooseTargetSimple = 任意规格通用）
+  const p = parseMode(data);
+  room.mode = p.mode;
+  room.boardSize = p.boardSize;
 
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
@@ -311,6 +356,8 @@ function handleCreateRoomAI(socket, data) {
     names: [name, '🤖 电脑'],
     online: [true, true],
     isAI: true,
+    mode: room.mode,
+    boardSize: room.boardSize,
     deployConfirmed: [false, true] // AI 马上就自动确认部署
   });
 
@@ -320,10 +367,10 @@ function handleCreateRoomAI(socket, data) {
 // AI 自动部署并确认（创建人机房间时、每局重新开始时调用）
 function aiDeployAndConfirm(room) {
   const aiPlayer = room.players[1];
-  const planes = ai.randomDeployment();
+  const planes = ai.randomDeployment(room.boardSize);
   if (!planes) return console.error(`[${room.id}] AI 生成部署失败（极少见，忽略即可）`);
   aiPlayer.planes = planes;
-  aiPlayer.board = buildBoard(planes);
+  aiPlayer.board = buildBoard(planes, room.boardSize);
   aiPlayer.deployConfirmed = true;
   console.log(`[${room.id}] AI 确认部署`);
   emitToRoom(room, 'deployReady', {
@@ -350,9 +397,52 @@ function scheduleAITurn(room) {
     if (!h || !h.connected) return;                   // 玩家中途断线：暂停
     if (r.steps[1] > r.steps[0]) return;              // 玩家抢步领先了：等待
 
-    // 实战用一步贪心；AI_ROLLOUT=1 可切换 rollout 版（500 盘实测未优于贪心，详见 ai.js 头注释）
-    const target = ai.chooseTargetLive(r.players[0].shotsReceived);
-    tryReveal(r, 1, target.row, target.col);
+    // —— AI 行动（与真人共用同一套服务器规则：步数门控 / 金币 / 冻结 / 区域校验） ——
+    const size = getBoardSpec(r.boardSize).size;
+    const shots = r.players[0].shotsReceived;
+    // 选格算法：经典/S 用精确枚举最优算法（第 7 轮调校成果，行为不变）；
+    // 其余组合用简单贪心（能用就行，后续可调强）
+    const useSimple = (r.boardSize !== 'S' || r.mode === 'props');
+    const target1 = useSimple
+      ? ai.chooseTargetSimple(shots, size, r.frozenCells)
+      : ai.chooseTargetLive(shots);
+
+    let acted = false; // 道具使用成功 = true（省得走普通揭示）
+    if (r.mode === 'props' && target1) {
+      // 道具版 AI 道具决策（初版简单概率触发；被服务器拒绝时自动退回普通揭示）：
+      // 金币 ≥5 时 30% 用双发连射；金币 ≥3 时 20% 用声呐
+      if (r.coins[1] >= 5 && Math.random() < 0.3) {
+        // 双发连射：两个候选格（第二格排除第一格）
+        const target2 = ai.chooseTargetSimple(shots, size, r.frozenCells, target1.row * size + target1.col);
+        if (target2) {
+          acted = !doUseItem(r, 1, 'burst', {
+            row: target1.row, col: target1.col,
+            row2: target2.row, col2: target2.col
+          });
+          if (acted) console.log(`[${r.id}] AI 使用双发连射`);
+        }
+      } else if (r.coins[1] >= 3 && Math.random() < 0.2) {
+        // 声呐：随机合法 3x3 左上角锚点（区域不含冻结格）
+        const anchors = [];
+        for (let aRow = 0; aRow <= size - 3; aRow++) {
+          for (let aCol = 0; aCol <= size - 3; aCol++) {
+            const cells = [];
+            for (let rr = aRow; rr < aRow + 3; rr++) {
+              for (let cc = aCol; cc < aCol + 3; cc++) cells.push([rr, cc]);
+            }
+            if (!hasFrozenCell(r, 1, cells)) anchors.push([aRow, aCol]);
+          }
+        }
+        if (anchors.length && Math.random() < 0.5) {
+          const pick = anchors[Math.floor(Math.random() * anchors.length)];
+          acted = !doUseItem(r, 1, 'sonar', { row: pick[0], col: pick[1] });
+          if (acted) console.log(`[${r.id}] AI 使用声呐脉冲`);
+        }
+      }
+    }
+    if (!acted && target1) {
+      tryReveal(r, 1, target1.row, target1.col);
+    }
 
     // 走完一步若还轮得到 AI（比如之前落后一步），继续调度
     if (r.phase === 'battle' && r.steps[1] <= r.steps[0]) scheduleAITurn(r);
@@ -394,7 +484,9 @@ function handleJoinRoom(socket, data) {
   socket.emit('joinedRoom', {
     roomId: room.id, token: token, seat: 1, name: name,
     names: [room.players[0].name, name],
-    online: [room.players[0].connected, true] // 房主可能正处于断线中
+    online: [room.players[0].connected, true], // 房主可能正处于断线中
+    mode: room.mode,
+    boardSize: room.boardSize
   });
   // 通知房主：对手来了
   emitToOthers(socket, room.id, 'opponentJoined', { names: [room.players[0].name, name] });
@@ -412,12 +504,17 @@ function handleSpectatorJoin(socket, room, name) {
   socket.emit('spectatorJoined', {
     roomId: room.id,
     phase: room.phase,
+    mode: room.mode,
+    boardSize: room.boardSize,
+    coins: room.coins,
     names: room.players.map(function (p) { return p.name; }),
     online: room.players.map(function (p) { return p.connected; }),
     steps: room.steps,
     score: room.score,
     headsLeft: headsLeftOf(room),
     shots: room.players.map(function (p) { return p.shotsReceived; }), // [A 被打的, B 被打的]
+    sonarHistory: room.sonarHistory, // 声呐数字历史（观战者也能看到）
+    frozenCells: activeFrozenCells(room), // 毁灭菇冻结格（观战者也能看到 ❄）
     winner: room.winner,
     winReason: room.winReason,
     planes: room.phase === 'over' ? room.players.map(function (p) { return p.planes; }) : null
@@ -488,6 +585,9 @@ function handleRejoin(socket, data) {
     names: room.players.map(function (p) { return p ? p.name : ''; }),
     online: room.players.map(function (p) { return !!p && p.connected; }),
     phase: room.phase,
+    mode: room.mode,
+    boardSize: room.boardSize,
+    coins: room.coins,
     steps: room.steps,
     score: room.score,
     headsLeft: headsLeftOf(room),
@@ -497,6 +597,8 @@ function handleRejoin(socket, data) {
     myPlanes: player.planes,              // 自己的飞机（已确认时才有）
     myShotsReceived: player.shotsReceived,      // 对方打我的记录
     enemyShotsReceived: enemy ? enemy.shotsReceived : [], // 我打对方的记录
+    sonarHistory: room.sonarHistory, // 声呐数字历史（断线重连后还能看到）
+    frozenCells: activeFrozenCells(room), // 毁灭菇冻结格（断线重连后还能看到 ❄）
     winner: room.winner,
     winReason: room.winReason,
     rematchVotes: room.rematchVotes,
@@ -513,14 +615,14 @@ function handleDeployConfirm(socket, data) {
   if (room.phase !== 'deploy') return sendError(socket, '现在不是部署阶段');
   if (player.deployConfirmed) return sendError(socket, '你已经确认过了');
 
-  const err = validateDeployment(data.planes);
+  const err = validateDeployment(data.planes, room.boardSize);
   if (err) return sendError(socket, err);
 
   // 保存（只存服务端，绝不外发）
   player.planes = data.planes.map(function (p) {
     return { headRow: p.headRow, headCol: p.headCol, dir: p.dir };
   });
-  player.board = buildBoard(player.planes);
+  player.board = buildBoard(player.planes, room.boardSize);
   player.deployConfirmed = true;
   console.log(`[${room.id}] ${player.name} 确认部署`);
 
@@ -531,12 +633,15 @@ function handleDeployConfirm(socket, data) {
     // 双方都确认，开战！步数归零：双方都可行动（无先手后手之分）
     room.phase = 'battle';
     room.steps = [0, 0];
-    console.log(`[${room.id}] 双方部署完成，开战`);
+    console.log(`[${room.id}] 双方部署完成，开战（${room.mode}/${room.boardSize}）`);
     emitToRoom(room, 'battleStart', {
       names: room.players.map(function (p) { return p.name; }),
       steps: room.steps,
       score: room.score,
-      online: room.players.map(function (p) { return p.connected; })
+      online: room.players.map(function (p) { return p.connected; }),
+      mode: room.mode,
+      boardSize: room.boardSize,
+      coins: room.coins
     });
     if (room.isAI) scheduleAITurn(room); // 人机房间：轮到 AI 就自动走棋
   }
@@ -566,14 +671,20 @@ function handleReveal(socket, data) {
   if (room.phase !== 'battle') return sendError(socket, '现在还不能攻击（未开战或已结束）');
 
   const row = data.row, col = data.col;
+  const size = getBoardSpec(room.boardSize).size;
   if (!Number.isInteger(row) || !Number.isInteger(col) ||
-      row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
+      row < 0 || row >= size || col < 0 || col >= size) {
     return sendError(socket, '坐标无效');
   }
 
   const defender = room.players[1 - seat];
   if (defender.shotsReceived.some(function (s) { return s.row === row && s.col === col; })) {
     return sendError(socket, '这个格子已经揭示过了');
+  }
+
+  // 冻结检查：施放者自己在冻结期内不能揭示冻结格（对手不受限）
+  if (isFrozenCell(room, seat, row, col)) {
+    return sendError(socket, '这个格子被毁灭菇冻结，你还不能揭示它');
   }
 
   // 步数规则：步数超过对方的人不能行动（相等时双方都可行动，先到先得）
@@ -585,20 +696,30 @@ function handleReveal(socket, data) {
   tryReveal(room, seat, row, col);
 }
 
-// 执行一次揭示：查表、记录、步数 +1、广播、判胜（调用前已通过全部校验）
+// 执行一次揭示：查表、记录、步数 +1、金币结算、广播、判胜（调用前已通过全部校验）
 // 真人玩家（handleReveal）和 AI（scheduleAITurn）共用，保证两边遵守同一套规则
 function tryReveal(room, seat, row, col) {
+  // 防御性冻结检查（AI 路径兜底；调用方已校验过，正常流程不会走到）
+  if (isFrozenCell(room, seat, row, col)) return false;
   const defender = room.players[1 - seat];
   const cell = defender.board[row][col];
   const result = cell === CELL_HEAD ? 'head' : cell === CELL_BODY ? 'body' : 'empty';
   defender.shotsReceived.push({ row: row, col: col, result: result });
   room.steps[seat] += 1;
-  console.log(`[${room.id}] ${room.players[seat].name} 揭示 (${row},${col}) = ${result}`);
+
+  // 道具版：揭示赚金币（空格 0 / 机身 1 / 机头 5）；经典版不结算
+  let coinGain = 0;
+  if (room.mode === 'props') {
+    coinGain = result === 'head' ? COIN_HEAD : result === 'body' ? COIN_BODY : COIN_EMPTY;
+    room.coins[seat] += coinGain;
+  }
+  console.log(`[${room.id}] ${room.players[seat].name} 揭示 (${row},${col}) = ${result}` + (coinGain > 0 ? ' +' + coinGain + ' 金币' : ''));
 
   const headsLeft = headsLeftOf(room);
   emitToRoom(room, 'revealResult', {
     attacker: seat, row: row, col: col, result: result,
-    headsLeft: headsLeft, steps: room.steps
+    headsLeft: headsLeft, steps: room.steps,
+    coinGain: coinGain, coins: room.coins
   });
 
   // 对方 3 个机头全被揭示 → 我方获胜
@@ -608,6 +729,301 @@ function tryReveal(room, seat, row, col) {
   }
 
   if (room.isAI) scheduleAITurn(room); // 人机房间：每次揭示后看是否轮到 AI
+}
+
+// ---------- 道具（道具版） ----------
+
+// 揭示一个格子（记录 + 金币结算），不改变步数——毁灭菇一次行动揭示 5 格专用。
+// 普通揭示/连射走 tryReveal（每次 +1 步），毁灭菇统一只 +1 步。
+function revealCell(room, seat, row, col) {
+  const defender = room.players[1 - seat];
+  const cell = defender.board[row][col];
+  const result = cell === CELL_HEAD ? 'head' : cell === CELL_BODY ? 'body' : 'empty';
+  defender.shotsReceived.push({ row: row, col: col, result: result });
+  let coinGain = 0;
+  if (room.mode === 'props') {
+    coinGain = result === 'head' ? COIN_HEAD : result === 'body' ? COIN_BODY : COIN_EMPTY;
+    room.coins[seat] += coinGain;
+  }
+  return { row: row, col: col, result: result };
+}
+
+// 3x3 区域校验：左上角 (row, col) 必须完整落在棋盘内（3x3 固定大小，不随规格缩放）
+function checkRegion(row, col, size) {
+  return Number.isInteger(row) && Number.isInteger(col) &&
+    row >= 0 && col >= 0 && row + 3 <= size && col + 3 <= size;
+}
+
+// 区域内 9 个格子坐标
+function regionCells(row, col) {
+  const cells = [];
+  for (let r = row; r < row + 3; r++) {
+    for (let c = col; c < col + 3; c++) cells.push([r, c]);
+  }
+  return cells;
+}
+
+// 毁灭菇的十字 5 格（中心 + 上下左右）
+function crossCells(row, col) {
+  return [[row, col], [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]];
+}
+
+// 8 邻域坐标（边界裁剪，不含自身）——毁灭菇冻结范围
+function neighbor8(row, col, size) {
+  const cells = [];
+  for (let r = row - 1; r <= row + 1; r++) {
+    for (let c = col - 1; c <= col + 1; c++) {
+      if (r >= 0 && r < size && c >= 0 && c < size && !(r === row && c === col)) cells.push([r, c]);
+    }
+  }
+  return cells;
+}
+
+// ---------- 毁灭菇冻结（只约束施放者自己，对手不受任何影响） ----------
+
+// 施放方 (seat) 在 (row, col) 是否仍被冻结：
+// 施放后 steps[seat] = S+1，expiry = S+3；steps[seat] < expiry 时行动仍受限制
+// （接下来 2 次行动），到第 3 次行动（steps = S+3）解除。非施放方永远 false。
+function isFrozenCell(room, seat, row, col) {
+  return room.frozenCells.some(function (f) {
+    return f.owner === seat && room.steps[seat] < f.expiry && f.row === row && f.col === col;
+  });
+}
+
+// 一组格子中是否含冻结格（区域型道具整体拒绝用）
+function hasFrozenCell(room, seat, cells) {
+  return cells.some(function (c) { return isFrozenCell(room, seat, c[0], c[1]); });
+}
+
+// 未过期的冻结格（观战/重连快照用；对局结束后全部公开，不再报冻结）
+function activeFrozenCells(room) {
+  if (room.phase === 'over') return [];
+  return room.frozenCells.filter(function (f) { return room.steps[f.owner] < f.expiry; });
+}
+
+// 道具结算公共部分：扣金币、步数 +1、广播 itemResult、判胜、调度 AI
+// 返回 false 表示已经结束对局（调用方不要再继续）
+function finishItem(room, seat, itemId, payload) {
+  const headsLeft = headsLeftOf(room);
+  emitToRoom(room, 'itemResult', Object.assign({
+    itemId: itemId,
+    attacker: seat,
+    steps: room.steps,
+    coins: room.coins,
+    headsLeft: headsLeft
+  }, payload));
+  if (headsLeft[1 - seat] === 0) {
+    endGame(room, seat, 'allHeads'); // 道具直接摧毁/找到最后一个机头 → 同样获胜
+    return false;
+  }
+  if (room.isAI) scheduleAITurn(room); // 人机房间：使用道具也占一步，之后可能轮到 AI
+  return true;
+}
+
+// 使用道具（道具版核心操作）：所有判定都在服务器，客户端只提供选择
+// 使用道具的「校验 + 执行」主体（真人 handleUseItem 和 AI 共用同一套规则）。
+// 返回 null = 成功；返回字符串 = 错误消息（真人弹提示条，AI 忽略并转为普通揭示）
+function doUseItem(room, seat, itemId, data) {
+  const price = ITEM_PRICES[itemId];
+  if (!price) return '没有这个道具';
+
+  // 步数规则（和揭示完全一样）：领先者不能行动
+  if (room.steps[seat] > room.steps[1 - seat]) {
+    return '你的步数已领先，等待对方追上';
+  }
+
+  // 金币检查：使用即购买（先校验后扣费，绝不提前扣钱）
+  if (room.coins[seat] < price) {
+    return '金币不够，买不起这个道具';
+  }
+
+  const size = getBoardSpec(room.boardSize).size;
+  const defender = room.players[1 - seat];
+
+  if (itemId === 'sonar') {
+    // 声呐脉冲：3x3 区域内非空格数量（只发数字，不泄露位置）
+    const row = data.row, col = data.col;
+    if (!checkRegion(row, col, size)) return '区域越界（3x3 必须完整落在棋盘内）';
+    if (hasFrozenCell(room, seat, regionCells(row, col))) return '选区里包含冻结的格子，还不能选中';
+    let count = 0;
+    regionCells(row, col).forEach(function (cell) {
+      if (defender.board[cell[0]][cell[1]] !== CELL_EMPTY) count++;
+    });
+    room.coins[seat] -= price;
+    room.steps[seat] += 1;
+    room.sonarHistory.push({ row: row, col: col, count: count }); // 记录历史（观战/重连补发）
+    console.log(`[${room.id}] ${room.players[seat].name} 声呐脉冲 (${row},${col}) = ${count} 个非空格`);
+    finishItem(room, seat, 'sonar', { row: row, col: col, count: count });
+    return;
+  }
+
+  if (itemId === 'pro') {
+    // 探测者 Pro：3x3 内按 机身→机头→空格 的优先级随机揭示 1 格真实内容
+    const row = data.row, col = data.col;
+    if (!checkRegion(row, col, size)) return '区域越界（3x3 必须完整落在棋盘内）';
+    if (hasFrozenCell(room, seat, regionCells(row, col))) return '选区里包含冻结的格子，还不能选中';
+    const open = regionCells(row, col).filter(function (cell) {
+      return !defender.shotsReceived.some(function (s) {
+        return s.row === cell[0] && s.col === cell[1];
+      });
+    });
+    if (!open.length) return '这个区域已经全部揭示过了';
+    const tiers = [[], [], []]; // 按格子类型分桶：0=空 1=机身 2=机头
+    open.forEach(function (cell) { tiers[defender.board[cell[0]][cell[1]]].push(cell); });
+    const pool = tiers[CELL_BODY].length ? tiers[CELL_BODY]
+      : tiers[CELL_HEAD].length ? tiers[CELL_HEAD] : tiers[CELL_EMPTY];
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    room.coins[seat] -= price; // 先扣费，再揭示（揭示本身按正常规则赚金币）
+    console.log(`[${room.id}] ${room.players[seat].name} 探测者 Pro (${row},${col}) → 揭示 (${pick[0]},${pick[1]})`);
+    tryReveal(room, seat, pick[0], pick[1]); // 记录/步数+1/金币/广播/判胜全部复用
+    return;
+  }
+
+  if (itemId === 'burst') {
+    // 双发连射：一次行动揭示 2 格（两格同时选定，看不到第一格结果后改第二格）
+    const cells = [[data.row, data.col], [data.row2, data.col2]];
+    for (let i = 0; i < 2; i++) {
+      const r = cells[i][0], c = cells[i][1];
+      if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || r >= size || c < 0 || c >= size) {
+        return '坐标无效';
+      }
+      if (defender.shotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+        return '双发的第 ' + (i + 1) + ' 格已经揭示过了';
+      }
+      if (isFrozenCell(room, seat, r, c)) {
+        return '双发的第 ' + (i + 1) + ' 格被冻结，还不能选中';
+      }
+    }
+    if (cells[0][0] === cells[1][0] && cells[0][1] === cells[1][1]) {
+      return '两格不能相同';
+    }
+    room.coins[seat] -= price;
+    // 步数：双发 = 2 次揭示，两次 tryReveal 内部各 +1（总 +2，比标准行动多 1 步）
+    console.log(`[${room.id}] ${room.players[seat].name} 双发连射 (${cells[0][0]},${cells[0][1]}) + (${cells[1][0]},${cells[1][1]})`);
+    tryReveal(room, seat, cells[0][0], cells[0][1]);
+    if (room.phase === 'battle') tryReveal(room, seat, cells[1][0], cells[1][1]); // 第一格若直接获胜就不再打
+    return;
+  }
+
+  if (itemId === 'expose') {
+    // 无所遁形：对已揭示的机头使用 → 完整揭示该机头所属的整架飞机（10 格）
+    const row = data.row, col = data.col;
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= size || col < 0 || col >= size) {
+      return '坐标无效';
+    }
+    const headRec = defender.shotsReceived.find(function (s) {
+      return s.row === row && s.col === col && s.result === 'head';
+    });
+    if (!headRec) return '这格不是已经揭示的机头';
+    // 无需冻结检查：目标必须是已揭示的机头，而冻结只作用于未揭示格
+    const plane = defender.planes.find(function (p) {
+      return p.headRow === row && p.headCol === col;
+    });
+    if (!plane) return '找不到对应的飞机'; // 防御性校验
+    const cells = getPlaneCells(row, col, plane.dir);
+    cells.forEach(function (cell) {
+      const r = cell[0], c = cell[1];
+      if (!defender.shotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+        // 整架飞机补全揭示（机头已揭示，这里补上的都是机身）
+        defender.shotsReceived.push({ row: r, col: c, result: 'body' });
+      }
+    });
+    room.coins[seat] -= price;
+    room.steps[seat] += 1;
+    console.log(`[${room.id}] ${room.players[seat].name} 无所遁形 (${row},${col}) 揭示整架飞机`);
+    finishItem(room, seat, 'expose', { row: row, col: col, cells: cells });
+    return;
+  }
+
+  if (itemId === 'devour') {
+    // 吞噬者：3x3 内所有未揭示格变为「摧毁」（不给金币，机头被摧毁视作发现飞机）
+    const row = data.row, col = data.col;
+    if (!checkRegion(row, col, size)) return '区域越界（3x3 必须完整落在棋盘内）';
+    if (hasFrozenCell(room, seat, regionCells(row, col))) return '选区里包含冻结的格子，还不能选中';
+    const destroyed = []; // 被摧毁的格子坐标（用于灰色渲染）
+    let headHit = null;   // 若机头被摧毁：这格的坐标（明确反馈「命中机头！」）
+    regionCells(row, col).forEach(function (cell) {
+      const r = cell[0], c = cell[1];
+      if (defender.shotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+        return; // 已揭示的格子不受影响
+      }
+      if (defender.board[r][c] === CELL_HEAD) {
+        // 机头被摧毁 = 发现飞机：这格按机头公开记录（带 destroyed 标记，渲染为灰色机头）
+        headHit = [r, c];
+        defender.shotsReceived.push({ row: r, col: c, result: 'head', destroyed: true });
+      } else {
+        // 机身/空格被摧毁：只记「摧毁」状态，内容保密（对局结束后才公开）
+        defender.shotsReceived.push({ row: r, col: c, result: 'destroyed' });
+      }
+      destroyed.push([r, c]);
+    });
+    if (!destroyed.length) return '这个区域没有可摧毁的格子';
+    room.coins[seat] -= price;
+    room.steps[seat] += 1;
+    console.log(`[${room.id}] ${room.players[seat].name} 吞噬者 (${row},${col}) 摧毁 ${destroyed.length} 格` + (headHit ? '，命中机头！' : ''));
+    finishItem(room, seat, 'devour', { row: row, col: col, destroyed: destroyed, headHit: headHit });
+    return;
+  }
+
+  if (itemId === 'doom') {
+    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结。
+    // 冻结只约束施放者自己（接下来 2 次行动不能揭示/选中这些格），对手不受影响。
+    const row = data.row, col = data.col;
+    // 十字中心必须完整落盘（离边至少 1 格，上下左右才不会出界）
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || row > size - 2 || col < 1 || col > size - 2) {
+      return '十字中心离棋盘边太近，无法完整落盘';
+    }
+    const cells = crossCells(row, col);
+    if (hasFrozenCell(room, seat, cells)) {
+      return '十字里包含冻结的格子，还不能选中';
+    }
+
+    // 揭示十字 5 格（已揭示的格跳过，和吞噬者「已揭示格不受影响」同一逻辑）；
+    // 只走 revealCell（记录 + 金币），步数整体 +1，避免 5 条 revealResult 的步数竞态
+    const revealed = [];
+    cells.forEach(function (cell) {
+      if (!defender.shotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) {
+        revealed.push(revealCell(room, seat, cell[0], cell[1]));
+      }
+    });
+    if (!revealed.length) return '十字的 5 格都已经揭示过了';
+
+    // 生成冻结：与十字 5 格相邻（8 邻域）且未揭示的格子（去重，十字本身不冻结）
+    const frozen = [];
+    cells.forEach(function (cell) {
+      neighbor8(cell[0], cell[1], size).forEach(function (n) {
+        const nr = n[0], nc = n[1];
+        if (cells.some(function (c2) { return c2[0] === nr && c2[1] === nc; })) return;
+        if (defender.shotsReceived.some(function (s) { return s.row === nr && s.col === nc; })) return;
+        if (frozen.some(function (f) { return f[0] === nr && f[1] === nc; })) return;
+        frozen.push([nr, nc]);
+      });
+    });
+
+    room.coins[seat] -= price;
+    room.steps[seat] += 1;
+    // 冻结记录带 owner/expiry 广播：客户端用它判断「我的冻结格」和过期（渲染 ❄ 用）
+    const frozenRecs = frozen.map(function (f) {
+      return { row: f[0], col: f[1], owner: seat, expiry: room.steps[seat] + 2 };
+    });
+    room.frozenCells = room.frozenCells.concat(frozenRecs);
+    console.log(`[${room.id}] ${room.players[seat].name} 毁灭菇 (${row},${col}) 揭示 ${revealed.length} 格，冻结 ${frozen.length} 格`);
+    finishItem(room, seat, 'doom', { row: row, col: col, cells: revealed, frozen: frozenRecs });
+    return;
+  }
+
+  return '未知道具';
+}
+
+// 真人使用道具入口：定位 + 阶段/玩法检查后交给 doUseItem（AI 走 doUseItem 但不走这里）
+function handleUseItem(socket, data) {
+  const loc = locate(socket);
+  if (!loc) return sendError(socket, '你不在任何房间中');
+  const room = loc.room, seat = loc.seat;
+  if (room.phase !== 'battle') return sendError(socket, '现在还不能使用道具（未开战或已结束）');
+  if (room.mode !== 'props') return sendError(socket, '经典玩法没有道具');
+  const err = doUseItem(room, seat, data.itemId, data);
+  if (err) sendError(socket, err);
 }
 
 // 再来一局投票
@@ -705,6 +1121,7 @@ function handleWsMessage(conn, raw) {
     deployConfirm: handleDeployConfirm,
     deployCancel: handleDeployCancel,
     reveal: handleReveal,
+    useItem: handleUseItem,
     rematch: handleRematch,
     leaveRoom: handleLeaveRoom,
     visit: handleVisit

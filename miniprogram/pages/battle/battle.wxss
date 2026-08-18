@@ -57,3 +57,40 @@
 .wait-card { text-align: center; padding: 80rpx 24rpx; }
 .wait-title { font-size: 34rpx; }
 .wait-sub { color: var(--muted); font-size: 26rpx; margin: 16rpx 0 40rpx; }
+
+/* ---------- 道具版：金币 + 道具栏 + 选区状态条 ---------- */
+.panel-coins { font-size: 24rpx; color: #f59e0b; margin-right: 16rpx; font-weight: bold; }
+/* 道具栏：横向滚动的一排按钮 */
+.items-panel { margin: 20rpx 0 0; white-space: nowrap; }
+.items-row { display: inline-flex; gap: 12rpx; padding: 4rpx 2rpx; }
+.item-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  padding: 12rpx 24rpx;
+  background: var(--surface);
+  border: 1rpx solid var(--border);
+  border-radius: 12rpx;
+}
+.item-btn.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4rpx var(--primary) inset;
+}
+.item-btn.disabled { opacity: .4; }
+.item-label { font-size: 26rpx; color: var(--text-2); }
+.item-price { font-size: 24rpx; color: #f59e0b; }
+.item-btn.disabled .item-price { color: var(--faint); }
+/* 选区状态条：操作指引 + 确认/取消 */
+.item-status {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 16rpx 0 0;
+  padding: 12rpx 16rpx;
+  background: var(--surface);
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: var(--text-2);
+}
+.item-status-text { flex: 1; }

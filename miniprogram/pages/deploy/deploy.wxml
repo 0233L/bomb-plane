@@ -12,6 +12,7 @@
   <view class="board-wrap">
     <view class="board">
       <view wx:for="{{cells}}" wx:key="index" class="board-cell {{item.cls}}"
+            style="width:{{cellW}};height:{{cellH}}"
             data-r="{{item.r}}" data-c="{{item.c}}" bindtap="onCellTap"></view>
     </view>
   </view>

@@ -6,6 +6,7 @@
 
 const app = getApp();
 const state = app.globalData.state;
+const shared = require('../../utils/shared.js');
 
 Page({
   data: {
@@ -16,7 +17,10 @@ Page({
     rooms: [],               // 最近加入的房间列表
     showRules: false,        // 规则弹窗
     diagrams: [],            // 规则弹窗里的 4 张飞机朝向图
-    visitorCount: 0          // 底部「已有 X 位玩家访问过」
+    visitorCount: 0,         // 底部「已有 X 位玩家访问过」
+    propsOn: false,          // 道具模式开关（玩法：经典/道具）
+    spec: 'S',               // 地图规格：S=10×10 M=12×12 L=14×14
+    modeHelp: ''             // 玩法提示文字
   },
 
   onShow() {
@@ -44,6 +48,10 @@ Page({
 
   refresh() {
     const history = app.loadRoomHistory();
+    // 玩法（经典/道具）与规格（S/M/L）独立记忆
+    const propsOn = app.loadStorage('bp_mode', '') === 'props';
+    const spec = app.loadStorage('bp_spec', 'S');
+    const sp = shared.getBoardSpec(spec);
     this.setData({
       themeClass: app.getThemeClass(),
       name: (app.loadStorage('bp_name', '') || '').trim(),
@@ -51,9 +59,30 @@ Page({
         return { roomId: e.roomId, token: e.token, name: e.name };
       }),
       diagrams: app.rulesDiagrams(),
-      visitorCount: app.globalData.state.totalVisitors
+      visitorCount: app.globalData.state.totalVisitors,
+      propsOn: propsOn,
+      spec: spec,
+      modeHelp: propsOn
+        ? '🎁 道具版 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架 · 金币买道具更刺激'
+        : '经典玩法 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架'
     });
     this.updateThemeLabel();
+  },
+
+  // 道具模式开关：记住选择；首次开道具时规格跳到道具版默认 M（手动改过规格后不再强制跳）
+  onPropsToggle(e) {
+    const propsOn = e.detail.value;
+    app.saveStorage('bp_mode', propsOn ? 'props' : 'classic');
+    if (propsOn && !app.loadStorage('bp_spec_manual', '')) {
+      app.saveStorage('bp_spec', 'M');
+    }
+    this.refresh();
+  },
+  // 地图规格选择（10×10 / 12×12 / 14×14）
+  onSpecTap(e) {
+    app.saveStorage('bp_spec', e.currentTarget.dataset.spec);
+    app.saveStorage('bp_spec_manual', '1'); // 手动改过规格：以后开关联动不再强制跳
+    this.refresh();
   },
 
   // 主题文字：auto=跟随系统 light=浅色 dark=深色
@@ -77,17 +106,30 @@ Page({
     this.setData({ roomInput: e.detail.value });
   },
 
-  // 创建房间（双人）
+  // 创建房间（双人）：带当前玩法 + 规格
   onCreateTap() {
-    app.globalData.socket.emit('createRoom', { name: this.data.name });
+    app.globalData.socket.emit('createRoom', {
+      name: this.data.name,
+      mode: this.data.propsOn ? 'props' : 'classic',
+      boardSize: this.data.spec
+    });
   },
-  // 人机对战：直接创建人机房间（唯一的 AI 已是最强档）
+  // 人机对战：玩法×规格自由组合（经典/S 走最强算法，其余组合简单贪心）
   onAITap() {
-    app.globalData.socket.emit('createRoomAI', { name: this.data.name });
+    app.globalData.socket.emit('createRoomAI', {
+      name: this.data.name,
+      mode: this.data.propsOn ? 'props' : 'classic',
+      boardSize: this.data.spec
+    });
   },
-  // 输入房间号加入（网页 / 小程序通用）
+  // 输入房间号加入（网页 / 小程序通用）：带当前玩法 + 规格
   onJoinTap() {
-    app.globalData.socket.emit('joinRoom', { roomId: this.data.roomInput, name: this.data.name });
+    app.globalData.socket.emit('joinRoom', {
+      roomId: this.data.roomInput,
+      name: this.data.name,
+      mode: this.data.propsOn ? 'props' : 'classic',
+      boardSize: this.data.spec
+    });
   },
 
   // 最近房间：点「进入」= 用上次的凭证直接重连恢复现场
