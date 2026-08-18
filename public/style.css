@@ -435,6 +435,17 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   margin: 14px auto 0;
   max-width: 720px;
 }
+/* 道具栏最左：本玩家金币数（金色数字；经典模式整个面板隐藏，无需单独显隐） */
+.panel-coins {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+  padding-left: 4px;
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.panel-coins b { color: #f59e0b; font-size: 15px; }
 /* 每个道具一个按钮：图标 + 名称 + 价格（价格金色） */
 .item-btn {
   display: flex;
@@ -546,9 +557,9 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .board td.cell-head-destroyed { background: var(--cell-unknown); border: 2px solid #ef5350; }
 .board td.cell-head-destroyed::after { content: '✕'; font-size: 20px; color: #ef5350; }
 
-/* 毁灭菇冻结的格子：紫色 ❄ + 紫边（冻结期间不可揭示、不可被技能选中） */
-.board td.cell-frozen { color: #a78bfa; }
-.board td.cell-frozen::after { content: '❄'; font-size: 16px; }
+/* 毁灭菇冻结的格子：紫色 ❄（渲染层用 td.textContent 写 ❄，这里只管颜色字号；
+   注意不要再加 ::after content——会和文本重复画两个 ❄） */
+.board td.cell-frozen { color: #a78bfa; font-size: 16px; }
 
 /* 注释标记：右键在未揭示格上标的预期内容（红=机头 绿=机身 灰=空）。
    用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
@@ -638,4 +649,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   .player-panel h3 { font-size: 14px; }
   .player-panel p { font-size: 12px; }
   .battle-score { padding: 8px 12px; font-size: 15px; }
+  /* 手机端格子缩到 28px：❄ / ✕ / 声呐数字都要跟着缩小
+     （这些规则的特异性比 `.board td { font-size: 14px }` 高，必须单独覆盖，
+      否则 ❄ 16px 在 28px 格子里会大得撑变形） */
+  .board td.cell-frozen { font-size: 12px; }
+  .board td.cell-destroyed::after,
+  .board td.cell-head-destroyed::after { font-size: 12px; }
+  .board td.cell-sonar { font-size: 12px; }
 }

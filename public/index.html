@@ -142,7 +142,6 @@
         <h3><span id="panel-my-name"></span> <span id="panel-my-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-my-steps">0</b></p>
         <p>已找到机头：<b id="panel-my-heads">0/3</b></p>
-        <p class="coins-row hidden" id="panel-my-coins-row">金币：<b id="panel-my-coins">0</b> 🪙</p>
         <p class="turn-hint" id="panel-my-turn"></p>
       </div>
       <div id="battle-score" class="battle-score hidden">
@@ -171,12 +170,14 @@
     <!-- 道具面板（道具版专属）：点道具 → 点对方棋盘选区域 → 确认执行（金币不够的置灰）。
          按钮按价格升序排列（探测者 2 → 声呐 3 → 无所遁形 4 → 双发 5 → 吞噬 6 → 毁灭菇 10） -->
     <div id="items-panel" class="items-panel hidden">
-      <button class="item-btn" data-item="pro"><span>🔍 探测者<b>2</b></span><span class="item-desc">身→头→空优先揭 1 格</span></button>
-      <button class="item-btn" data-item="sonar"><span>🔊 声呐脉冲<b>3</b></span><span class="item-desc">区域内飞机数量</span></button>
-      <button class="item-btn" data-item="expose"><span>👁 无所遁形<b>4</b></span><span class="item-desc">整架飞机全揭示</span></button>
-      <button class="item-btn" data-item="burst"><span>💥 双发连射<b>5</b></span><span class="item-desc">一次行动揭 2 格</span></button>
-      <button class="item-btn" data-item="devour"><span>🧨 吞噬者<b>6</b></span><span class="item-desc">3×3 区域摧毁</span></button>
-      <button class="item-btn" data-item="doom"><span>🌋 毁灭菇<b>10</b></span><span class="item-desc">十字揭示+冻结</span></button>
+      <!-- 道具栏最左：本玩家金币数（道具版显示；敌方金币仍在对方信息面板） -->
+      <div class="panel-coins" id="panel-my-coins-row">🪙 <b id="panel-my-coins">0</b></div>
+      <button class="item-btn" data-item="pro"><span>🔍 探测者<b>2🪙</b></span><span class="item-desc">身→头→空优先揭 1 格</span></button>
+      <button class="item-btn" data-item="sonar"><span>🔊 声呐脉冲<b>3🪙</b></span><span class="item-desc">区域内飞机数量</span></button>
+      <button class="item-btn" data-item="expose"><span>👁 无所遁形<b>4🪙</b></span><span class="item-desc">整架飞机全揭示</span></button>
+      <button class="item-btn" data-item="burst"><span>💥 双发连射<b>5🪙</b></span><span class="item-desc">一次行动揭 2 格</span></button>
+      <button class="item-btn" data-item="devour"><span>🧨 吞噬者<b>6🪙</b></span><span class="item-desc">3×3 区域摧毁</span></button>
+      <button class="item-btn" data-item="doom"><span>🌋 毁灭菇<b>10🪙</b></span><span class="item-desc">十字揭示+冻结</span></button>
     </div>
     <!-- 道具选区状态条：操作指引 + 确认/取消 -->
     <div id="item-status" class="item-status hidden">

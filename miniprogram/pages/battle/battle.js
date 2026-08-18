@@ -280,7 +280,7 @@ Page({
   pickItemCell(r, c) {
     const id = state.itemPick.itemId;
     const key = r + ',' + c;
-    // 二次确认：选区完整后，再点一次「定位格」视作确认（3×3 道具的定位格 = 锚点左上角；
+    // 二次确认：选区完整后，再点一次「定位格」视作确认（3×3 道具的定位格 = 第一击的格子；
     // 毁灭菇 = 十字中心；无所遁形 = 机头格；双发 = 任一已选格）。
     // 区域内其他格仍算重新定位，不会误触确认
     if (state.pickReady) {
@@ -292,8 +292,9 @@ Page({
         return;
       }
       if (id === 'sonar' || id === 'pro' || id === 'devour') {
-        // 再点锚点（左上角）确认；点区域内其他格 = 重新定位（走下方逻辑）
-        if (r === state.pickAnchor.row && c === state.pickAnchor.col) { this.confirmItem(); return; }
+        // 再点「第一击的定位格」= 确认（用户自然重复点自己刚点的格子）；
+        // 点区域内其他格 = 重新定位（走下方逻辑）
+        if (key === state.pickFirstKey) { this.confirmItem(); return; }
       } else {
         // 毁灭菇 / 无所遁形：定位格是 pickCells[0]（十字中心 / 机头格）
         if (key === state.pickCells[0]) { this.confirmItem(); return; }
@@ -344,6 +345,7 @@ Page({
     const anchor = hoverAnchor(r, c, shared.getBoardSpec(state.boardSize).size);
     state.pickAnchor = anchor;
     state.pickCells = regionKeys(anchor.row, anchor.col);
+    state.pickFirstKey = key; // 记录第一击的定位格：重复点击它 = 确认（点锚点不是用户直觉）
     state.pickReady = true;
     this.render();
   },
@@ -365,6 +367,7 @@ Page({
     state.pickCells = [];
     state.pickAnchor = null;
     state.pickReady = false;
+    state.pickFirstKey = null;
     this.render();
   },
 
@@ -409,6 +412,7 @@ Page({
     state.pickCells = [];
     state.pickAnchor = null;
     state.pickReady = false;
+    state.pickFirstKey = null;
   },
 
   onRematchTap() {

@@ -192,6 +192,7 @@ const state = {
   pickCells: [],             // 已固定的选区格子（'r,c' 字符串数组，金色高亮）
   pickAnchor: null,          // 3x3 道具的选区锚点（左上角，发给服务器）
   pickReady: false,          // 选区是否已完整（完整后显示「确认使用」按钮）
+  pickFirstKey: null,        // 3×3 道具第一击的定位格（'r,c'；重复点击它 = 确认，不是锚点）
   pickHover: [],             // 鼠标悬停预览的格子（'r,c' 数组，仅区域型道具）
   deployConfirmed: [false, false],
   myPlanes: [],              // 自己已确认的 3 架飞机（battle 阶段必有）
@@ -277,10 +278,10 @@ function onBoardHover(e) {
   if (e.currentTarget.closest('#enemy-board') !== $('#enemy-board')) return;
   const r = +e.currentTarget.dataset.row, c = +e.currentTarget.dataset.col;
   if (id === 'doom') {
-    // 毁灭菇：十字中心 = 点击的格子（距边至少 1 格，十字完整落盘）
+    // 毁灭菇：十字中心 = 点击的格子（靠边格点击会被拒，预览保持一致：靠边不显示）
     const size = curSpec().size;
-    const center = { row: Math.max(1, Math.min(size - 2, r)), col: Math.max(1, Math.min(size - 2, c)) };
-    updatePickHover(crossKeys(center.row, center.col));
+    if (r < 1 || r > size - 2 || c < 1 || c > size - 2) { updatePickHover([]); return; }
+    updatePickHover(crossKeys(r, c));
   } else {
     const anchor = hoverAnchor(r, c);
     updatePickHover(regionKeys(anchor.row, anchor.col));
@@ -460,9 +461,23 @@ function renderBattleBoards() {
     }
     // 声呐 3x3 区域外圈的金色细边框（内联样式优先于注释标记的 class 描边）
     td.style.boxShadow = sonarShadows[r + ',' + c] || '';
-    // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）
-    if (state.pickCells.indexOf(r + ',' + c) !== -1) td.classList.add('cell-pick');
-    if (state.pickHover.indexOf(r + ',' + c) !== -1) td.classList.add('cell-pick-hover');
+    // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）；
+    // 毁灭菇选区画「整体十字轮廓框」（内联 box-shadow，与声呐外圈框逗号合并），
+    // 其他道具保持每格独立 outline 描边
+    const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
+    const doomKeys = isDoomPick && (state.pickCells.length ? state.pickCells : state.pickHover);
+    const doomShadows = doomKeys && doomKeys.length ? doomPickShadows(doomKeys) : null;
+    const doomKey = r + ',' + c;
+    if (state.pickCells.indexOf(doomKey) !== -1) {
+      if (doomShadows && doomShadows[doomKey]) {
+        td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomShadows[doomKey] : doomShadows[doomKey];
+      } else td.classList.add('cell-pick');
+    }
+    if (state.pickHover.indexOf(doomKey) !== -1) {
+      if (doomShadows && doomShadows[doomKey]) {
+        td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomShadows[doomKey] : doomShadows[doomKey];
+      } else td.classList.add('cell-pick-hover');
+    }
   });
 
   // ---- 上一手揭示的格子：蓝色框框选 ----
@@ -642,6 +657,7 @@ function clearItemPick() {
   state.pickCells = [];
   state.pickAnchor = null;
   state.pickReady = false;
+  state.pickFirstKey = null;
   state.pickHover = [];
 }
 
@@ -663,6 +679,22 @@ function regionKeys(row, col) {
 // 毁灭菇十字 5 格的 'r,c' 键（中心 + 上下左右）
 function crossKeys(row, col) {
   return [row + ',' + col, (row - 1) + ',' + col, (row + 1) + ',' + col, row + ',' + (col - 1), row + ',' + (col + 1)];
+}
+
+// 毁灭菇十字选区：整体十字形轮廓框（和声呐外圈框同款差集模型——inset 阴影的可见区在
+// 偏移相反侧：0 3px 画顶部、0 -3px 画底部、3px 0 画左侧、-3px 0 画右侧）。
+// 4 条臂各画外侧 1 条边 + 中心格画内缩 2px 小框 → 视觉上是一个整体十字框而不是 5 个独立小框。
+// keys[0] 是十字中心（'r,c'）；返回 {'r,c': box-shadow}，与声呐外圈框逗号合并
+function doomPickShadows(keys) {
+  const c = keys[0].split(',');
+  const cr = +c[0], cc = +c[1];
+  const map = {};
+  map[cr + ',' + cc] = 'inset 0 0 0 2px #f59e0b';             // 中心：内缩 2px 小框（定位格标记）
+  map[(cr - 1) + ',' + cc] = 'inset 0 3px 0 0 #f59e0b';        // 上臂：顶线
+  map[(cr + 1) + ',' + cc] = 'inset 0 -3px 0 0 #f59e0b';       // 下臂：底线
+  map[cr + ',' + (cc - 1)] = 'inset 3px 0 0 0 #f59e0b';        // 左臂：左线
+  map[cr + ',' + (cc + 1)] = 'inset -3px 0 0 0 #f59e0b';       // 右臂：右线
+  return map;
 }
 
 // 这个格子是否还在毁灭菇冻结期（只查自己视角的对方棋盘；渲染 ❄ 与点击拦截共用）
@@ -689,8 +721,9 @@ function pickItemCell(r, c) {
       return;
     }
     if (id === 'sonar' || id === 'pro' || id === 'devour') {
-      // 再点锚点（左上角）确认；点区域内其他格 = 重新定位（走下方逻辑）
-      if (r === state.pickAnchor.row && c === state.pickAnchor.col) { confirmItem(); return; }
+      // 再点「第一击的定位格」= 确认（用户自然重复点自己刚点的格子）；
+      // 点区域内其他格 = 重新定位（走下方逻辑）
+      if (key === state.pickFirstKey) { confirmItem(); return; }
     } else {
       // 毁灭菇 / 无所遁形：定位格是 pickCells[0]（十字中心 / 机头格）
       if (key === state.pickCells[0]) { confirmItem(); return; }
@@ -745,6 +778,7 @@ function pickItemCell(r, c) {
   const anchor = hoverAnchor(r, c);
   state.pickAnchor = anchor;
   state.pickCells = regionKeys(anchor.row, anchor.col);
+  state.pickFirstKey = key; // 记录第一击的定位格：重复点击它 = 确认（点锚点不是用户直觉）
   state.pickReady = true;
   renderBattleBoards();
   updateItemStatus();
@@ -1509,6 +1543,7 @@ function bindUIEvents() {
       state.pickCells = [];
       state.pickAnchor = null;
       state.pickReady = false;
+      state.pickFirstKey = null;
       renderBattleBoards(); // 进入选区模式：棋盘十字光标 + 清掉旧的悬停预览
       updateItemButtons();
     });

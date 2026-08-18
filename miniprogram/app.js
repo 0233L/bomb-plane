@@ -35,6 +35,7 @@ const state = {
   pickCells: [],            // 已固定的选区格子（'r,c' 字符串数组，金色高亮）
   pickAnchor: null,         // 3x3 道具的选区锚点（左上角，发给服务器）
   pickReady: false,         // 选区是否已完整（完整后显示「确认使用」按钮）
+  pickFirstKey: null,       // 3×3 道具第一击的定位格（'r,c'；重复点击它 = 确认，不是锚点）
   deployConfirmed: [false, false],
   myPlanes: [],
   myShotsReceived: [],
@@ -306,10 +307,24 @@ function enemyBoardCells() {
       if (!s && !state.spectator && !revealed && state.marks[r + ',' + c]) {
         cls += ' cell-mark-' + state.marks[r + ',' + c];
       }
-      // 道具选区高亮（battle 页选区交互时设置 state.pickCells）
-      if (state.pickCells.indexOf(r + ',' + c) !== -1) cls += ' cell-pick';
-      // 声呐区域外圈的金色细边框（内联样式，多个区域叠加不冲突）
-      const boxShadow = sonarShadows[r + ',' + c];
+      // 道具选区高亮（battle 页选区交互时设置 state.pickCells）；
+      // 毁灭菇选区画「整体十字轮廓框」：4 条臂各画外侧 1 条边 + 中心格内缩 2rpx 小框
+      // （与声呐外圈框同款差集模型——inset 阴影可见区在偏移相反侧），而不是 5 个独立小框
+      const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
+      let doomShadow = '';
+      if (isDoomPick && state.pickCells.length) {
+        const center = state.pickCells[0].split(',');
+        const cr = +center[0], cc = +center[1];
+        if (r === cr && c === cc) doomShadow = 'inset 0 0 0 2rpx #f59e0b';             // 中心：内缩小框
+        else if (r === cr - 1 && c === cc) doomShadow = 'inset 0 3rpx 0 0 #f59e0b';   // 上臂：顶线
+        else if (r === cr + 1 && c === cc) doomShadow = 'inset 0 -3rpx 0 0 #f59e0b';  // 下臂：底线
+        else if (r === cr && c === cc - 1) doomShadow = 'inset 3rpx 0 0 0 #f59e0b';   // 左臂：左线
+        else if (r === cr && c === cc + 1) doomShadow = 'inset -3rpx 0 0 0 #f59e0b';  // 右臂：右线
+      }
+      if (state.pickCells.indexOf(r + ',' + c) !== -1 && !isDoomPick) cls += ' cell-pick';
+      // 声呐区域外圈 / 毁灭菇十字轮廓：内联样式，多个效果叠加不冲突
+      let boxShadow = sonarShadows[r + ',' + c];
+      if (doomShadow) boxShadow = boxShadow ? boxShadow + ',' + doomShadow : doomShadow;
       cells.push({ r: r, c: c, cls: cls, text: text, style: boxShadow ? 'box-shadow:' + boxShadow : '' });
     }
   }
@@ -399,6 +414,7 @@ socket.on('spectatorJoined', function (d) {
   state.pickCells = [];
   state.pickAnchor = null;
   state.pickReady = false;
+  state.pickFirstKey = null;
   state.revealedPlanes = d.planes || null;
   state.phase = d.phase;
   emitLocal('spectatorJoined', d);
@@ -451,6 +467,7 @@ socket.on('battleStart', function (d) {
   state.pickCells = [];
   state.pickAnchor = null;
   state.pickReady = false;
+  state.pickFirstKey = null;
   state.revealedPlanes = null;
   state.over = false;
   state.phase = 'battle';
@@ -620,6 +637,7 @@ socket.on('reconnected', function (d) {
   state.pickCells = [];
   state.pickAnchor = null;
   state.pickReady = false;
+  state.pickFirstKey = null;
   state.winner = d.winner;
   state.winReason = d.winReason;
   state.rematchVotes = d.rematchVotes || [false, false];
