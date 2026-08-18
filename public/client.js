@@ -920,7 +920,7 @@ function goBattle() {
     $('#board-title-my').textContent = '我的棋盘';
     $('#board-title-enemy').textContent = '对方棋盘';
   }
-  $('#board-title-enemy-note').textContent = '（点击未知格子揭示）';
+  $('#board-title-enemy-note').textContent = '（点击未知格子揭示 · 右键/长按可标注机身）';
   renderBattleBoards();
   updateBattlePanels();
   showView('battle');
