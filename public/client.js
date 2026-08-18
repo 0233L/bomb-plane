@@ -511,8 +511,18 @@ function renderBattleBoards() {
       td.classList.add('cell-sonar');
       td.textContent = count;
     }
-    // 声呐 3x3 区域外圈的金色细边框（内联样式优先于注释标记的 class 描边）
-    td.style.boxShadow = sonarShadowMaps.enemy[r + ',' + c] || '';
+    // 声呐 3x3 区域外圈的金色细边框（内联样式优先于注释标记的 class 描边）。
+    // 注意：标记绿框（cell-mark-body）也是 box-shadow——声呐框格的内联阴影会
+    // 把它盖掉，有声呐框的格子上标记会看不见。这里把绿框拼进内联阴影里
+    // （逗号叠加，与毁灭菇方框合并同手法）
+    const sonarShadow = sonarShadowMaps.enemy[r + ',' + c];
+    const markKey = r + ',' + c;
+    const hasMark = !s && !revealed && !state.spectator && state.marks[markKey];
+    if (sonarShadow) {
+      td.style.boxShadow = hasMark ? sonarShadow + ',inset 0 0 0 3px #66bb6a' : sonarShadow;
+    } else {
+      td.style.boxShadow = ''; // 无声呐框：清掉内联样式，class 标记正常生效
+    }
     // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）；
     // 毁灭菇选区画「3×3 完整外圈方框」（内联 box-shadow，与声呐外圈框逗号合并），
     // 其他道具保持每格独立 outline 描边。
@@ -538,15 +548,23 @@ function renderBattleBoards() {
   if (lastTheirs) {
     const td = $('#my-board').querySelector(
       'td[data-row="' + lastTheirs.row + '"][data-col="' + lastTheirs.col + '"]');
-    if (td) td.classList.add('last-reveal');
+    if (td) addLastReveal(td);
   }
   // 对方棋盘：框出我上一手打的位置
   const lastMine = state.enemyShotsReceived[state.enemyShotsReceived.length - 1];
   if (lastMine) {
     const td = $('#enemy-board').querySelector(
       'td[data-row="' + lastMine.row + '"][data-col="' + lastMine.col + '"]');
-    if (td) td.classList.add('last-reveal');
+    if (td) addLastReveal(td);
   }
+}
+
+// 上一步格的蓝色方框（last-reveal）：方格内 inset 样式，与标记同款。
+// 该格若已有内联 box-shadow（声呐外框 / 毁灭菇方框），内联会盖掉 class 的蓝框 →
+// 逗号拼接进内联阴影里（与 cell-mark-body 的处理同理）
+function addLastReveal(td) {
+  td.classList.add('last-reveal');
+  if (td.style.boxShadow) td.style.boxShadow += ',inset 0 0 0 3px var(--primary)';
 }
 
 // ---------- 各页面渲染 ----------

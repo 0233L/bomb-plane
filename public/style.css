@@ -548,9 +548,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .board td.edge-r { border-right: 2px solid var(--edge); }
 
 /* 上一手揭示的格子：蓝色框框选（双方棋盘都标，无论哪一方操作的）
-   用 outline 画：起点就在格子边界（棋盘线）上，向外 3px，与格子对齐；
-   outline 不会被表格裁掉，显示稳定（z-index 保证盖住相邻格线） */
-.board td.last-reveal { outline: 3px solid var(--primary); z-index: 1; }
+   与给棋盘打标记（cell-mark-body）同款：方格内的 inset 边框，不越出格子 */
+.board td.last-reveal { box-shadow: inset 0 0 0 3px var(--primary); z-index: 1; }
 
 /* 吞噬者摧毁的格子：深灰 + ✕（内容保密；对局结束后公开真实内容） */
 .board td.cell-destroyed { background: var(--cell-unknown); color: var(--faint); }
