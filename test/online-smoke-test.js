@@ -59,7 +59,7 @@ function randomDeployment(spec) {
 async function main() {
   console.log('线上地址: ' + WS_URL);
   const a = new WSClient(WS_URL);
-  await waitFor(a, 'connect');
+  await waitFor(a, 'connect', 30000); // Render 冷启动较慢，放宽连接超时
   check('WebSocket 连接成功', true);
   a.emit('createRoom', { name: '线上A', mode: 'props', boardSize: SPEC });
   const created = await waitFor(a, 'roomCreated');
@@ -78,18 +78,23 @@ async function main() {
   await pB;
   check('开战成功，金币 = 8', battle.coins && battle.coins[0] === 8);
 
-  // 攒 10 金币：逐格揭示直到 coins >= 10（空格 +0 也合法），B 每轮拉平
-  const reveal = function (s, r, c) {
-    const p = waitForMatch(s, 'revealResult', function (d) { return true; }, 15000);
+  // 攒 10 金币：逐格揭示直到 coins >= 10（空格 +0 也合法），B 每轮拉平。
+  // ⚠️ revealResult 是双方互发的广播——监听必须按 attacker 过滤，
+  // 否则线上 RTT 下对方那次揭示的广播会抢先匹配，读到错位的 coins/steps。
+  const reveal = function (s, r, c, attacker) {
+    const p = waitForMatch(s, 'revealResult', function (d) { return d.attacker === attacker; }, 30000);
     s.emit('reveal', { row: r, col: c });
     return p;
   };
   const size = shared.getBoardSpec(SPEC).size;
   let coins = 8, tries = 0;
-  while (coins < 10 && tries < 12) {
-    const r = await reveal(a, Math.floor(tries / size), tries % size);
+  const bRevealed = {}; // B 已揭示过的坐标（「对手不受限」环节要避开，防止重复揭示挂起）
+  while (coins < 10 && tries < 30) { // 上限 30 次：行扫描攒 +2 金币，几乎不可能失手
+    const r = await reveal(a, Math.floor(tries / size), tries % size, 0);
     coins = r.coins[0];
-    await reveal(b, size - 1 - Math.floor(tries / size), tries % size); // B 拉平
+    const bRow = size - 1 - Math.floor(tries / size), bCol = tries % size;
+    bRevealed[bRow + ',' + bCol] = true;
+    await reveal(b, bRow, bCol, 1); // B 拉平
     tries++;
   }
   check('攒够 10 金币（最终 ' + coins + '）', coins >= 10);
@@ -105,14 +110,15 @@ async function main() {
     doom.frozen.every(function (f) { return typeof f.row === 'number' && typeof f.col === 'number' && f.owner === 0; }));
 
   // 冻结拒绝：A 揭示冻结格 → error
-  const f = doom.frozen[0];
+  // f 避开 B 已揭示过的坐标（B 的揭示与 A 的冻结区可能撞车 → 重复揭示会挂起）
+  const f = doom.frozen.filter(function (x) { return !bRevealed[x.row + ',' + x.col]; })[0] || doom.frozen[0];
   const errP = waitForMatch(a, 'error', function () { return true; }, 15000);
   a.emit('reveal', { row: f.row, col: f.col });
   const err = await errP;
   check('冻结格揭示被拒：' + err.message, err.message.indexOf('冻结') !== -1);
 
   // 对手不受限：B 揭示同一格成功
-  const rb = await reveal(b, f.row, f.col);
+  const rb = await reveal(b, f.row, f.col, 1);
   check('对手揭示冻结格成功', typeof rb.result === 'string');
 
   console.log('\n结果: ' + passed + ' 通过, ' + failed + ' 失败');

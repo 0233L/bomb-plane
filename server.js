@@ -367,7 +367,7 @@ function handleCreateRoomAI(socket, data) {
 // AI 自动部署并确认（创建人机房间时、每局重新开始时调用）
 function aiDeployAndConfirm(room) {
   const aiPlayer = room.players[1];
-  const planes = ai.randomDeployment(room.boardSize);
+  const planes = ai.smartDeployment(room.boardSize);
   if (!planes) return console.error(`[${room.id}] AI 生成部署失败（极少见，忽略即可）`);
   aiPlayer.planes = planes;
   aiPlayer.board = buildBoard(planes, room.boardSize);
@@ -400,44 +400,33 @@ function scheduleAITurn(room) {
     // —— AI 行动（与真人共用同一套服务器规则：步数门控 / 金币 / 冻结 / 区域校验） ——
     const size = getBoardSpec(r.boardSize).size;
     const shots = r.players[0].shotsReceived;
+    // 只有「自己施放的冻结」才限制自己（对手的冻结只约束对手，见 isFrozenCell）
+    const myFrozen = r.frozenCells.filter(function (f) { return f.owner === 1; })
+      .map(function (f) { return { row: f.row, col: f.col }; });
     // 选格算法：经典/S 用精确枚举最优算法（第 7 轮调校成果，行为不变）；
-    // 其余组合用简单贪心（能用就行，后续可调强）
-    const useSimple = (r.boardSize !== 'S' || r.mode === 'props');
-    const target1 = useSimple
-      ? ai.chooseTargetSimple(shots, size, r.frozenCells)
-      : ai.chooseTargetLive(shots);
+    // 其余组合用采样概率场（AI 加强第 2 步）；AI_PROB_FIELD=0 回退旧简单贪心。
+    // 概率场只采样一次，选格与道具决策共用
+    const useLive = (r.boardSize === 'S' && r.mode === 'classic');
+    let pf = null;
+    let target1 = null;
+    if (useLive) {
+      target1 = ai.chooseTargetLive(shots);
+    } else if (process.env.AI_PROB_FIELD === '0') {
+      target1 = ai.chooseTargetSimple(shots, size, myFrozen);
+    } else {
+      pf = ai.buildProbField(shots, size, { samples: aiSamples });
+      target1 = (pf.head ? ai.chooseTargetProbField(shots, size, myFrozen, { probField: pf }) : null)
+        || ai.chooseTargetSimple(shots, size, myFrozen); // 概率场失败兜底，别停摆
+    }
 
     let acted = false; // 道具使用成功 = true（省得走普通揭示）
     if (r.mode === 'props' && target1) {
-      // 道具版 AI 道具决策（初版简单概率触发；被服务器拒绝时自动退回普通揭示）：
-      // 金币 ≥5 时 30% 用双发连射；金币 ≥3 时 20% 用声呐
-      if (r.coins[1] >= 5 && Math.random() < 0.3) {
-        // 双发连射：两个候选格（第二格排除第一格）
-        const target2 = ai.chooseTargetSimple(shots, size, r.frozenCells, target1.row * size + target1.col);
-        if (target2) {
-          acted = !doUseItem(r, 1, 'burst', {
-            row: target1.row, col: target1.col,
-            row2: target2.row, col2: target2.col
-          });
-          if (acted) console.log(`[${r.id}] AI 使用双发连射`);
-        }
-      } else if (r.coins[1] >= 3 && Math.random() < 0.2) {
-        // 声呐：随机合法 3x3 左上角锚点（区域不含冻结格）
-        const anchors = [];
-        for (let aRow = 0; aRow <= size - 3; aRow++) {
-          for (let aCol = 0; aCol <= size - 3; aCol++) {
-            const cells = [];
-            for (let rr = aRow; rr < aRow + 3; rr++) {
-              for (let cc = aCol; cc < aCol + 3; cc++) cells.push([rr, cc]);
-            }
-            if (!hasFrozenCell(r, 1, cells)) anchors.push([aRow, aCol]);
-          }
-        }
-        if (anchors.length && Math.random() < 0.5) {
-          const pick = anchors[Math.floor(Math.random() * anchors.length)];
-          acted = !doUseItem(r, 1, 'sonar', { row: pick[0], col: pick[1] });
-          if (acted) console.log(`[${r.id}] AI 使用声呐脉冲`);
-        }
+      // 道具版 AI 道具决策（AI 加强第 3 步：价值驱动，不再瞎概率；
+      // 被服务器拒绝时自动退回普通揭示）
+      const item = aiDecideItem(r, shots, size, myFrozen, pf);
+      if (item) {
+        acted = !doUseItem(r, 1, item.itemId, item.data);
+        if (acted) console.log(`[${r.id}] AI 使用 ${item.itemId}`);
       }
     }
     if (!acted && target1) {
@@ -447,6 +436,69 @@ function scheduleAITurn(room) {
     // 走完一步若还轮得到 AI（比如之前落后一步），继续调度
     if (r.phase === 'battle' && r.steps[1] <= r.steps[0]) scheduleAITurn(r);
   }, thinkMs);
+}
+
+// 概率场采样份数（AI 加强：env AI_SAMPLES 可调）
+const aiSamples = parseInt(process.env.AI_SAMPLES || '120', 10);
+
+// AI 道具决策（AI 加强第 3 步：价值驱动）。返回 {itemId, data}；不用返回 null。
+// 优先级（每步最多用一个道具）：
+//   1. 无所遁形：机头已找到且整机未完整揭示 → 5 金币换整机 10 格信息，非常值
+//   2. 毁灭菇：金币 ≥10 且残局（未揭示 ≤30%）→ 概率密度最高的十字中心，收割 + 冻结
+//   3. 双发：金币 ≥5 且概率场 top2 格都 ≥0.35（确定性够高才花 5 金币）
+//   4. 声呐：金币 ≥3 且锚点分布熵 ≥0.4（信息价值足够才用）
+//   5. 探测者：金币富余（≥8）且概率场峰值 ≥0.5（与普通揭示等价，低优先级）
+// 吞噬者永不用：摧毁的格子 AI 自己也永远探测不了 = 自损信息，赌 25% 机头不值 6 金币
+function aiDecideItem(room, shots, size, myFrozen, pf) {
+  const coins = room.coins[1];
+  // 1) 无所遁形
+  if (coins >= 5) {
+    const head = ai.findExposeHead(shots, size);
+    if (head) return { itemId: 'expose', data: { row: head.row, col: head.col } };
+  }
+  // 2) 毁灭菇（残局收割）
+  if (coins >= 10 && pf && pf.head) {
+    const unknown = size * size - shots.length; // 每枪揭示 1 格（AI 不用吞噬者）
+    if (unknown <= size * size * 0.3) {
+      const center = ai.bestDoomCenter(pf, size, myFrozen);
+      if (center) return { itemId: 'doom', data: { row: center.row, col: center.col } };
+    }
+  }
+  // 概率场还没建出来（概率场失败兜底路径）→ 不再考虑价值道具
+  if (!pf || !pf.head) return null;
+  // 3) 双发：未揭示未冻结格按 (P头+P身) 排序，top2 都够高才用
+  const revealed = new Set();
+  shots.forEach(function (s) { revealed.add(s.row * size + s.col); });
+  const scored = [];
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (revealed.has(r * size + c)) continue;
+      if (isFrozenCell(room, 1, r, c)) continue;
+      scored.push({
+        row: r, col: c,
+        v: pf.head[r * size + c] + pf.body[r * size + c]
+      });
+    }
+  }
+  scored.sort(function (a, b) { return b.v - a.v; });
+  if (coins >= 5 && scored.length >= 2 && scored[0].v >= 0.35 && scored[1].v >= 0.35) {
+    return {
+      itemId: 'burst',
+      data: { row: scored[0].row, col: scored[0].col, row2: scored[1].row, col2: scored[1].col }
+    };
+  }
+  // 4) 声呐：锚点分布熵 ≥0.4 才有信息价值
+  if (coins >= 3) {
+    const anchor = ai.chooseSonarAnchor(pf, size, myFrozen);
+    if (anchor && anchor.entropy >= 0.4) {
+      return { itemId: 'sonar', data: { row: anchor.row, col: anchor.col } };
+    }
+  }
+  // 5) 探测者：金币富余 + 概率峰值高
+  if (coins >= 8 && scored.length && scored[0].v >= 0.5) {
+    return { itemId: 'pro', data: { row: scored[0].row, col: scored[0].col } };
+  }
+  return null;
 }
 
 // 加入房间：不满 2 人坐 1 号位；满员则进入观战席

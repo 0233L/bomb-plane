@@ -228,9 +228,14 @@ async function main() {
     await bReveal(b, 3, 3); // B 拉平步数 3:3，A 才能行动
     const e1 = await aError(a, function () { a.emit('reveal', { row: f.row, col: f.col }); });
     check('施放者揭示冻结格被拒（冻结）', e1.message.indexOf('冻结') !== -1);
-    // B 揭示的是 A 的棋盘：用 A 的布局比对结果
-    const rb = await bReveal(b, f.row, f.col); // B 不受任何限制
-    check('对手揭示同一格成功（不受影响）', rb.result === contentOf(roomA.knownA, f.row, f.col));
+    // B 揭示的是 A 的棋盘：用 A 的布局比对结果。
+    // 注意 f 的坐标可能与第 1 节 B 已在 A 棋盘揭示过的 (1,1)/(2,2)/(3,3) 撞车
+    // （doom 中心随机，(2,2)/(3,3) 时 frozen[0] 恰是这些格）→ 会被判重复揭示而挂起。
+    // 换一个未揭示过的冻结格来证明「对手不受影响」。
+    const revealedByB = { '1,1': true, '2,2': true, '3,3': true };
+    const f2 = roomA.frozen.filter(function (x) { return !revealedByB[x.row + ',' + x.col]; })[0] || f;
+    const rb = await bReveal(b, f2.row, f2.col); // B 不受任何限制
+    check('对手揭示同一格成功（不受影响）', rb.result === contentOf(roomA.knownA, f2.row, f2.col));
   }
 
   // ========== 3. 2 回合解除 + 解除前仍拒绝 ==========

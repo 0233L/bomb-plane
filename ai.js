@@ -144,7 +144,7 @@
 'use strict';
 
 const shared = require('./public/shared.js');
-const { BOARD_SIZE, PLANE_COUNT, getPlaneCells, canPlacePlane } = shared;
+const { BOARD_SIZE, PLANE_COUNT, getPlaneCells, canPlacePlane, buildBoard, CELL_EMPTY, CELL_BODY, CELL_HEAD } = shared;
 
 // 机头概率与信息量的平衡权重（自对弈模拟实测最优值，见上方注释）
 const INFO_WEIGHT = 1.3;
@@ -303,6 +303,382 @@ function randomDeployment(spec) {
     }
   }
   return planes.length === sp.planeCount ? planes : null;
+}
+
+// ---------- 部署策略（AI 加强第 1 步：不再纯随机摆） ----------
+
+// 给一份合法部署打分（越大越好）。评分项：
+//   1) 机头两两拉远：机头是决胜点（找到机头才减分），离得越远越难被一锅端
+//   2) 机身远离边缘：边缘的机身格被命中时，机头位置会被迅速钉死
+//      （边线格能配的机头位置很少），对会推理的对手是送分——自对弈实测
+//      「机身贴边 +2 分」让熵贪心 AI 快了 1.23 步，改成远离边缘才变难打
+//   3) 机头贴边扣分：同上，机头暴露在边线上容易被顺边扫描发现，尽量内缩
+// 权重是经验常数（DEPLOY_*），先固定，后续可再调
+const DEPLOY_HEAD_SPREAD = 1.0; // 每单位机头间距的得分
+const DEPLOY_EDGE_PENALTY = 3.0; // 每个贴边机身格的扣分（远离边缘 = 制造歧义）
+const DEPLOY_HEAD_EDGE = 8.0;   // 每个贴边机头格的扣分
+
+function deployScore(planes, spec) {
+  const size = shared.getBoardSpec(spec).size;
+  const onEdge = function (r, c) {
+    return r === 0 || r === size - 1 || c === 0 || c === size - 1;
+  };
+  // 机头两两曼哈顿距离之和
+  let headSpread = 0;
+  for (let i = 0; i < planes.length; i++) {
+    for (let j = i + 1; j < planes.length; j++) {
+      headSpread += Math.abs(planes[i].headRow - planes[j].headRow)
+        + Math.abs(planes[i].headCol - planes[j].headCol);
+    }
+  }
+  // 贴边机身格数 / 贴边机头格数
+  let edgeBodies = 0;
+  let edgeHeads = 0;
+  planes.forEach(function (p) {
+    if (onEdge(p.headRow, p.headCol)) edgeHeads++;
+    getPlaneCells(p.headRow, p.headCol, p.dir).forEach(function (cell, i) {
+      if (i !== 0 && onEdge(cell[0], cell[1])) edgeBodies++; // 第 0 格是机头，其余 9 格是机身
+    });
+  });
+  return headSpread * DEPLOY_HEAD_SPREAD
+    - edgeBodies * DEPLOY_EDGE_PENALTY
+    - edgeHeads * DEPLOY_HEAD_EDGE;
+}
+
+// 智能部署：随机生成 tries 份合法部署，返回评分最高的一份。
+// tries 默认 30，env AI_DEPLOY_TRIES 可调；极端情况下全部生成失败则退回随机部署
+function smartDeployment(spec, tries) {
+  const count = tries || 30;
+  let best = null;
+  let bestScore = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const planes = randomDeployment(spec);
+    if (!planes) continue;
+    const score = deployScore(planes, spec);
+    if (score > bestScore) { bestScore = score; best = planes; }
+  }
+  return best || randomDeployment(spec);
+}
+
+// ---------- 采样概率场（AI 加强第 2 步：M/L 经典 + 全部道具模式的选格大脑） ----------
+
+// size → 规格名反查（shared.js 只有 规格名 → 尺寸 的映射）
+const SPEC_BY_SIZE = { 10: 'S', 12: 'M', 14: 'L' };
+
+// 把已揭示记录压成查表（下标 = 格子号；0=未知 1=空 2=机身 3=机头）。
+// 旧 buildShotTable 只支持 10×10，这个是任意规格通用版
+function buildShotTableAny(shotsReceived, size) {
+  const t = new Uint8Array(size * size);
+  shotsReceived.forEach(function (s) {
+    t[s.row * size + s.col] = s.result === 'head' ? 3 : s.result === 'body' ? 2 : 1;
+  });
+  return t;
+}
+
+// 一组随机选出的飞机是否与「机身/机头揭示 + 声呐计数」一致
+// （空格约束已被候选池消化，这里不用再查）
+// 声呐检查用「未知格形式」：区域内已揭示非空数 a 从 shotTable 推（揭示内容
+// 与真实棋盘一致，声呐数字 ≥ a 恒成立）；采样部署在「区域未知格」里的非空数
+// 必须 == count − a。区域大部分已揭示时约束自然变轻，采样不崩。
+function consistentWithReveals(chosen, shotTable, size, sonarCounts, spec) {
+  const planes = chosen.map(function (p) {
+    return { headRow: p.headRow, headCol: p.headCol, dir: p.dir };
+  });
+  const board = buildBoard(planes, spec);
+  for (let i = 0; i < shotTable.length; i++) {
+    const v = shotTable[i];
+    if (v === 0) continue;
+    const bv = board[Math.floor(i / size)][i % size];
+    if (v === 3 && bv !== CELL_HEAD) return false; // 揭示机头：必须是某架机头
+    if (v === 2 && bv !== CELL_BODY) return false; // 揭示机身：必须是某架机身
+  }
+  for (let s = 0; s < sonarCounts.length; s++) {
+    const sr = sonarCounts[s];
+    let knownNonEmpty = 0; // 区域内已揭示的非空格数（从揭示记录推）
+    let unknownNonEmpty = 0; // 区域内未知格里，采样部署的非空格数
+    for (let r = sr.row; r < sr.row + 3; r++) {
+      for (let c = sr.col; c < sr.col + 3; c++) {
+        const st = shotTable[r * size + c];
+        if (st !== 0) {
+          if (st === 2 || st === 3) knownNonEmpty++;
+        } else if (board[r][c] !== CELL_EMPTY) {
+          unknownNonEmpty++;
+        }
+      }
+    }
+    if (unknownNonEmpty !== sr.count - knownNonEmpty) return false;
+  }
+  return true;
+}
+
+// Fisher–Yates 洗牌（原地打乱，随机组合前用）
+function shuffleArr(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+}
+
+// 采样概率场：随机生成 samples 份「与所有已揭示信息一致」的合法部署，
+// 统计每格是机头/机身的概率。
+// opts: { samples: 采样份数（默认 120）, sonarCounts: 我方声呐计数 [{row,col,count}] }
+// 返回 { head: Float64Array(概率), body: Float64Array(概率), alive: 有效份数, size }
+// ⚠️ 为什么不用「随机部署 + 全局过滤」：晚局已揭示空格多了以后，随机部署碰巧
+// 一致的概率指数下降（约 0.72^15 < 1%），一步要等几秒。候选池先把「空格约束」
+// 消化掉：每个候选本身就不落在已揭示空格上，组合时只剩重叠/机身/机头/声呐检查。
+function buildProbField(shotsReceived, size, opts) {
+  const spec = SPEC_BY_SIZE[size] || 'S';
+  const samples = (opts && opts.samples) || 120;
+  const sonarCounts = (opts && opts.sonarCounts) || [];
+  const planeCount = shared.getBoardSpec(spec).planeCount;
+  const shotTable = buildShotTableAny(shotsReceived, size);
+
+  // 1) 候选池：不越界、且 10 格不落在任何「已揭示空格」的摆放。
+  // 「声呐数字 = 0」（区域全空）也是强约束：区域格视同已揭示空，候选池直接排除
+  const emptyTable = new Uint8Array(size * size);
+  for (let i = 0; i < size * size; i++) emptyTable[i] = shotTable[i] === 1 ? 1 : 0;
+  sonarCounts.forEach(function (sr) {
+    if (sr.count !== 0) return; // 非零计数在组合时精确检查（见 consistentWithReveals）
+    for (let r = sr.row; r < sr.row + 3; r++) {
+      for (let c = sr.col; c < sr.col + 3; c++) emptyTable[r * size + c] = 1;
+    }
+  });
+  const dirs = ['up', 'down', 'left', 'right'];
+  const pool = [];
+  for (let headRow = 0; headRow < size; headRow++) {
+    for (let headCol = 0; headCol < size; headCol++) {
+      dirs.forEach(function (dir) {
+        const cells = getPlaneCells(headRow, headCol, dir);
+        for (let i = 0; i < cells.length; i++) {
+          const r = cells[i][0], c = cells[i][1];
+          if (r < 0 || r >= size || c < 0 || c >= size) return; // 越界
+          if (emptyTable[r * size + c] === 1) return;           // 落在已知空区域
+        }
+        pool.push({ headRow: headRow, headCol: headCol, dir: dir });
+      });
+    }
+  }
+  if (pool.length < planeCount) {
+    return { head: null, body: null, alive: 0, size: size }; // 候选不足：调用方兜底
+  }
+
+  // 2) 采样：洗牌 → 贪心取 planeCount 个互不重叠 → 一致性检查 → 统计
+  // ⚠️ 终局陷阱：机头全找到后，随机组合「恰好让每个已揭示机头格都是机头」的
+  // 概率极低（20000 次尝试经常凑不齐 1 份）。所以组合时先把已揭示机头格钉住：
+  // 每个已揭示机头格必须选一架「以它为机头」的候选，剩余飞机再随机补。
+  const MAX_ATTEMPTS = 20000;
+  const MIN_SAMPLES = 10;
+  // 候选池按「机头格是否已揭示」分组：headCand[格号] = 以该格为机头的候选
+  const revealedHeadKeys = [];
+  for (let i = 0; i < shotTable.length; i++) {
+    if (shotTable[i] === 3) revealedHeadKeys.push(i);
+  }
+  const headCand = {};
+  const freeCand = [];
+  pool.forEach(function (p) {
+    const hk = p.headRow * size + p.headCol;
+    if (revealedHeadKeys.indexOf(hk) !== -1) {
+      if (!headCand[hk]) headCand[hk] = [];
+      headCand[hk].push(p);
+    } else {
+      freeCand.push(p);
+    }
+  });
+  // 判断候选是否与已占格子重叠（不重叠则顺手标记占用）
+  const tryTake = function (p, occupied) {
+    const cells = getPlaneCells(p.headRow, p.headCol, p.dir);
+    for (let k = 0; k < cells.length; k++) {
+      if (occupied.has(cells[k][0] * size + cells[k][1])) return false;
+    }
+    cells.forEach(function (cell) { occupied.add(cell[0] * size + cell[1]); });
+    return true;
+  };
+  // 一轮采样：返回累计的机头/机身计数与有效份数
+  const sampleRound = function (sonarList, target) {
+    const hc = new Float64Array(size * size);
+    const bc = new Float64Array(size * size);
+    let n = 0;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS && n < target; attempt++) {
+      const chosen = [];
+      const occupied = new Set();
+      let ok = true;
+      // 先钉住已揭示机头格
+      for (let h = 0; h < revealedHeadKeys.length; h++) {
+        const list = headCand[revealedHeadKeys[h]] || [];
+        shuffleArr(list);
+        let picked = false;
+        for (let i = 0; i < list.length && !picked; i++) {
+          if (tryTake(list[i], occupied)) { chosen.push(list[i]); picked = true; }
+        }
+        if (!picked) { ok = false; break; } // 该机头格没有可放候选（重叠）：本轮作废
+      }
+      if (!ok) continue;
+      // 剩余飞机从自由池贪心补（洗牌后）
+      shuffleArr(freeCand);
+      for (let i = 0; i < freeCand.length && chosen.length < planeCount; i++) {
+        if (tryTake(freeCand[i], occupied)) chosen.push(freeCand[i]);
+      }
+      if (chosen.length < planeCount) continue; // 这轮组合失败
+      if (!consistentWithReveals(chosen, shotTable, size, sonarList, spec)) continue;
+      chosen.forEach(function (p) {
+        const cells = getPlaneCells(p.headRow, p.headCol, p.dir);
+        cells.forEach(function (cell, i) {
+          const key = cell[0] * size + cell[1];
+          if (i === 0) hc[key]++;
+          else bc[key]++;
+        });
+      });
+      n++;
+    }
+    return { hc: hc, bc: bc, n: n };
+  };
+  // 先带全部声呐约束采样；不足时放松（丢弃计数>0 的声呐）重采，保证永不失败
+  const activeSonar = sonarCounts.filter(function (sr) { return sr.count > 0; });
+  const first = sampleRound(activeSonar, samples);
+  let headCount = first.hc;
+  let bodyCount = first.bc;
+  let alive = first.n;
+  let relaxed = false;
+  if (alive < MIN_SAMPLES && activeSonar.length) {
+    const second = sampleRound([], samples - alive);
+    for (let i = 0; i < size * size; i++) {
+      headCount[i] += second.hc[i];
+      bodyCount[i] += second.bc[i];
+    }
+    alive += second.n;
+    relaxed = true;
+  }
+  if (alive === 0) {
+    return { head: null, body: null, alive: 0, size: size };
+  }
+  for (let i = 0; i < headCount.length; i++) {
+    headCount[i] /= alive;
+    bodyCount[i] /= alive;
+  }
+  return { head: headCount, body: bodyCount, alive: alive, size: size, sonarRelaxed: relaxed };
+}
+
+// 概率场选格（M/L 经典 + 全部道具模式；AI 加强第 2 步）：
+//   候选 = 未揭示且未冻结的格子
+//   打分 = 5×P(机头) + P(机身) + INFO_WEIGHT×信息量（1−Σp²，越大越有区分度）
+//   返回 {row, col}；概率场采样失败（alive=0）返回 null 由调用方兜底
+//   opts.probField 可复用已建好的概率场（服务器道具决策与选格共用一次采样）
+function chooseTargetProbField(shotsReceived, size, frozenCells, opts) {
+  const o = opts || {};
+  const pf = o.probField || buildProbField(shotsReceived, size, o);
+  if (!pf.head) return null;
+  const shotTable = buildShotTableAny(shotsReceived, size);
+  const frozen = new Set();
+  (frozenCells || []).forEach(function (f) { frozen.add(f.row * size + f.col); });
+  let best = null;
+  let bestScore = -Infinity;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const key = r * size + c;
+      if (shotTable[key] !== 0 || frozen.has(key)) continue;
+      const pHead = pf.head[key];
+      const pBody = pf.body[key];
+      const pEmpty = 1 - pHead - pBody;
+      const score = pHead * 5 + pBody
+        + INFO_WEIGHT * (1 - pHead * pHead - pBody * pBody - pEmpty * pEmpty);
+      if (score > bestScore) { bestScore = score; best = { row: r, col: c }; }
+    }
+  }
+  return best;
+}
+
+// ---------- 道具决策（AI 加强第 3 步：价值驱动，不再是瞎概率） ----------
+
+// 信息增益最大的声呐锚点：枚举所有合法锚点（3×3 完整落盘、且 3×3 不含冻结格），
+// 用概率场把 9 格视为独立，算出「3×3 非空格数」的概率分布（泊松二项），
+// 选分布熵最大（= 期望信息增益最大）的锚点。返回 {row, col, entropy}（3×3 左上角）。
+// entropy 供调用方做「信息价值够不够」的阈值判断。
+// 分布熵近似：忽略格间相关性，但足够给锚点排序。
+function chooseSonarAnchor(probField, size, frozenCells) {
+  if (!probField.head) return null;
+  const frozen = new Set();
+  (frozenCells || []).forEach(function (f) { frozen.add(f.row * size + f.col); });
+  let best = null;
+  let bestEntropy = 0;
+  for (let r = 0; r <= size - 3; r++) {
+    for (let c = 0; c <= size - 3; c++) {
+      // 区域含冻结格：跳过（冻结格不能被任何技能选中）
+      let frozenHit = false;
+      for (let rr = r; rr < r + 3 && !frozenHit; rr++) {
+        for (let cc = c; cc < c + 3; cc++) {
+          if (frozen.has(rr * size + cc)) { frozenHit = true; break; }
+        }
+      }
+      if (frozenHit) continue;
+      // 泊松二项：dp[k] = 恰好 k 个格子非空的概率（9 个独立伯努利卷积）
+      const dp = [1];
+      for (let rr = r; rr < r + 3; rr++) {
+        for (let cc = c; cc < c + 3; cc++) {
+          const p = probField.head[rr * size + cc] + probField.body[rr * size + cc];
+          if (p <= 0 || p >= 1) continue; // 全空或全占的格不贡献不确定性
+          for (let k = dp.length; k >= 1; k--) {
+            dp[k] = (dp[k] || 0) * (1 - p) + dp[k - 1] * p;
+          }
+          dp[0] = dp[0] * (1 - p);
+        }
+      }
+      let entropy = 0;
+      for (let k = 0; k < dp.length; k++) {
+        if (dp[k] > 0) entropy -= dp[k] * Math.log(dp[k]);
+      }
+      if (entropy > bestEntropy) { bestEntropy = entropy; best = { row: r, col: c, entropy: entropy }; }
+    }
+  }
+  return best;
+}
+
+// 找「机头已揭示但整架飞机还没被完整揭示」的机头格（无所遁形用）。
+// 判定：该机头 4 个朝向里，存在某个朝向的 10 格全在棋盘内且还有未揭示格。
+// 返回 {row, col}；没有则返回 null。
+function findExposeHead(shotsReceived, size) {
+  const shotTable = buildShotTableAny(shotsReceived, size);
+  const dirs = ['up', 'down', 'left', 'right'];
+  for (let i = 0; i < shotTable.length; i++) {
+    if (shotTable[i] !== 3) continue; // 只看已揭示机头格
+    const r = Math.floor(i / size), c = i % size;
+    for (let d = 0; d < dirs.length; d++) {
+      const cells = getPlaneCells(r, c, dirs[d]);
+      let inBoard = true;
+      let hasUnknown = false;
+      for (let k = 0; k < cells.length; k++) {
+        const rr = cells[k][0], cc = cells[k][1];
+        if (rr < 0 || rr >= size || cc < 0 || cc >= size) { inBoard = false; break; }
+        if (shotTable[rr * size + cc] === 0) hasUnknown = true;
+      }
+      if (inBoard && hasUnknown) return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+// 毁灭菇中心：选「十字 5 格概率和」最大的中心（clamp [1, size-2]），
+// 且十字 5 格不含冻结格。返回 {row, col}；没有可用中心返回 null。
+function bestDoomCenter(probField, size, frozenCells) {
+  if (!probField.head) return null;
+  const frozen = new Set();
+  (frozenCells || []).forEach(function (f) { frozen.add(f.row * size + f.col); });
+  const cross = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]];
+  let best = null;
+  let bestSum = -1;
+  for (let r = 1; r < size - 1; r++) {
+    for (let c = 1; c < size - 1; c++) {
+      let frozenHit = false;
+      let sum = 0;
+      for (let k = 0; k < cross.length; k++) {
+        const rr = r + cross[k][0], cc = c + cross[k][1];
+        if (frozen.has(rr * size + cc)) { frozenHit = true; break; }
+        sum += probField.head[rr * size + cc] + probField.body[rr * size + cc];
+      }
+      if (frozenHit) continue;
+      if (sum > bestSum) { bestSum = sum; best = { row: r, col: c }; }
+    }
+  }
+  return best;
 }
 
 // ---------- 决策 ----------
@@ -1087,6 +1463,13 @@ module.exports = {
   HEAD_SET_IDS: HEAD_SET_IDS,            // 每组合的机头三元组打包 id（分析用）
   comboKindAt: comboKindAt,              // 组合在格子处的取值：0 空 / 1 身 / 2 头（分析用）
   randomDeployment: randomDeployment,
+  deployScore: deployScore,            // 部署评分（分析/测试用）
+  smartDeployment: smartDeployment,    // 智能部署（AI 加强第 1 步）
+  buildProbField: buildProbField,      // 采样概率场（AI 加强第 2 步）
+  chooseTargetProbField: chooseTargetProbField, // 概率场选格（AI 加强第 2 步）
+  chooseSonarAnchor: chooseSonarAnchor, // 信息增益声呐锚点（AI 加强第 3 步）
+  findExposeHead: findExposeHead,      // 无所遁形目标（AI 加强第 3 步）
+  bestDoomCenter: bestDoomCenter,      // 毁灭菇中心（AI 加强第 3 步）
   chooseTargetSimple: chooseTargetSimple,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,
