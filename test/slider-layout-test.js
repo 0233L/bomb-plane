@@ -24,7 +24,7 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
     return {
       classic: rect('.mode-card[data-mode="classic"]'),
       props: rect('.mode-card[data-mode="props"]'),
-      intro: rect('.props-intro'),
+      intro: rect('.mode-card[data-mode="props"] .mode-card-desc'),
       create: rect('.mode-card[data-mode="props"] .mode-create'),
       ai: rect('.mode-card[data-mode="props"] .mode-ai'),
       spec: rect('.spec-row')

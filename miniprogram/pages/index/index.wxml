@@ -20,11 +20,7 @@
       </view>
       <view class="mode-card {{homeMode === 'props' ? 'active' : ''}}" data-mode="props" bindtap="onModeTap">
         <view class="mode-card-title">🎁 道具模式</view>
-        <view class="mode-card-desc">金币买道具，让对战更刺激！</view>
-        <view class="props-intro">
-          <view class="props-intro-line">开局 8 金币 · 击中机身 +1 · 机头 +5 · 道具使用占一步行动</view>
-          <view class="item-guide-btn" bindtap="onItemGuideTap">📖 查看道具说明</view>
-        </view>
+        <view class="mode-card-desc">金币买道具，让对战更刺激！详细规则看「📖 游戏规则」的道具模式栏</view>
         <view class="btn primary card-btn" data-mode="props" bindtap="onCreateTap">创建房间</view>
         <view class="btn card-btn" data-mode="props" bindtap="onAITap">🤖 人机对战</view>
       </view>
@@ -61,54 +57,56 @@
     <text class="footer-stats" wx:if="{{visitorCount > 0}}">👥 已有 {{visitorCount}} 位玩家访问过</text>
   </view>
 
-  <!-- 道具说明弹窗：道具卡「查看道具说明」点开（价格 + 效果 + 操作方式） -->
-  <view class="modal-mask" wx:if="{{showItemGuide}}" bindtap="onItemGuideClose">
-    <view class="modal" catchtap="noop">
-      <view class="rules-h3">金币与经济</view>
-      <view class="rules-p">开局双方各 <text class="gold">8 金币</text>：击中机身 +1、机头 +5。金币双方互见，道具即时扣费。</view>
-      <view class="rules-p">使用道具算一次行动（双发连射占两步），选中道具后按操作提示点击对方棋盘即可。</view>
-
-      <view class="rules-h3">道具列表（价格明码标价）</view>
-      <view class="rules-list">
-        <text>🔊 声呐脉冲 <text class="gold">3🪙</text> — 3×3 区域内飞机格的数量。点对方棋盘选 3×3 区域</text>
-        <text>🔍 探测者 <text class="gold">4🪙</text> — 3×3 区域内随机揭示 1 格真实内容。点对方棋盘选 3×3 区域</text>
-        <text>💥 双发连射 <text class="gold">5🪙</text> — 一次行动揭示 2 格（占两步）。点对方棋盘上的 2 个未知格</text>
-        <text>👁 无所遁形 <text class="gold">4🪙</text> — 完整揭示整架飞机（10 格全显示）。点已揭示的机头（红色）格</text>
-        <text>🧨 吞噬者 <text class="gold">6🪙</text> — 摧毁 3×3 区域（命中机头 = 发现飞机）。点对方棋盘选 3×3 区域</text>
-        <text>🌋 毁灭菇 <text class="gold">10🪙</text> — 十字 5 格揭示 + 相邻未揭示格冻结 2 回合。点对方棋盘任意格作十字中心</text>
-      </view>
-
-      <view class="btn primary" bindtap="onItemGuideClose">知道了</view>
-    </view>
-  </view>
-
-  <!-- 规则弹窗 -->
+  <!-- 规则弹窗：两栏 tab（经典模式基础规则 / 道具模式只讲道具特有规则，不重复基础规则） -->
   <view class="modal-mask" wx:if="{{showRules}}" bindtap="onRulesClose">
     <view class="modal" catchtap="noop">
-      <view class="rules-h3">目标</view>
-      <view class="rules-p">双方各部署 3 架飞机，轮流探路：先击中对方全部 3 个机头者获胜。任何情况都不判负。</view>
+      <view class="rules-tabs">
+        <view class="rules-tab {{rulesTab === 'classic' ? 'active' : ''}}" data-tab="classic" bindtap="onRulesTabTap">🎯 经典模式</view>
+        <view class="rules-tab {{rulesTab === 'props' ? 'active' : ''}}" data-tab="props" bindtap="onRulesTabTap">🎁 道具模式</view>
+      </view>
 
-      <view class="rules-h3">部署</view>
-      <view class="rules-p">把 3 架飞机放进 10×10 棋盘：点空格放置（以点击处为机头）、点机身旋转、点机头移除。飞机可以挨着放，但不能重叠、不能越界。</view>
+      <block wx:if="{{rulesTab === 'classic'}}">
+        <view class="rules-h3">目标</view>
+        <view class="rules-p">双方各部署 3 架飞机，轮流探路：先击中对方全部 3 个机头者获胜。任何情况都不判负。</view>
 
-      <view class="rules-h3">飞机的 4 种朝向</view>
-      <view class="rules-planes">
-        <view class="rules-plane" wx:for="{{diagrams}}" wx:key="index" wx:for-item="plane">
-          <view class="mini-board">
-            <view wx:for="{{plane.cells}}" wx:key="index" wx:for-item="cell" class="mini-cell {{cell.cls}}"></view>
+        <view class="rules-h3">部署</view>
+        <view class="rules-p">把 3 架飞机放进 10×10 棋盘：点空格放置（以点击处为机头）、点机身旋转、点机头移除。飞机可以挨着放，但不能重叠、不能越界。</view>
+
+        <view class="rules-h3">飞机的 4 种朝向</view>
+        <view class="rules-planes">
+          <view class="rules-plane" wx:for="{{diagrams}}" wx:key="index" wx:for-item="plane">
+            <view class="mini-board">
+              <view wx:for="{{plane.cells}}" wx:key="index" wx:for-item="cell" class="mini-cell {{cell.cls}}"></view>
+            </view>
+            <text>{{plane.label}}</text>
           </view>
-          <text>{{plane.label}}</text>
         </view>
-      </view>
 
-      <view class="rules-h3">抢步规则</view>
-      <view class="rules-list">
-        <text>· 步数少（或相等）的一方可以随时行动</text>
-        <text>· 步数领先的一方只能等待对方</text>
-      </view>
+        <view class="rules-h3">抢步规则</view>
+        <view class="rules-list">
+          <text>· 步数少（或相等）的一方可以随时行动</text>
+          <text>· 步数领先的一方只能等待对方</text>
+        </view>
 
-      <view class="rules-h3">揭示</view>
-      <view class="rules-p">打中的格子会揭示「机头 / 机身 / 空」。空 = 纯运气；机头 = 赢关键。断线会自动重连，也可从「最近加入的房间」回到对局。</view>
+        <view class="rules-h3">揭示</view>
+        <view class="rules-p">打中的格子会揭示「机头 / 机身 / 空」。空 = 纯运气；机头 = 赢关键。断线会自动重连，也可从「最近加入的房间」回到对局。</view>
+      </block>
+
+      <block wx:if="{{rulesTab === 'props'}}">
+        <view class="rules-h3">金币经济</view>
+        <view class="rules-p">开局双方各 <text class="gold">8 金币</text>：击中机身 +1、机头 +5。金币双方互见，道具即时扣费。</view>
+        <view class="rules-p">除「双发连射」占两步外，道具使用都算<b>一次行动</b>，选中道具后按操作提示点击对方棋盘即可。基础玩法与经典模式相同，见「🎯 经典模式」栏。</view>
+
+        <view class="rules-h3">道具列表（价格明码标价）</view>
+        <view class="rules-list">
+          <text>🔊 声呐脉冲 <text class="gold">3🪙</text> — 3×3 区域内飞机格的数量。点对方棋盘选 3×3 区域</text>
+          <text>🔍 探测者 <text class="gold">4🪙</text> — 3×3 区域内随机揭示 1 格真实内容。点对方棋盘选 3×3 区域</text>
+          <text>💥 双发连射 <text class="gold">5🪙</text> — 一次行动揭示 2 格（占两步）。点对方棋盘上的 2 个未知格</text>
+          <text>👁 无所遁形 <text class="gold">4🪙</text> — 完整揭示整架飞机（10 格全显示）。点已揭示的机头（红色）格</text>
+          <text>🧨 吞噬者 <text class="gold">6🪙</text> — 摧毁 3×3 区域（命中机头 = 发现飞机）。点对方棋盘选 3×3 区域</text>
+          <text>🌋 毁灭菇 <text class="gold">10🪙</text> — 十字 5 格揭示 + 相邻未揭示格冻结 2 回合。点对方棋盘任意格作十字中心</text>
+        </view>
+      </block>
 
       <view class="btn primary" bindtap="onRulesClose">知道了</view>
     </view>

@@ -162,16 +162,27 @@ h2 { text-align: center; margin: 8px 0; }
   line-height: 1.7;
 }
 .props-intro-line { color: var(--text-3); margin: 2px 0; }
-/* 道具卡「查看道具说明」：小按钮，不占满整行 */
-.item-guide-btn {
-  display: block;
-  width: auto;
-  margin: 6px auto 0;
-  padding: 6px 16px;
-  font-size: 13px;
-}
 /* 弹窗里的道具价格（金色） */
 .gold { color: #f59e0b; font-weight: bold; }
+/* 规则弹窗两栏 tab：经典模式 / 道具模式 */
+.rules-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.rules-tab {
+  flex: 1;
+  padding: 8px 0;
+  font-size: 14px;
+  background: var(--bg);
+  border-color: var(--border);
+}
+.rules-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: bold;
+}
 .mode-card .mode-create,
 .mode-card .mode-ai {
   display: block;

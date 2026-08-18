@@ -1511,24 +1511,25 @@ function bindUIEvents() {
   });
 
   // 首页「游戏规则」弹窗：打开 / 关闭（点深色背景也能关闭）
+  // 弹窗内部分两栏：经典模式（基础规则）/ 道具模式（只讲道具特有规则）
+  function showRulesTab(tab) {
+    document.querySelectorAll('.rules-tab').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    $('#rules-pane-classic').classList.toggle('hidden', tab !== 'classic');
+    $('#rules-pane-props').classList.toggle('hidden', tab !== 'props');
+  }
+  document.querySelectorAll('.rules-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () { showRulesTab(btn.dataset.tab); });
+  });
   $('#btn-rules').addEventListener('click', function () {
+    showRulesTab('classic'); // 默认展示经典模式栏
     $('#rules-modal').classList.remove('hidden');
   });
   $('#btn-rules-close').addEventListener('click', function () {
     $('#rules-modal').classList.add('hidden');
   });
   $('#rules-modal').addEventListener('click', function (e) {
-    if (e.target === this) this.classList.add('hidden');
-  });
-
-  // 首页「道具说明」弹窗：道具卡点「查看道具说明」打开，点深色背景或「知道了」关闭
-  $('#btn-item-guide').addEventListener('click', function () {
-    $('#item-guide-modal').classList.remove('hidden');
-  });
-  $('#btn-item-guide-close').addEventListener('click', function () {
-    $('#item-guide-modal').classList.add('hidden');
-  });
-  $('#item-guide-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.add('hidden');
   });
 
