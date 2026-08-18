@@ -561,11 +561,9 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
    注意不要再加 ::after content——会和文本重复画两个 ❄） */
 .board td.cell-frozen { color: #a78bfa; font-size: 16px; }
 
-/* 注释标记：右键在未揭示格上标的预期内容（红=机头 绿=机身 灰=空）。
+/* 注释标记：右键在未揭示格上标的「机身」（绿框）。
    用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
-.board td.cell-mark-head { box-shadow: inset 0 0 0 3px #ef5350; z-index: 1; }
 .board td.cell-mark-body { box-shadow: inset 0 0 0 3px #66bb6a; z-index: 1; }
-.board td.cell-mark-empty { box-shadow: inset 0 0 0 3px var(--cell-empty); z-index: 1; }
 
 /* 声呐脉冲的数字：显示在 3x3 锚点格上，金色小字（扫雷式推理用） */
 .board td.cell-sonar {

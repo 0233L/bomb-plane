@@ -100,8 +100,9 @@ async function main() {
   b.emit('reveal', { row: bCell2[0], col: bCell2[1] });
   await waitForMatch(a, 'revealResult', function (d2) { return d2.attacker === 1; });
 
-  // A 用毁灭菇：找一个离边至少 1 格的中心
-  const center = pickDoomCenter();
+  // A 用毁灭菇：找一个离边至少 1 格、十字 5 格都没被 A 揭示过的中心
+  //（原来写死 (2,2)：攒金币手数多时 (2,2) 已被自己揭示 → 毁灭菇被拒 → 偶发超时）
+  const center = pickDoomCenter(usedA);
   a.emit('useItem', { itemId: 'doom', row: center[0], col: center[1] });
   const itemRes = await waitForMatch(a, 'itemResult', function (d2) { return d2.attacker === 0 && d2.itemId === 'doom'; });
   console.log('— 毁灭菇已使用，冻结 ' + (itemRes.frozen || []).length + ' 格 —');
@@ -125,9 +126,20 @@ async function main() {
   process.exitCode = failed ? 1 : 0;
 }
 
-// 挑一个离边至少 1 格的中心（毁灭菇十字完整落盘）
-function pickDoomCenter() {
-  return [2, 2];
+// 挑一个离边至少 1 格、十字 5 格都没被揭示过的中心（毁灭菇十字完整落盘）
+function pickDoomCenter(used) {
+  const size = shared.getBoardSpec(SPEC).size;
+  for (let r = 1; r < size - 1; r++) {
+    for (let c = 1; c < size - 1; c++) {
+      const cross = [[r, c], [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+      const allFree = cross.every(function (p) { return !used.has(p[0] + ',' + p[1]); });
+      if (allFree) {
+        cross.forEach(function (p) { used.add(p[0] + ',' + p[1]); });
+        return [r, c];
+      }
+    }
+  }
+  return [2, 2]; // 兜底：极端情况下退回固定点
 }
 
 // 挑一个还没打过的格子

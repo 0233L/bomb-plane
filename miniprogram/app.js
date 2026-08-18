@@ -30,7 +30,7 @@ const state = {
   headsLeft: [3, 3],
   sonarResults: [],         // 声呐脉冲的历史结果 [{row, col, count}]（扫雷式推理用）
   frozenCells: [],          // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己，渲染 ❄）
-  marks: {},                // 注释标记 {'r,c': 'head'|'body'|'empty'}（长按循环标注，仅本机可见，按房间持久化）
+  marks: {},                // 注释标记 {'r,c': 'body'}（长按标注机身，仅本机可见，按房间持久化）
   itemPick: null,           // 道具选区模式：null = 未选择 | {itemId}
   pickCells: [],            // 已固定的选区格子（'r,c' 字符串数组，金色高亮）
   pickAnchor: null,         // 3x3 道具的选区锚点（左上角，发给服务器）
@@ -302,24 +302,24 @@ function enemyBoardCells() {
       if (count !== undefined && !isFrozen(r, c)) {
         text = String(count);
       }
-      // 注释标记：长按在未揭示格上标的预期内容（红=机头 绿=机身 灰=空；中间仍是暗色；
+      // 注释标记：长按在未揭示格上标的「机身」（绿框；中间仍是暗色；
       // 格子被揭示后自动不显示——注释只是本地猜测，揭示即作废；观战者不显示）
       if (!s && !state.spectator && !revealed && state.marks[r + ',' + c]) {
         cls += ' cell-mark-' + state.marks[r + ',' + c];
       }
       // 道具选区高亮（battle 页选区交互时设置 state.pickCells）；
-      // 毁灭菇选区画「整体十字轮廓框」：4 条臂各画外侧 1 条边 + 中心格内缩 2rpx 小框
-      // （与声呐外圈框同款差集模型——inset 阴影可见区在偏移相反侧），而不是 5 个独立小框
+      // 毁灭菇选区画「3×3 完整外圈方框」（和声呐外圈框同款差集模型——inset 阴影可见区
+      // 在偏移相反侧）：外圈 12 条边围成完整方框，中心格加内缩 2rpx 小框标记定位格
       const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
       let doomShadow = '';
       if (isDoomPick && state.pickCells.length) {
         const center = state.pickCells[0].split(',');
         const cr = +center[0], cc = +center[1];
-        if (r === cr && c === cc) doomShadow = 'inset 0 0 0 2rpx #f59e0b';             // 中心：内缩小框
-        else if (r === cr - 1 && c === cc) doomShadow = 'inset 0 3rpx 0 0 #f59e0b';   // 上臂：顶线
-        else if (r === cr + 1 && c === cc) doomShadow = 'inset 0 -3rpx 0 0 #f59e0b';  // 下臂：底线
-        else if (r === cr && c === cc - 1) doomShadow = 'inset 3rpx 0 0 0 #f59e0b';   // 左臂：左线
-        else if (r === cr && c === cc + 1) doomShadow = 'inset -3rpx 0 0 0 #f59e0b';  // 右臂：右线
+        if (r === cr && c === cc) doomShadow = 'inset 0 0 0 2rpx #f59e0b';              // 中心：定位标记
+        else if (r === cr - 1) doomShadow = 'inset 0 3rpx 0 0 #f59e0b';                 // 顶边
+        else if (r === cr + 1) doomShadow = 'inset 0 -3rpx 0 0 #f59e0b';                // 底边
+        else if (c === cc - 1) doomShadow = 'inset 3rpx 0 0 0 #f59e0b';                 // 左边
+        else if (c === cc + 1) doomShadow = 'inset -3rpx 0 0 0 #f59e0b';                // 右边
       }
       if (state.pickCells.indexOf(r + ',' + c) !== -1 && !isDoomPick) cls += ' cell-pick';
       // 声呐区域外圈 / 毁灭菇十字轮廓：内联样式，多个效果叠加不冲突

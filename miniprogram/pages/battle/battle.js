@@ -249,7 +249,7 @@ Page({
     this.render(); // 让 pending 样式立即上屏
   },
 
-  // 长按对方棋盘的未揭示格：循环标注 无 → 机头（红）→ 机身（绿）→ 空（灰）→ 无
+  // 长按对方棋盘的未揭示格：标注「机身」（绿框），再长按 = 取消。只保留机身一种标注
   // 纯本地猜测，不发给服务器；格子被揭示后渲染时自动不显示
   onEnemyMark(e) {
     const r = e.currentTarget.dataset.r;
@@ -266,10 +266,8 @@ Page({
     if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
       return toast('这格已经揭示过了');
     }
-    const idx = MARK_CYCLE.indexOf(state.marks[key]);
-    if (idx === -1) state.marks[key] = 'head';                          // 无 → 机头
-    else if (idx < MARK_CYCLE.length - 1) state.marks[key] = MARK_CYCLE[idx + 1]; // 机身 → 空
-    else delete state.marks[key];                                       // 空 → 无
+    if (state.marks[key] === 'body') delete state.marks[key];   // 已标机身 → 取消
+    else state.marks[key] = 'body';                              // 无 → 标注机身
     app.saveStorage('bp_marks_' + (state.roomId || ''), state.marks);
     this.render();
   },
@@ -462,8 +460,6 @@ function addClass(cells, r, c, cls) {
 }
 
 // 注释标记的循环顺序（无 → 机头 → 机身 → 空 → 无）
-const MARK_CYCLE = ['head', 'body', 'empty'];
-
 // 3x3 区域锚点（左上角）：让点击的格子落在区域里，同时保证区域完整在棋盘内
 function hoverAnchor(r, c, size) {
   return { row: Math.max(0, Math.min(size - 3, r - 1)), col: Math.max(0, Math.min(size - 3, c - 1)) };

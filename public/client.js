@@ -247,7 +247,7 @@ function makeBoard(tableEl, onCellClick) {
       if (onCellClick) {
         td.addEventListener('click', function () { onCellClick(r, c); });
       }
-      // 对方棋盘右键 = 循环标注（无 → 机头 → 机身 → 空 → 无），注释是纯本地标记；
+      // 对方棋盘右键 = 标注机身（绿框，再右键取消）；纯本地标记；
       // 但如果正处于道具选区模式，右键优先「取消道具选中」（避免误标到棋盘上）
       if (tableEl.id === 'enemy-board') {
         td.addEventListener('contextmenu', function (e) {
@@ -681,19 +681,27 @@ function crossKeys(row, col) {
   return [row + ',' + col, (row - 1) + ',' + col, (row + 1) + ',' + col, row + ',' + (col - 1), row + ',' + (col + 1)];
 }
 
-// 毁灭菇十字选区：整体十字形轮廓框（和声呐外圈框同款差集模型——inset 阴影的可见区在
-// 偏移相反侧：0 3px 画顶部、0 -3px 画底部、3px 0 画左侧、-3px 0 画右侧）。
-// 4 条臂各画外侧 1 条边 + 中心格画内缩 2px 小框 → 视觉上是一个整体十字框而不是 5 个独立小框。
+// 毁灭菇十字选区：3×3 完整外圈方框（和声呐外圈框完全同款差集模型——inset 阴影的
+// 可见区在偏移相反侧：0 3px 画顶部、0 -3px 画底部、3px 0 画左侧、-3px 0 画右侧）。
+// 外圈 12 条边围成完整方框（4 个角格只走框线、不高亮），中心格加内缩 2px 小框标记定位格。
 // keys[0] 是十字中心（'r,c'）；返回 {'r,c': box-shadow}，与声呐外圈框逗号合并
 function doomPickShadows(keys) {
   const c = keys[0].split(',');
   const cr = +c[0], cc = +c[1];
   const map = {};
-  map[cr + ',' + cc] = 'inset 0 0 0 2px #f59e0b';             // 中心：内缩 2px 小框（定位格标记）
-  map[(cr - 1) + ',' + cc] = 'inset 0 3px 0 0 #f59e0b';        // 上臂：顶线
-  map[(cr + 1) + ',' + cc] = 'inset 0 -3px 0 0 #f59e0b';       // 下臂：底线
-  map[cr + ',' + (cc - 1)] = 'inset 3px 0 0 0 #f59e0b';        // 左臂：左线
-  map[cr + ',' + (cc + 1)] = 'inset -3px 0 0 0 #f59e0b';       // 右臂：右线
+  const addEdge = function (rr, cc2, shadow) {
+    const k = rr + ',' + cc2;
+    map[k] = (map[k] ? map[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f59e0b';
+  };
+  for (let r = cr - 1; r <= cr + 1; r++) {
+    for (let c2 = cc - 1; c2 <= cc + 1; c2++) {
+      if (r === cr - 1) addEdge(r, c2, '0 3px');   // 顶边
+      if (r === cr + 1) addEdge(r, c2, '0 -3px');  // 底边
+      if (c2 === cc - 1) addEdge(r, c2, '3px 0');  // 左边
+      if (c2 === cc + 1) addEdge(r, c2, '-3px 0'); // 右边
+    }
+  }
+  map[cr + ',' + cc] = 'inset 0 0 0 2px #f59e0b'; // 中心：内缩 2px 定位标记
   return map;
 }
 
@@ -991,10 +999,10 @@ function onEnemyCellClick(r, c) {
 }
 
 // ---------- 注释标记（纯本地功能，不进服务器） ----------
-// 右键在对方棋盘的未揭示格上循环标注：无 → 机头（红）→ 机身（绿）→ 空（灰）→ 无
-// 猜测的颜色画在格子四周一圈，中间保持未揭示的暗色；格子被揭示后标记自动不再显示。
+// 右键在对方棋盘的未揭示格上标注「机身」（绿框）：再标一次 = 取消。只保留机身一种
+// 标注（机头/空标注会误导推理：机头标注和真实红格区分不开、空标注不如直接记在心里）。
+// 标记画在格子四周一圈，中间保持未揭示的暗色；格子被揭示后标记自动不再显示。
 // 按房间号持久化到 localStorage（重新进房 / 重连后标记还在，刷新页面也不丢）。
-const MARK_CYCLE = ['head', 'body', 'empty'];
 
 function saveMarks() {
   try {
@@ -1014,10 +1022,8 @@ function onEnemyMark(r, c) {
   if (state.spectator || state.over) return; // 观战 / 对局结束不标注
   const key = r + ',' + c;
   if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) return; // 已揭示格不标
-  const idx = MARK_CYCLE.indexOf(state.marks[key]);
-  if (idx === -1) state.marks[key] = 'head';                        // 无 → 机头
-  else if (idx < MARK_CYCLE.length - 1) state.marks[key] = MARK_CYCLE[idx + 1]; // 机身 → 空
-  else delete state.marks[key];                                     // 空 → 无
+  if (state.marks[key] === 'body') delete state.marks[key]; // 已标机身 → 取消
+  else state.marks[key] = 'body';                            // 无 → 标注机身
   saveMarks();
   renderBattleBoards();
 }

@@ -157,11 +157,9 @@ page {
 }
 .board-cell.cell-destroyed .cell-sonar-text,
 .board-cell.cell-head-destroyed .cell-sonar-text { color: inherit; font-size: 34rpx; }
-/* 注释标记：长按在未揭示格上标的预期内容（红=机头 绿=机身 灰=空）。
+/* 注释标记：长按在未揭示格上标的「机身」（绿框）。
    用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
-.board-cell.cell-mark-head { box-shadow: inset 0 0 0 5rpx #ef5350; }
 .board-cell.cell-mark-body { box-shadow: inset 0 0 0 5rpx #66bb6a; }
-.board-cell.cell-mark-empty { box-shadow: inset 0 0 0 5rpx var(--cell-empty); }
 /* 道具选区高亮：金色描边（选区模式下优先于注释标记显示） */
 .board-cell.cell-pick { box-shadow: inset 0 0 0 5rpx #f59e0b; z-index: 1; }
 
