@@ -183,14 +183,17 @@ h2 { text-align: center; margin: 8px 0; }
   color: #fff;
   font-weight: bold;
 }
-.mode-card .mode-create,
-.mode-card .mode-ai {
-  display: block;
-  width: 100%;
-  margin-top: 6px;
+/* 创建房间 / 人机对战：地图选择下方的并排按钮行（不在卡片框里） */
+.home-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
 }
-.mode-card .mode-create { color: #fff; background: var(--primary); border-color: var(--primary); }
-.mode-card .mode-ai { background: transparent; }
+.home-actions button {
+  flex: 1;
+}
+.home-actions .mode-create { color: #fff; background: var(--primary); border-color: var(--primary); }
+.home-actions .mode-ai { background: transparent; }
 
 /* 地图规格行：经典/道具各自的默认（10×10 / 12×12），可自由切换 */
 .spec-row {

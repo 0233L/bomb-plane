@@ -15,14 +15,10 @@
       <view class="mode-card {{homeMode === 'classic' ? 'active' : ''}}" data-mode="classic" bindtap="onModeTap">
         <view class="mode-card-title">🎯 经典模式</view>
         <view class="mode-card-desc">传统炸飞机：轮流轰炸对手棋盘，先找出全部 3 架飞机机头的一方获胜</view>
-        <view class="btn primary card-btn" data-mode="classic" bindtap="onCreateTap">创建房间</view>
-        <view class="btn card-btn" data-mode="classic" bindtap="onAITap">🤖 人机对战</view>
       </view>
       <view class="mode-card {{homeMode === 'props' ? 'active' : ''}}" data-mode="props" bindtap="onModeTap">
         <view class="mode-card-title">🎁 道具模式</view>
         <view class="mode-card-desc">金币买道具，让对战更刺激！详细规则看「📖 游戏规则」的道具模式栏</view>
-        <view class="btn primary card-btn" data-mode="props" bindtap="onCreateTap">创建房间</view>
-        <view class="btn card-btn" data-mode="props" bindtap="onAITap">🤖 人机对战</view>
       </view>
     </view>
 
@@ -32,6 +28,12 @@
       <view class="spec-btn {{spec === 'S' ? 'active' : ''}}" data-spec="S" bindtap="onSpecTap">10×10</view>
       <view class="spec-btn {{spec === 'M' ? 'active' : ''}}" data-spec="M" bindtap="onSpecTap">12×12</view>
       <view class="spec-btn {{spec === 'L' ? 'active' : ''}}" data-spec="L" bindtap="onSpecTap">14×14</view>
+    </view>
+
+    <!-- 创建房间 / 人机对战：不在卡片框里，按当前选中的玩法栏开局 -->
+    <view class="home-actions">
+      <view class="btn primary" bindtap="onCreateTap">创建房间</view>
+      <view class="btn" bindtap="onAITap">🤖 人机对战</view>
     </view>
     <text class="mode-help">{{modeHelp}}</text>
 

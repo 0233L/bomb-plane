@@ -33,14 +33,10 @@
         <div class="mode-card" data-mode="classic">
           <div class="mode-card-title">🎯 经典模式</div>
           <p class="mode-card-desc">传统炸飞机：轮流轰炸对手棋盘，先找出全部 3 架飞机机头的一方获胜</p>
-          <button class="mode-create" data-mode="classic">创建房间</button>
-          <button class="mode-ai" data-mode="classic">🤖 人机对战</button>
         </div>
         <div class="mode-card" data-mode="props">
           <div class="mode-card-title">🎁 道具模式</div>
           <p class="mode-card-desc">金币买道具，让对战更刺激！详细规则看「📖 游戏规则」的道具模式栏</p>
-          <button class="mode-create" data-mode="props">创建房间</button>
-          <button class="mode-ai" data-mode="props">🤖 人机对战</button>
         </div>
       </div>
       <p class="help" id="mode-help"></p>
@@ -51,6 +47,12 @@
         <button class="spec-btn" data-spec="S">10×10</button>
         <button class="spec-btn" data-spec="M">12×12</button>
         <button class="spec-btn" data-spec="L">14×14</button>
+      </div>
+
+      <!-- 创建房间 / 人机对战：不在卡片框里，按当前选中的玩法栏开局 -->
+      <div class="home-actions">
+        <button class="mode-create">创建房间</button>
+        <button class="mode-ai">🤖 人机对战</button>
       </div>
 
       <div class="divider">或</div>

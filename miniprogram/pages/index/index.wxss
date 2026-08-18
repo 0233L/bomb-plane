@@ -42,6 +42,14 @@
   color: #fff;
   font-weight: bold;
 }
+/* 创建房间 / 人机对战：地图选择下方的并排按钮行（不在卡片框里） */
+.home-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+.home-actions .btn { flex: 1; }
+
 .spec-row { display: flex; align-items: center; gap: 12rpx; margin-top: 8rpx; }
 .spec-label { font-size: 26rpx; color: var(--text-3); }
 .spec-btn {

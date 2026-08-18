@@ -25,8 +25,9 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
       classic: rect('.mode-card[data-mode="classic"]'),
       props: rect('.mode-card[data-mode="props"]'),
       intro: rect('.mode-card[data-mode="props"] .mode-card-desc'),
-      create: rect('.mode-card[data-mode="props"] .mode-create'),
-      ai: rect('.mode-card[data-mode="props"] .mode-ai'),
+      create: rect('.mode-create'),
+      ai: rect('.mode-ai'),
+      actions: rect('.home-actions'),
       spec: rect('.spec-row')
     };
   });
@@ -55,9 +56,9 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
   const introInCard = r.intro.x >= r.props.x - 1 && r.intro.right <= r.props.right + 1;
   console.log((introInCard ? '✓' : '✗') + ' 道具介绍在道具卡内不溢出');
   ok = ok && introInCard;
-  // 断言 4：道具卡内按钮在介绍下方（按钮顶部 >= 介绍底部，不重叠）
-  const btnBelow = r.create.y >= r.intro.bottom - 1 && r.ai.y >= r.intro.bottom - 1;
-  console.log((btnBelow ? '✓' : '✗') + ' 卡内按钮在介绍下方不重叠（按钮顶部=' + r.create.y + ' 介绍底部=' + r.intro.bottom + '）');
+  // 断言 4：创建/人机按钮在地图选择下方（不在卡片框里）
+  const btnBelow = r.create.y >= r.spec.bottom - 1 && r.ai.y >= r.spec.bottom - 1;
+  console.log((btnBelow ? '✓' : '✗') + ' 创建/人机按钮在地图选择下方（按钮顶部=' + r.create.y + ' 地图选择底部=' + r.spec.bottom + '）');
   ok = ok && btnBelow;
   // 断言 5：规格行在卡片下方
   const specBelow = r.spec.y >= Math.max(r.classic.bottom, r.props.bottom) - 1;

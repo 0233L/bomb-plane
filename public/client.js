@@ -1363,10 +1363,11 @@ function bindUIEvents() {
     });
   });
 
-  // 首页：两栏卡片内的「创建房间」/「人机对战」按钮（data-mode 指明用哪种玩法开局）
+  // 首页「创建房间」/「人机对战」按钮（在地图选择下方，不在卡片框里）：
+  // 按当前选中的玩法栏（state.homeMode）+ 该栏记住的规格开局
   document.querySelectorAll('.mode-create').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      state.homeMode = btn.dataset.mode; // 直接以本栏玩法开局（即使刚才点的是另一栏）
+      if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
       const name = $('#name-input').value;
       localStorage.setItem('bp_name', name.trim());
       state.socket.emit('createRoom', { name: name, mode: currentMode(), boardSize: currentSpec() });
@@ -1374,7 +1375,7 @@ function bindUIEvents() {
   });
   document.querySelectorAll('.mode-ai').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      state.homeMode = btn.dataset.mode;
+      if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
       const name = $('#name-input').value;
       localStorage.setItem('bp_name', name.trim());
       state.socket.emit('createRoomAI', { name: name, mode: currentMode(), boardSize: currentSpec() });
