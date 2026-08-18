@@ -88,7 +88,7 @@ async function main() {
   a.emit('reveal', { row: 0, col: 0 });
   const first = await waitFor(a, 'revealResult');
   check('revealResult 带 coins 字段', Array.isArray(first.coins));
-  check('revealResult 带 coinGain（空=0 身=1 头=5）', [0, 1, 5].indexOf(first.coinGain) !== -1);
+  check('revealResult 带 coinGain（空=0 身=1 头=3）', [0, 1, 3].indexOf(first.coinGain) !== -1);
   const coinsAfter = first.coins[0];
   check('A 的金币 = 8 + coinGain', coinsAfter === 8 + first.coinGain);
 

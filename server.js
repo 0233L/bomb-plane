@@ -23,7 +23,7 @@ const { BOARD_SIZE, CELL_EMPTY, CELL_HEAD, CELL_BODY, buildBoard, validateDeploy
 const COIN_START = 8;   // 开局每人金币
 const COIN_EMPTY = 0;   // 揭示到空格的金币
 const COIN_BODY = 1;    // 揭示到机身
-const COIN_HEAD = 5;    // 揭示到机头（找到机头离胜利最近，奖励最丰厚）
+const COIN_HEAD = 3;    // 揭示到机头（找到机头离胜利最近，奖励适度下调）
 
 // ---------- 道具表（道具版） ----------
 // 道具没有「持有」概念：使用时才购买，校验通过当场扣金币、立即生效。
