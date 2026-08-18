@@ -323,17 +323,20 @@ function enemyBoardCells() {
       }
       // 道具选区高亮（battle 页选区交互时设置 state.pickCells）；
       // 毁灭菇选区画「3×3 完整外圈方框」（和声呐外圈框同款差集模型——inset 阴影可见区
-      // 在偏移相反侧）：外圈 12 条边围成完整方框，中心格加内缩 2rpx 小框标记定位格
+      // 在偏移相反侧）：外圈 12 条边围成完整方框，中心格加内缩 2rpx 小框标记定位格。
+      // 角格两条边都要：用累加代替 if-else 链（否则角格只画一条边，方框是断的）
       const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
       let doomShadow = '';
       if (isDoomPick && state.pickCells.length) {
         const center = state.pickCells[0].split(',');
         const cr = +center[0], cc = +center[1];
-        if (r === cr && c === cc) doomShadow = 'inset 0 0 0 2rpx #f59e0b';              // 中心：定位标记
-        else if (r === cr - 1) doomShadow = 'inset 0 3rpx 0 0 #f59e0b';                 // 顶边
-        else if (r === cr + 1) doomShadow = 'inset 0 -3rpx 0 0 #f59e0b';                // 底边
-        else if (c === cc - 1) doomShadow = 'inset 3rpx 0 0 0 #f59e0b';                 // 左边
-        else if (c === cc + 1) doomShadow = 'inset -3rpx 0 0 0 #f59e0b';                // 右边
+        const parts = [];
+        if (r === cr - 1) parts.push('inset 0 3rpx 0 0 #f59e0b');  // 顶边
+        if (r === cr + 1) parts.push('inset 0 -3rpx 0 0 #f59e0b'); // 底边
+        if (c === cc - 1) parts.push('inset 3rpx 0 0 0 #f59e0b');  // 左边
+        if (c === cc + 1) parts.push('inset -3rpx 0 0 0 #f59e0b'); // 右边
+        if (r === cr && c === cc) parts.push('inset 0 0 0 2rpx #f59e0b'); // 中心：定位标记
+        doomShadow = parts.join(',');
       }
       if (state.pickCells.indexOf(r + ',' + c) !== -1 && !isDoomPick) cls += ' cell-pick';
       // 声呐区域外圈 / 毁灭菇十字轮廓：内联样式，多个效果叠加不冲突

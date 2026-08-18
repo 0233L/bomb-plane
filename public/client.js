@@ -474,21 +474,21 @@ function renderBattleBoards() {
     // 声呐 3x3 区域外圈的金色细边框（内联样式优先于注释标记的 class 描边）
     td.style.boxShadow = sonarShadowMaps.enemy[r + ',' + c] || '';
     // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）；
-    // 毁灭菇选区画「整体十字轮廓框」（内联 box-shadow，与声呐外圈框逗号合并），
-    // 其他道具保持每格独立 outline 描边
+    // 毁灭菇选区画「3×3 完整外圈方框」（内联 box-shadow，与声呐外圈框逗号合并），
+    // 其他道具保持每格独立 outline 描边。
+    // 注意：方框的 4 个角格只走框线——它们不在 pickCells/pickHover 里（十字选区
+    // 只存中心 + 4 臂 5 格），所以框线直接按 doomShadows 地图画，不查成员
     const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
     const doomKeys = isDoomPick && (state.pickCells.length ? state.pickCells : state.pickHover);
     const doomShadows = doomKeys && doomKeys.length ? doomPickShadows(doomKeys) : null;
     const doomKey = r + ',' + c;
-    if (state.pickCells.indexOf(doomKey) !== -1) {
-      if (doomShadows && doomShadows[doomKey]) {
-        td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomShadows[doomKey] : doomShadows[doomKey];
-      } else td.classList.add('cell-pick');
-    }
-    if (state.pickHover.indexOf(doomKey) !== -1) {
-      if (doomShadows && doomShadows[doomKey]) {
-        td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomShadows[doomKey] : doomShadows[doomKey];
-      } else td.classList.add('cell-pick-hover');
+    const doomEdge = doomShadows && doomShadows[doomKey];
+    if (doomEdge) {
+      // 毁灭菇方框（含角格：角格只走框线，不在 pickCells/pickHover 里）
+      td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomEdge : doomEdge;
+    } else {
+      if (state.pickCells.indexOf(doomKey) !== -1) td.classList.add('cell-pick');
+      if (state.pickHover.indexOf(doomKey) !== -1) td.classList.add('cell-pick-hover');
     }
   });
 
