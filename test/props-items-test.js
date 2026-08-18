@@ -2,7 +2,7 @@
 // test/props-items-test.js —— 道具版 5 个道具测试（阶段B）
 // 用法：先启动服务器（RECYCLE_SECONDS=3 node server.js）再运行本测试
 // 每个道具用独立房间 + 已知布局（测试脚本掌握 B 的飞机坐标），精准断言：
-//   声呐数字 / Pro 机身优先 / 双发 2 格+steps+2 / 吞噬摧毁+机头命中 /
+//   声呐数字 / Pro 机身优先 / 双发 2 格占一步 / 吞噬摧毁+机头命中 /
 //   无所遁形整机揭示 / 金币不足拒绝 / 步数门控 / 经典房间无道具
 // ============================================
 'use strict';
@@ -143,7 +143,7 @@ async function main() {
     check('Pro 后步数 +1', res.steps[0] === 1);
   }
 
-  // ========== 3. 双发连射：2 格 + steps +2 ==========
+  // ========== 3. 双发连射：2 格 + 只占一步 ==========
   console.log('3. 双发连射');
   {
     const { a, knownB } = await makePropsRoom();
@@ -164,7 +164,7 @@ async function main() {
     const r1 = await p1;
     const r2 = await p2;
     check('双发两次揭示结果都是机身', r1.result === 'body' && r2.result === 'body');
-    check('双发后步数 +2', r2.steps[0] === 2);
+    check('双发后步数只 +1', r2.steps[0] === 1);
     check('双发后金币 = 8 - 5 + 2', r2.coins[0] === 5);
     check('双发是两条独立 revealResult（格子不同）', r1.row !== r2.row || r1.col !== r2.col);
   }
@@ -204,7 +204,7 @@ async function main() {
     // 无所遁形：整架 10 格全揭示
     const res = await aUse(a, 'expose', { row: plane.headRow, col: plane.headCol }, function (d) { return d.itemId === 'expose' && d.attacker === 0; });
     check('无所遁形揭示 10 格', Array.isArray(res.cells) && res.cells.length === 10);
-    check('金币 = 13 - 5 = 8', res.coins[0] === 8);
+    check('金币 = 13 - 4 = 9（无所遁形已降价为 4）', res.coins[0] === 9);
     // 那架飞机的任意一格现在都已揭示：reveal 机身格应被拒
     const bodyCell = shared.getPlaneCells(plane.headRow, plane.headCol, plane.dir)[5];
     const ep = waitForMatch(a, 'error', function (d) { return true; });

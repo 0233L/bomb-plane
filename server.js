@@ -31,7 +31,7 @@ const COIN_HEAD = 5;    // 揭示到机头（找到机头离胜利最近，奖�
 const ITEM_PRICES = {
   sonar: 3,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
   pro: 4,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格）
-  burst: 5,   // 双发连射：一次行动揭示 2 格（steps +2）
+  burst: 5,   // 双发连射：一次行动揭示 2 格（只占一步）
   expose: 4,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
   devour: 6,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
   doom: 10    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
@@ -698,14 +698,14 @@ function handleReveal(socket, data) {
 
 // 执行一次揭示：查表、记录、步数 +1、金币结算、广播、判胜（调用前已通过全部校验）
 // 真人玩家（handleReveal）和 AI（scheduleAITurn）共用，保证两边遵守同一套规则
-function tryReveal(room, seat, row, col) {
+function tryReveal(room, seat, row, col, noStep) {
   // 防御性冻结检查（AI 路径兜底；调用方已校验过，正常流程不会走到）
   if (isFrozenCell(room, seat, row, col)) return false;
   const defender = room.players[1 - seat];
   const cell = defender.board[row][col];
   const result = cell === CELL_HEAD ? 'head' : cell === CELL_BODY ? 'body' : 'empty';
   defender.shotsReceived.push({ row: row, col: col, result: result });
-  room.steps[seat] += 1;
+  if (!noStep) room.steps[seat] += 1; // noStep：双发连射第 2 格不再计步（双发总共只占一步）
 
   // 道具版：揭示赚金币（空格 0 / 机身 1 / 机头 5）；经典版不结算
   let coinGain = 0;
@@ -898,10 +898,11 @@ function doUseItem(room, seat, itemId, data) {
       return '两格不能相同';
     }
     room.coins[seat] -= price;
-    // 步数：双发 = 2 次揭示，两次 tryReveal 内部各 +1（总 +2，比标准行动多 1 步）
+    // 步数：双发连射只占一步（先 +1，两次揭示都不再计步，广播时步数就是最终值）
+    room.steps[seat] += 1;
     console.log(`[${room.id}] ${room.players[seat].name} 双发连射 (${cells[0][0]},${cells[0][1]}) + (${cells[1][0]},${cells[1][1]})`);
-    tryReveal(room, seat, cells[0][0], cells[0][1]);
-    if (room.phase === 'battle') tryReveal(room, seat, cells[1][0], cells[1][1]); // 第一格若直接获胜就不再打
+    tryReveal(room, seat, cells[0][0], cells[0][1], true);
+    if (room.phase === 'battle') tryReveal(room, seat, cells[1][0], cells[1][1], true); // 第一格若直接获胜就不再打
     return;
   }
 

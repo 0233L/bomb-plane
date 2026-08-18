@@ -97,16 +97,16 @@
       <block wx:if="{{rulesTab === 'props'}}">
         <view class="rules-h3">金币经济</view>
         <view class="rules-p">开局双方各 <text class="gold">8 金币</text>：击中机身 +1、机头 +5。金币双方互见，道具即时扣费。</view>
-        <view class="rules-p">除「双发连射」占两步外，道具使用都算<b>一次行动</b>，选中道具后按操作提示点击对方棋盘即可。基础玩法与经典模式相同，见「🎯 经典模式」栏。</view>
+        <view class="rules-p">道具使用都算<b>一次行动</b>，选中道具后按操作提示点击对方棋盘即可。基础玩法与经典模式相同，见「🎯 经典模式」栏。</view>
 
-        <view class="rules-h3">道具列表（价格明码标价）</view>
+        <view class="rules-h3">道具列表</view>
         <view class="rules-list">
-          <text>🔊 声呐脉冲 <text class="gold">3🪙</text> — 3×3 区域内飞机格的数量。点对方棋盘选 3×3 区域</text>
-          <text>🔍 探测者 <text class="gold">4🪙</text> — 3×3 区域内随机揭示 1 格真实内容。点对方棋盘选 3×3 区域</text>
-          <text>💥 双发连射 <text class="gold">5🪙</text> — 一次行动揭示 2 格（占两步）。点对方棋盘上的 2 个未知格</text>
-          <text>👁 无所遁形 <text class="gold">4🪙</text> — 完整揭示整架飞机（10 格全显示）。点已揭示的机头（红色）格</text>
-          <text>🧨 吞噬者 <text class="gold">6🪙</text> — 摧毁 3×3 区域（命中机头 = 发现飞机）。点对方棋盘选 3×3 区域</text>
-          <text>🌋 毁灭菇 <text class="gold">10🪙</text> — 十字 5 格揭示 + 相邻未揭示格冻结 2 回合。点对方棋盘任意格作十字中心</text>
+          <text>🔊 声呐脉冲 <text class="gold">3🪙</text> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量</text>
+          <text>🔍 探测者 <text class="gold">4🪙</text> — 在对方棋盘选 3×3 区域，随机揭示其中 1 格真实内容</text>
+          <text>💥 双发连射 <text class="gold">5🪙</text> — 点对方棋盘 2 个未知格，一次行动同时揭示</text>
+          <text>👁 无所遁形 <text class="gold">4🪙</text> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）</text>
+          <text>🧨 吞噬者 <text class="gold">6🪙</text> — 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机</text>
+          <text>🌋 毁灭菇 <text class="gold">10🪙</text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，相邻未揭示格冻结 2 回合</text>
         </view>
       </block>
 
