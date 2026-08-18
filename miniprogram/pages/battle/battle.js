@@ -279,7 +279,10 @@ Page({
     if (state.spectator) return toast('观战模式不能标注');
     if (state.over) return toast('对局已结束');
     const key = r + ',' + c;
-    if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+    // 已揭示格不标；吞噬者摧毁的格（result === 'destroyed'）内容保密算未揭示，仍可标注
+    if (state.enemyShotsReceived.some(function (s) {
+      return s.row === r && s.col === c && s.result !== 'destroyed';
+    })) {
       return toast('这格已经揭示过了');
     }
     if (state.marks[key] === 'body') delete state.marks[key];   // 已标机身 → 取消

@@ -576,7 +576,8 @@ function renderBattleBoards() {
     }
     // 注释标记：右键在未揭示格上标的预期内容（红=机头 绿=机身 灰=空，中间仍是暗色；
     // 格子被揭示后自动不显示——注释只是本地猜测，揭示即作废；观战视角不显示）
-    if (!s && !revealed && !state.spectator && state.marks[r + ',' + c]) {
+    if (!revealed && !state.spectator && state.marks[r + ',' + c] && (!s || s.result === 'destroyed')) {
+      // 未揭示格可标：普通未知格 + 吞噬者摧毁的格（内容保密，仍可标注）；已揭示格不能标
       td.classList.add('cell-mark-' + state.marks[r + ',' + c]);
     }
     // 声呐数字（我放的声呐：探测对方棋盘；在已揭示格上也能显示；冻结格显示 ❄ 不显示数字）
@@ -591,7 +592,7 @@ function renderBattleBoards() {
     // （逗号叠加，与毁灭菇方框合并同手法）
     const sonarShadow = sonarShadowMaps.enemy[r + ',' + c];
     const markKey = r + ',' + c;
-    const hasMark = !s && !revealed && !state.spectator && state.marks[markKey];
+    const hasMark = !revealed && !state.spectator && state.marks[markKey] && (!s || s.result === 'destroyed');
     if (sonarShadow) {
       td.style.boxShadow = hasMark ? sonarShadow + ',inset 0 0 0 3px #66bb6a' : sonarShadow;
     } else {
@@ -768,9 +769,11 @@ function updateBattlePanels() {
 
   // 金币（道具版双方可见；经典版隐藏该行）。观战视角左 = 1 号玩家、右 = 2 号玩家
   const coinsVisible = state.mode === 'props';
-  $('#panel-my-coins-row').classList.toggle('hidden', !coinsVisible);
+  $('#panel-my-coins-row').classList.toggle('hidden', !coinsVisible); // 道具栏金币
+  $('#panel-my-coins-info-row').classList.toggle('hidden', !coinsVisible); // 我方信息卡金币（与道具栏同值，观战看 0 号位）
   $('#panel-enemy-coins-row').classList.toggle('hidden', !coinsVisible);
   $('#panel-my-coins').textContent = state.coins[state.spectator ? 0 : state.seat];
+  $('#panel-my-coins-info').textContent = state.coins[state.spectator ? 0 : state.seat];
   $('#panel-enemy-coins').textContent = state.coins[state.spectator ? 1 : (1 - state.seat)];
   updateItemButtons();
 
@@ -1209,7 +1212,11 @@ function loadMarks() {
 function onEnemyMark(r, c) {
   if (state.spectator || state.over) return; // 观战 / 对局结束不标注
   const key = r + ',' + c;
-  if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) return; // 已揭示格不标
+  // 已揭示格不标；吞噬者摧毁的格子（result === 'destroyed'，深灰 ✕ 内容保密）算未揭示，仍可标注。
+  // 吞噬命中的机头（result 'head' + destroyed）已显示灰色机头，视为已发现，不能标
+  if (state.enemyShotsReceived.some(function (s) {
+    return s.row === r && s.col === c && s.result !== 'destroyed';
+  })) return;
   if (state.marks[key] === 'body') delete state.marks[key]; // 已标机身 → 取消
   else state.marks[key] = 'body';                            // 无 → 标注机身
   saveMarks();

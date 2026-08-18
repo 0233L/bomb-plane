@@ -352,7 +352,7 @@ function enemyBoardCells() {
       }
       // 注释标记：长按在未揭示格上标的「机身」（绿框；中间仍是暗色；
       // 格子被揭示后自动不显示——注释只是本地猜测，揭示即作废；观战者不显示）
-      if (!s && !state.spectator && !revealed && state.marks[r + ',' + c]) {
+      if (!state.spectator && !revealed && state.marks[r + ',' + c] && (!s || s.result === 'destroyed')) {
         cls += ' cell-mark-' + state.marks[r + ',' + c];
       }
       // 道具选区高亮（battle 页选区交互时设置 state.pickCells）；
