@@ -851,7 +851,9 @@ function doUseItem(room, seat, itemId, data) {
     });
     room.coins[seat] -= price;
     room.steps[seat] += 1;
-    room.sonarHistory.push({ row: row, col: col, count: count }); // 记录历史（观战/重连补发）
+    // 记录历史（观战/重连补发）。attacker = 施放者座位：声呐探测的是「对方的棋盘」，
+    // 客户端靠它判断结果数字要画在谁的棋盘上（施放者视角 = 对方棋盘，被探测者视角 = 自己的棋盘）
+    room.sonarHistory.push({ row: row, col: col, count: count, attacker: seat });
     console.log(`[${room.id}] ${room.players[seat].name} 声呐脉冲 (${row},${col}) = ${count} 个非空格`);
     finishItem(room, seat, 'sonar', { row: row, col: col, count: count });
     return;

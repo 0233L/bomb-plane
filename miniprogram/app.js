@@ -28,7 +28,7 @@ const state = {
   steps: [0, 0],
   score: [0, 0],
   headsLeft: [3, 3],
-  sonarResults: [],         // 声呐脉冲的历史结果 [{row, col, count}]（扫雷式推理用）
+  sonarResults: [],         // 声呐脉冲的历史结果 [{row, col, count, attacker}]（扫雷式推理用）
   frozenCells: [],          // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己，渲染 ❄）
   marks: {},                // 注释标记 {'r,c': 'body'}（长按标注机身，仅本机可见，按房间持久化）
   itemPick: null,           // 道具选区模式：null = 未选择 | {itemId}
@@ -212,6 +212,28 @@ function isFrozen(r, c) {
   });
 }
 
+// 声呐结果按「被探测座位」分组：返回该座位棋盘要画的数字 + 外圈框
+// （声呐探测的是对方的棋盘，被探测座位 = 1 - 施放者；attacker 由服务器下发）
+function sonarDataFor(seat) {
+  const map = {};     // 'r,c' -> 中心格数字
+  const shadows = {}; // 'r,c' -> 外圈框 box-shadow（多个区域可叠加）
+  state.sonarResults.forEach(function (sr) {
+    const probedSeat = 1 - (sr.attacker === undefined ? state.seat : sr.attacker);
+    if (probedSeat !== seat) return;
+    map[(sr.row + 1) + ',' + (sr.col + 1)] = sr.count;
+    const r0 = sr.row, c0 = sr.col;
+    const addEdge = function (rr, cc, shadow) {
+      const k = rr + ',' + cc;
+      // 多个 box-shadow 之间用逗号分隔（角落格会有两条边叠加）
+      shadows[k] = (shadows[k] ? shadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
+    };
+    // inset 阴影的可见区在偏移相反侧：上边行向下偏移（0 3rpx 画顶部）、下边行向上（0 -3rpx 画底部）
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3rpx'); addEdge(r0 + 2, c, '0 -3rpx'); } // 上下边
+    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3rpx 0'); addEdge(r, c0 + 2, '-3rpx 0'); } // 左右边
+  });
+  return { map: map, shadows: shadows };
+}
+
 // 对战页己方棋盘：自己的飞机（对战阶段不画轮廓）+ 对方打过的位置高亮
 function myBoardCells() {
   const size = shared.getBoardSpec(state.boardSize).size;
@@ -220,6 +242,8 @@ function myBoardCells() {
   const myBoard = shared.buildBoard(myPlanesSrc, state.boardSize);
   const myMarks = {};
   state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
+  // 对方放的声呐：数字 + 外框画在我的棋盘上（被探测方视角）
+  const sd = sonarDataFor(state.spectator ? 0 : state.seat);
   const cells = [];
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
@@ -228,7 +252,13 @@ function myBoardCells() {
       if (cell === shared.CELL_HEAD) cls = 'cell-head';
       else if (cell === shared.CELL_BODY) cls = 'cell-body';
       if (!myMarks[r + ',' + c]) cls += ' dimmed';
-      cells.push({ r: r, c: c, cls: cls, text: '' });
+      const sonarCount = sd.map[r + ',' + c];
+      if (sonarCount !== undefined) cls += ' cell-sonar';
+      cells.push({
+        r: r, c: c, cls: cls,
+        text: sonarCount !== undefined ? String(sonarCount) : '',
+        style: sd.shadows[r + ',' + c] ? 'box-shadow:' + sd.shadows[r + ',' + c] : ''
+      });
     }
   }
   return cells;
@@ -244,24 +274,8 @@ function enemyBoardCells() {
   // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const enemyMarks = {};
   state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s; });
-  // 声呐数字：显示在 3x3 区域的正中心格（扫雷式推理用）；
-  // 区域外圈再画金色细边框，一眼看清这次声呐探测的范围（多个区域可叠加）
-  const sonarMap = {};
-  state.sonarResults.forEach(function (sr) { sonarMap[(sr.row + 1) + ',' + (sr.col + 1)] = sr.count; });
-  const sonarShadows = {}; // 'r,c' -> box-shadow 字符串
-  state.sonarResults.forEach(function (sr) {
-    const r0 = sr.row, c0 = sr.col;
-    const addEdge = function (rr, cc, shadow) {
-      const k = rr + ',' + cc;
-      // 多个 box-shadow 之间用逗号分隔（角落格会有两条边叠加）；
-      // shadow 传 h v 两个偏移量，拼接成「h v blur spread color」4 个长度值——语法必须合法
-      sonarShadows[k] = (sonarShadows[k] ? sonarShadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
-    };
-    // 注意：inset 阴影的可见区是「元素盒 − 偏移后的阴影盒」——偏移 -3rpx 的可见条带在元素
-    // 的相反侧。所以上边行要向下偏移（0 3rpx 画顶部）、下边行要向上偏移（0 -3rpx 画底部）
-    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3rpx'); addEdge(r0 + 2, c, '0 -3rpx'); } // 上下边
-    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3rpx 0'); addEdge(r, c0 + 2, '-3rpx 0'); } // 左右边
-  });
+  // 我放的声呐：数字 + 外框画在对方棋盘上（探测对方棋盘）
+  const sd = sonarDataFor(state.spectator ? 1 : (1 - state.seat));
   const cells = [];
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
@@ -297,8 +311,8 @@ function enemyBoardCells() {
       } else {
         cls = 'cell-unknown';
       }
-      // 声呐数字（在已揭示格上也能显示；冻结格不显示——冻结期间声呐也不能探测）
-      const count = sonarMap[r + ',' + c];
+      // 声呐数字（我放的声呐探测对方棋盘；在已揭示格上也能显示；冻结格不显示）
+      const count = sd.map[r + ',' + c];
       if (count !== undefined && !isFrozen(r, c)) {
         text = String(count);
       }
@@ -323,7 +337,7 @@ function enemyBoardCells() {
       }
       if (state.pickCells.indexOf(r + ',' + c) !== -1 && !isDoomPick) cls += ' cell-pick';
       // 声呐区域外圈 / 毁灭菇十字轮廓：内联样式，多个效果叠加不冲突
-      let boxShadow = sonarShadows[r + ',' + c];
+      let boxShadow = sd.shadows[r + ',' + c];
       if (doomShadow) boxShadow = boxShadow ? boxShadow + ',' + doomShadow : doomShadow;
       cells.push({ r: r, c: c, cls: cls, text: text, style: boxShadow ? 'box-shadow:' + boxShadow : '' });
     }
@@ -504,8 +518,8 @@ socket.on('itemResult', function (d) {
     }
   }
   if (d.itemId === 'sonar') {
-    // 声呐数字：记入历史（锚点格上显示数字，扫雷式推理用）
-    state.sonarResults.push({ row: d.row, col: d.col, count: d.count });
+    // 声呐数字：记入历史（attacker = 施放者座位，渲染时决定画在谁的棋盘上）
+    state.sonarResults.push({ row: d.row, col: d.col, count: d.count, attacker: d.attacker });
   } else if (d.itemId === 'devour') {
     // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）
     (d.destroyed || []).forEach(function (cell) {

@@ -185,7 +185,7 @@ const state = {
   steps: [0, 0],             // 双方步数（各自揭示了多少格）
   score: [0, 0],             // 双方累计胜场（同一房间连续对局，第二局起显示）
   headsLeft: [3, 3],         // 双方还剩几个机头没被打中
-  sonarResults: [],          // 声呐脉冲的历史结果 [{row, col, count}]（扫雷式推理用）
+  sonarResults: [],          // 声呐脉冲的历史结果 [{row, col, count, attacker}]（扫雷式推理用）
   frozenCells: [],           // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己，渲染 ❄）
   marks: {},                 // 注释标记 {'r,c': 'head'|'body'|'empty'}（右键循环标注，仅本机可见，按房间持久化）
   itemPick: null,            // 道具选区模式：null = 未选择 | {itemId}
@@ -371,6 +371,31 @@ function renderBattleBoards() {
   const myMarks = {};
   state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
 
+  // ---- 声呐数字 + 3x3 区域外框：画在「被探测方」的棋盘上 ----
+  // 声呐探测的是对方的棋盘：我放的 → 对方棋盘；对方放的 → 我的棋盘。
+  // 坐标都是相对被探测棋盘记录的，所以两块棋盘各画各的（观战者同样按被探测座位分）。
+  // 声呐历史里 attacker = 施放者座位，被探测座位 = 1 - attacker
+  const mySeat = state.spectator ? 0 : state.seat; // 我的棋盘显示的是哪个座位的飞机
+  const sonarMaps = { mine: {}, enemy: {} };       // 'r,c' -> 中心格数字（金色小字）
+  const sonarShadowMaps = { mine: {}, enemy: {} }; // 'r,c' -> 区域外圈 box-shadow（可多个叠加）
+  state.sonarResults.forEach(function (sr) {
+    const probedSeat = 1 - (sr.attacker === undefined ? state.seat : sr.attacker);
+    const side = probedSeat === mySeat ? 'mine' : 'enemy';
+    sonarMaps[side][(sr.row + 1) + ',' + (sr.col + 1)] = sr.count;
+    const r0 = sr.row, c0 = sr.col;
+    const addEdge = function (rr, cc, shadow) {
+      const k = rr + ',' + cc;
+      // 多个 box-shadow 之间用逗号分隔（角落格会有两条边叠加）；
+      // shadow 传 h v 两个偏移量，拼接成「h v blur spread color」4 个长度值——语法必须合法，
+      // 多了/少了长度值整条都会被 CSS 解析器丢弃（网页端和 jsdom 都一样）
+      sonarShadowMaps[side][k] = (sonarShadowMaps[side][k] ? sonarShadowMaps[side][k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
+    };
+    // 注意：inset 阴影的可见区是「元素盒 − 偏移后的阴影盒」——偏移 -3px 的可见条带在元素
+    // 的相反侧。所以上边行要向下偏移（0 3px 画顶部）、下边行要向上偏移（0 -3px 画底部）
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3px'); addEdge(r0 + 2, c, '0 -3px'); } // 上下边
+    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3px 0'); addEdge(r, c0 + 2, '-3px 0'); } // 左右边
+  });
+
   $('#my-board').querySelectorAll('td').forEach(function (td) {
     const r = +td.dataset.row, c = +td.dataset.col;
     td.className = '';
@@ -382,6 +407,13 @@ function renderBattleBoards() {
       // 没被打过的格子：蒙上深色遮罩调暗（被打过的保持原色高亮，不加额外标记）
       td.classList.add('dimmed');
     }
+    // 对方放的声呐：数字 + 外框画在我的棋盘上（被探测方视角）
+    const sonarCount = sonarMaps.mine[r + ',' + c];
+    if (sonarCount !== undefined) {
+      td.classList.add('cell-sonar');
+      td.textContent = sonarCount;
+    }
+    td.style.boxShadow = sonarShadowMaps.mine[r + ',' + c] || '';
   });
 
   // ---- 对方棋盘：未知格 + 已揭示结果 ----
@@ -392,26 +424,6 @@ function renderBattleBoards() {
   // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const enemyMarks = {};
   state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s; });
-  // 声呐数字：显示在 3x3 区域的正中心格（金色小字，扫雷式推理用）；
-  // 区域外圈再画金色细边框，一眼看清这次声呐探测的范围
-  const sonarMap = {};
-  state.sonarResults.forEach(function (sr) { sonarMap[(sr.row + 1) + ',' + (sr.col + 1)] = sr.count; });
-  const sonarShadows = {}; // 'r,c' -> box-shadow 字符串（区域外圈 4 条边，可多个区域叠加）
-  state.sonarResults.forEach(function (sr) {
-    const r0 = sr.row, c0 = sr.col;
-    const addEdge = function (rr, cc, shadow) {
-      const k = rr + ',' + cc;
-      // 多个 box-shadow 之间用逗号分隔（角落格会有两条边叠加）；
-      // shadow 传 h v 两个偏移量，拼接成「h v blur spread color」4 个长度值——语法必须合法，
-      // 多了/少了长度值整条都会被 CSS 解析器丢弃（网页端和 jsdom 都一样）
-      sonarShadows[k] = (sonarShadows[k] ? sonarShadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
-    };
-    // 注意：inset 阴影的可见区是「元素盒 − 偏移后的阴影盒」——偏移 -3px 的可见条带在元素
-    // 的相反侧。所以上边行要向下偏移（0 3px 画顶部）、下边行要向上偏移（0 -3px 画底部）
-    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3px'); addEdge(r0 + 2, c, '0 -3px'); } // 上下边
-    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3px 0'); addEdge(r, c0 + 2, '-3px 0'); } // 左右边
-  });
-
   $('#enemy-board').classList.toggle('revealed', !!revealed);
   // 选区模式：对方棋盘用十字光标提示正在选区域
   $('#enemy-board').classList.toggle('picking', !!state.itemPick);
@@ -453,14 +465,14 @@ function renderBattleBoards() {
     if (!s && !revealed && !state.spectator && state.marks[r + ',' + c]) {
       td.classList.add('cell-mark-' + state.marks[r + ',' + c]);
     }
-    // 声呐数字（在已揭示格上也能显示；冻结格显示 ❄ 不显示数字）
-    const count = sonarMap[r + ',' + c];
+    // 声呐数字（我放的声呐：探测对方棋盘；在已揭示格上也能显示；冻结格显示 ❄ 不显示数字）
+    const count = sonarMaps.enemy[r + ',' + c];
     if (count !== undefined && !isFrozen(r, c)) {
       td.classList.add('cell-sonar');
       td.textContent = count;
     }
     // 声呐 3x3 区域外圈的金色细边框（内联样式优先于注释标记的 class 描边）
-    td.style.boxShadow = sonarShadows[r + ',' + c] || '';
+    td.style.boxShadow = sonarShadowMaps.enemy[r + ',' + c] || '';
     // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）；
     // 毁灭菇选区画「整体十字轮廓框」（内联 box-shadow，与声呐外圈框逗号合并），
     // 其他道具保持每格独立 outline 描边
@@ -1214,8 +1226,8 @@ function bindSocketEvents() {
       }
     }
     if (d.itemId === 'sonar') {
-      // 声呐数字：记入历史（锚点格上显示数字，扫雷式推理用）
-      state.sonarResults.push({ row: d.row, col: d.col, count: d.count });
+      // 声呐数字：记入历史（attacker = 施放者座位，渲染时决定画在谁的棋盘上）
+      state.sonarResults.push({ row: d.row, col: d.col, count: d.count, attacker: d.attacker });
     } else if (d.itemId === 'devour') {
       // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）
       (d.destroyed || []).forEach(function (cell) {
