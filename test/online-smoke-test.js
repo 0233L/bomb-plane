@@ -78,7 +78,7 @@ async function main() {
   await pB;
   check('开战成功，金币 = 6', battle.coins && battle.coins[0] === 6);
 
-  // 攒 10 金币：逐格揭示直到 coins >= 10（空格 +0 也合法），B 每轮拉平。
+  // 攒 8 金币（毁灭菇现价）：逐格揭示直到 coins >= 8（空格 +0 也合法），B 每轮拉平。
   // ⚠️ revealResult 是双方互发的广播——监听必须按 attacker 过滤，
   // 否则线上 RTT 下对方那次揭示的广播会抢先匹配，读到错位的 coins/steps。
   const reveal = function (s, r, c, attacker) {
@@ -90,7 +90,7 @@ async function main() {
   let coins = 6, tries = 0;
   const bRevealed = {}; // B 已揭示过的坐标（「对手不受限」环节要避开，防止重复揭示挂起）
   const aRevealed = {}; // A 已揭示过的坐标（毁灭菇十字中心要避开：十字 5 格若含已揭示格，revealed 会少于 5）
-  while (coins < 10 && tries < 60) { // 上限 60 次：6 金币起步要 +4（约 4 个机身），行扫描期望 8+ 个机身，几乎不可能失手
+  while (coins < 8 && tries < 60) { // 上限 60 次：6 金币起步要 +2（约 2 个机身），行扫描期望 8+ 个机身，几乎不可能失手
     const r = await reveal(a, Math.floor(tries / size), tries % size, 0);
     coins = r.coins[0];
     aRevealed[Math.floor(tries / size) + ',' + (tries % size)] = true;
@@ -99,7 +99,7 @@ async function main() {
     await reveal(b, bRow, bCol, 1); // B 拉平
     tries++;
   }
-  check('攒够 10 金币（最终 ' + coins + '）', coins >= 10);
+  check('攒够 8 金币（最终 ' + coins + '）', coins >= 8);
 
   // 毁灭菇：选 1..size-2 内、十字 5 格都未被 A 揭示过的中心（保证 revealed 恰好 5 格）
   let centerRow = 1, centerCol = 1, foundCenter = false;

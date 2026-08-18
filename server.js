@@ -27,14 +27,17 @@ const COIN_HEAD = 3;    // 揭示到机头（找到机头离胜利最近，奖�
 
 // ---------- 道具表（道具版） ----------
 // 道具没有「持有」概念：使用时才购买，校验通过当场扣金币、立即生效。
-// 价格初版，标注待实测调整；道具使用 = 一次标准行动（steps +1，双发连射 +2）。
+// 价格第 2 版（2026-08 平衡）：冷门降价、热门涨价，避免冷门道具无人用、热门道具刷屏。
+// 冷门降：双发 5→3、吞噬者 5→3、毁灭菇 10→8、无所遁形 5→4；
+// 热门升：探测者 2→4、声呐 3→4。AI 决策阈值与价格联动（见 aiDecideItem）。
+// 道具使用 = 一次标准行动（steps +1，双发连射 +2）。
 const ITEM_PRICES = {
-  sonar: 3,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
-  pro: 2,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格；区域全空则揭示整个区域）
-  burst: 5,   // 双发连射：一次行动揭示 2 格（只占一步）
-  expose: 5,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
-  devour: 5,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
-  doom: 10    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
+  sonar: 4,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
+  pro: 4,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格；区域全空则揭示整个区域）
+  burst: 3,   // 双发连射：一次行动揭示 2 格（只占一步）
+  expose: 4,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
+  devour: 3,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
+  doom: 8     // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
 };
 
 // 人机对战的 AI 决策模块（精确枚举 + 机头概率图）
@@ -484,32 +487,42 @@ function scheduleAITurn(room) {
 // 概率场采样份数（AI 加强：env AI_SAMPLES 可调）
 const aiSamples = parseInt(process.env.AI_SAMPLES || '120', 10);
 
-// AI 道具决策（AI 加强第 3 步：价值驱动）。返回 {itemId, data}；不用返回 null。
-// 优先级（每步最多用一个道具）：
-//   1. 无所遁形：机头已找到且整机未完整揭示 → 5 金币换整机 10 格信息，非常值
-//   2. 毁灭菇：金币 ≥10 且残局（未揭示 ≤30%）→ 概率密度最高的十字中心，收割 + 冻结
-//   3. 双发：金币 ≥5 且概率场 top2 格都 ≥0.35（确定性够高才花 5 金币）
-//   4. 声呐：金币 ≥3 且锚点分布熵 ≥0.4（信息价值足够才用）
-//   5. 探测者：金币富余（≥8）且概率场峰值 ≥0.5（与普通揭示等价，低优先级）
-// 吞噬者永不用：摧毁的格子 AI 自己也永远探测不了 = 自损信息，赌 25% 机头不值 6 金币
+// AI 道具决策（AI 加强第 3 步：价值驱动；2026-08 按新价格联动优化）。
+// 优先级（每步最多用一个道具；金币阈值与道具价格联动）：
+//   1. 无所遁形：机头已找到且整机未完整揭示 → 4 金币换整机 10 格信息，非常值
+//   2. 毁灭菇：金币 ≥8 且残局（未揭示 ≤35%）→ 概率密度最高的十字中心，收割 + 冻结
+//   3. 吞噬者：金币 ≥3 且残局（未揭示 ≤40%）时，P头总和最高的 3×3 ≥0.6 → 搏机头（3 金币便宜了）
+//   4. 双发：金币 ≥3 且概率场 top2 格都 ≥0.30（3 金币，确定性门槛比 5 金币时放宽）
+//   5. 声呐：金币 ≥4 且锚点分布熵 ≥0.4（信息价值足够才用）
+//   6. 探测者：金币 ≥6 且概率场峰值 ≥0.5（4 金币定向揭示，比普通揭示略值）
 function aiDecideItem(room, shots, size, myFrozen, pf) {
   const coins = room.coins[1];
-  // 1) 无所遁形（价格 5，阈值联动）
-  if (coins >= 5) {
+  // 1) 无所遁形（价格 4，阈值联动）
+  if (coins >= 4) {
     const head = ai.findExposeHead(shots, size);
     if (head) return { itemId: 'expose', data: { row: head.row, col: head.col } };
   }
-  // 2) 毁灭菇（残局收割）
-  if (coins >= 10 && pf && pf.head) {
-    const unknown = size * size - shots.length; // 每枪揭示 1 格（AI 不用吞噬者）
-    if (unknown <= size * size * 0.3) {
+  // 2) 毁灭菇（残局收割；8 金币比 10 金币好攒，残局线略放宽）
+  if (coins >= 8 && pf && pf.head) {
+    const unknown = size * size - shots.length; // 每枪揭示 1 格
+    if (unknown <= size * size * 0.35) {
       const center = ai.bestDoomCenter(pf, size, myFrozen);
       if (center) return { itemId: 'doom', data: { row: center.row, col: center.col } };
     }
   }
   // 概率场还没建出来（概率场失败兜底路径）→ 不再考虑价值道具
   if (!pf || !pf.head) return null;
-  // 3) 双发：未揭示未冻结格按 (P头+P身) 排序，top2 都够高才用
+  // 3) 吞噬者：残局搏机头——摧毁机头 = 发现飞机直接推进胜利。
+  //    3 金币后不再「永不用」；但只在机头高度集中的区域赌（P头总和 ≥0.6），
+  //    避免拿 3 金币清出一片对自己也未知的废墟
+  {
+    const unknown = size * size - shots.length;
+    if (unknown <= size * size * 0.4) {
+      const region = ai.bestDevourRegion(pf, size, myFrozen);
+      if (region && region.sum >= 0.6) return { itemId: 'devour', data: { row: region.row, col: region.col } };
+    }
+  }
+  // 4) 双发：未揭示未冻结格按 (P头+P身) 排序，top2 都够高才用（3 金币，门槛放宽到 0.30）
   const revealed = new Set();
   shots.forEach(function (s) { revealed.add(s.row * size + s.col); });
   const scored = [];
@@ -524,21 +537,21 @@ function aiDecideItem(room, shots, size, myFrozen, pf) {
     }
   }
   scored.sort(function (a, b) { return b.v - a.v; });
-  if (coins >= 5 && scored.length >= 2 && scored[0].v >= 0.35 && scored[1].v >= 0.35) {
+  if (coins >= 3 && scored.length >= 2 && scored[0].v >= 0.30 && scored[1].v >= 0.30) {
     return {
       itemId: 'burst',
       data: { row: scored[0].row, col: scored[0].col, row2: scored[1].row, col2: scored[1].col }
     };
   }
-  // 4) 声呐：锚点分布熵 ≥0.4 才有信息价值
-  if (coins >= 3) {
+  // 5) 声呐：锚点分布熵 ≥0.4 才有信息价值
+  if (coins >= 4) {
     const anchor = ai.chooseSonarAnchor(pf, size, myFrozen);
     if (anchor && anchor.entropy >= 0.4) {
       return { itemId: 'sonar', data: { row: anchor.row, col: anchor.col } };
     }
   }
-  // 5) 探测者：金币富余 + 概率峰值高
-  if (coins >= 8 && scored.length && scored[0].v >= 0.5) {
+  // 6) 探测者：4 金币定向揭示（机身优先），金币 ≥6 且概率峰值高就值得
+  if (coins >= 6 && scored.length && scored[0].v >= 0.5) {
     return { itemId: 'pro', data: { row: scored[0].row, col: scored[0].col } };
   }
   return null;

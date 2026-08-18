@@ -669,6 +669,32 @@ function findExposeHead(shotsReceived, size) {
 
 // 毁灭菇中心：选「十字 5 格概率和」最大的中心（clamp [1, size-2]），
 // 且十字 5 格不含冻结格。返回 {row, col}；没有可用中心返回 null。
+// 吞噬者区域：3x3 内机头概率总和最高的中心（残局搏机头用，中心离边 ≥1）。
+// 吞噬者只摧毁未揭示格，机头被摧毁 = 发现飞机；已揭示格的概率场为 0，无需额外排除。
+// 返回 {row, col, sum}（sum = 区域内 P头总和，供决策层设阈值）；找不到返回 null。
+function bestDevourRegion(probField, size, frozenCells) {
+  if (!probField.head) return null;
+  const frozen = new Set();
+  (frozenCells || []).forEach(function (f) { frozen.add(f.row * size + f.col); });
+  const region = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]];
+  let best = null;
+  let bestSum = -1;
+  for (let r = 1; r < size - 1; r++) {
+    for (let c = 1; c < size - 1; c++) {
+      let frozenHit = false;
+      let sum = 0;
+      for (let k = 0; k < region.length; k++) {
+        const rr = r + region[k][0], cc = c + region[k][1];
+        if (frozen.has(rr * size + cc)) { frozenHit = true; break; }
+        sum += probField.head[rr * size + cc];
+      }
+      if (frozenHit) continue;
+      if (sum > bestSum) { bestSum = sum; best = { row: r, col: c, sum: sum }; }
+    }
+  }
+  return best;
+}
+
 function bestDoomCenter(probField, size, frozenCells) {
   if (!probField.head) return null;
   const frozen = new Set();
@@ -1481,6 +1507,7 @@ module.exports = {
   chooseSonarAnchor: chooseSonarAnchor, // 信息增益声呐锚点（AI 加强第 3 步）
   findExposeHead: findExposeHead,      // 无所遁形目标（AI 加强第 3 步）
   bestDoomCenter: bestDoomCenter,      // 毁灭菇中心（AI 加强第 3 步）
+  bestDevourRegion: bestDevourRegion,  // 吞噬者区域（AI 加强第 4 步：残局搏机头）
   chooseTargetSimple: chooseTargetSimple,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,

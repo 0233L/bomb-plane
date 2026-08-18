@@ -83,7 +83,7 @@ async function main() {
     const battle = await battleP;
     check('battleStart 带 ' + combo.mode + '/' + combo.boardSize,
       battle.mode === combo.mode && battle.boardSize === combo.boardSize);
-    check('开局金币 = ' + (combo.mode === 'props' ? 8 : 0),
+    check('开局金币 = ' + (combo.mode === 'props' ? 6 : 0),
       combo.mode === 'props' ? (battle.coins && battle.coins[0] === 6) : true);
 
     // 真人先走一步（必被接受），然后等 AI 行动（AI_THINK 80~200ms，8s 超时足够）

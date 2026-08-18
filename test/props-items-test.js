@@ -123,7 +123,7 @@ async function main() {
     }, 0);
     const res = await aUse(a, 'sonar', { row: reg.row, col: reg.col }, function (d) { return d.itemId === 'sonar' && d.attacker === 0; });
     check('声呐数字正确（期望 ' + expect + ' 个非空格）', res.count === expect);
-    check('声呐后 A 金币 = 6 - 3', res.coins[0] === 3);
+    check('声呐后 A 金币 = 6 - 4', res.coins[0] === 2);
     check('声呐后步数 +1', res.steps[0] === 1);
   }
 
@@ -139,7 +139,7 @@ async function main() {
     a.emit('useItem', { itemId: 'pro', row: reg.row, col: reg.col });
     const res = await p;
     check('Pro 揭示结果必为机身', res.result === 'body');
-    check('Pro 后金币 = 6 - 2 + 1 = 5（探测者已降价为 2）', res.coins[0] === 5);
+    check('Pro 后金币 = 6 - 4 + 1 = 3（探测者现价 4）', res.coins[0] === 3);
     check('Pro 后步数 +1', res.steps[0] === 1);
   }
 
@@ -186,7 +186,7 @@ async function main() {
       check('全空区域揭示整个 3×3（9 条覆盖全部格子）', got === expect.sort().join('|'));
       check('9 格结果全部为 empty', results.every(function (d) { return d.result === 'empty'; }));
       check('整片揭示步数只 +1', results[8].steps[0] === 1);
-      check('整片揭示金币 = 6 - 2 = 4（空格无奖励）', results[8].coins[0] === 4);
+      check('整片揭示金币 = 6 - 4 = 2（空格无奖励）', results[8].coins[0] === 2);
     }
   }
 
@@ -212,7 +212,7 @@ async function main() {
     const r2 = await p2;
     check('双发两次揭示结果都是机身', r1.result === 'body' && r2.result === 'body');
     check('双发后步数只 +1', r2.steps[0] === 1);
-    check('双发后金币 = 6 - 5 + 2', r2.coins[0] === 3);
+    check('双发后金币 = 6 - 3 + 2', r2.coins[0] === 5);
     check('双发是两条独立 revealResult（格子不同）', r1.row !== r2.row || r1.col !== r2.col);
   }
 
@@ -226,7 +226,7 @@ async function main() {
     check('吞噬摧毁 9 格', Array.isArray(res.destroyed) && res.destroyed.length === 9);
     check('机头命中有明确反馈', Array.isArray(res.headHit) && res.headHit[0] === plane.headRow && res.headHit[1] === plane.headCol);
     check('吞噬命中机头 → 对方机头数 -1', res.headsLeft[1] === 3);
-    check('吞噬不给金币', res.coins[0] === 1); // 6 - 5 = 1，没有 +5
+    check('吞噬不给金币', res.coins[0] === 3); // 6 - 3 = 3，摧毁不赚金币
     check('吞噬后步数 +1', res.steps[0] === 1);
     // 被摧毁的机身不能再被揭示：reveal 那架飞机的第二个机身格 → 应该拒绝
     const bodyCell = shared.getPlaneCells(plane.headRow, plane.headCol, plane.dir)[2];
@@ -251,7 +251,7 @@ async function main() {
     // 无所遁形：整架 10 格全揭示
     const res = await aUse(a, 'expose', { row: plane.headRow, col: plane.headCol }, function (d) { return d.itemId === 'expose' && d.attacker === 0; });
     check('无所遁形揭示 10 格', Array.isArray(res.cells) && res.cells.length === 10);
-    check('金币 = 9 - 5 = 4（无所遁形现价 5）', res.coins[0] === 4);
+    check('金币 = 9 - 4 = 5（无所遁形现价 4）', res.coins[0] === 5);
     // 那架飞机的任意一格现在都已揭示：reveal 机身格应被拒
     const bodyCell = shared.getPlaneCells(plane.headRow, plane.headCol, plane.dir)[5];
     const ep = waitForMatch(a, 'error', function (d) { return true; });
@@ -263,13 +263,13 @@ async function main() {
   // ========== 6. 规则边界 ==========
   console.log('6. 规则边界');
   {
-    // 金币不足：吞噬者 5 用一次 → 剩 3。B 走一步拉平步数，再买就被金币不足拒绝
+    // 金币不足：吞噬者 3 用一次 → 剩 3，声呐 4 买不起。B 走一步拉平步数，买声呐被金币不足拒绝
     const { a, b } = await makePropsRoom();
     const reg = { row: 0, col: 0 };
     await aUse(a, 'devour', { row: reg.row, col: reg.col }, function (d) { return d.itemId === 'devour' && d.attacker === 0; }); // 剩 3 金币，steps 1:0
     await bReveal(b, 0, 0); // steps 1:1
     const e1p = waitForMatch(a, 'error', function (d) { return true; });
-    a.emit('useItem', { itemId: 'devour', row: reg.row, col: reg.col });
+    a.emit('useItem', { itemId: 'sonar', row: reg.row, col: reg.col }); // 声呐 4 > 剩 3
     const err1 = await e1p;
     check('金币不足被拒', err1.message.indexOf('金币') !== -1);
 

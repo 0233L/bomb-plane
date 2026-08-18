@@ -1,6 +1,6 @@
 // ============================================
 // test/props-smoke-test.js —— 道具版协议冒烟测试
-// 验证：创建道具房间（props + M 规格）→ 加入 → 部署 4 架 → 开战金币 8
+// 验证：创建道具房间（props + M 规格）→ 加入 → 部署 4 架 → 开战金币 6
 //       → 经典房间规格不随加入者覆盖 → 非法规格回退经典 → 人机强制经典
 // 用法：先启动服务器（RECYCLE_SECONDS=3 node server.js）再运行本测试
 // ============================================
@@ -81,7 +81,7 @@ async function main() {
   check('battleStart 带 boardSize=M', battle.boardSize === 'M');
   check('battleStart 金币 = [6,6]', battle.coins && battle.coins[0] === 6 && battle.coins[1] === 6);
 
-  // ---- 2. 道具房间揭示：金币按 空0/身1/头5 结算 ----
+  // ---- 2. 道具房间揭示：金币按 空0/身1/头3 结算 ----
   console.log('2. 道具版揭示金币结算');
   // B 的 battleStart 已在第一节 await battleB 时消费，这里不再等待
   // 开局双方步数都是 0：A 直接揭示一格（先到先得，必被接受）
