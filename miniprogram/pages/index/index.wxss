@@ -1,15 +1,32 @@
-/* 首页：玩法开关 + 地图规格选择（道具版实验玩法） */
-.mode-row {
+/* 首页：玩法两栏卡片 + 地图规格选择（道具版实验玩法） */
+.mode-cards {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: 16rpx;
   margin: 16rpx 0 4rpx;
 }
-.props-toggle { display: flex; align-items: center; gap: 8rpx; }
-.props-toggle switch { transform: scale(0.8); margin-left: -12rpx; }
-.props-label { font-size: 28rpx; color: var(--text-2); }
-.spec-picker { display: flex; gap: 10rpx; margin-left: auto; }
+.mode-card {
+  flex: 1;
+  min-width: 0;
+  border: 2rpx solid var(--border);
+  border-radius: 20rpx;
+  padding: 20rpx;
+}
+.mode-card.active { border-color: var(--primary); }
+.mode-card-title { font-size: 32rpx; font-weight: bold; color: var(--text); }
+.mode-card-desc { font-size: 24rpx; color: var(--muted); line-height: 1.6; margin: 8rpx 0 16rpx; }
+.card-btn { margin-top: 12rpx !important; }
+.props-intro {
+  background: var(--bg);
+  border-radius: 14rpx;
+  padding: 12rpx 16rpx;
+  margin-bottom: 12rpx;
+}
+.props-intro-line { font-size: 22rpx; color: var(--text-3); line-height: 1.7; }
+.props-intro-list { margin-top: 4rpx; }
+.props-intro-item { font-size: 22rpx; color: var(--text-2); line-height: 1.7; }
+.props-intro-item .gold { color: var(--primary); font-weight: bold; }
+.spec-row { display: flex; align-items: center; gap: 12rpx; margin-top: 8rpx; }
+.spec-label { font-size: 26rpx; color: var(--text-3); }
 .spec-btn {
   padding: 6rpx 18rpx;
   font-size: 26rpx;

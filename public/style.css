@@ -122,59 +122,69 @@ h2 { text-align: center; margin: 8px 0; }
 .card button { width: 100%; margin-top: 4px; }
 .divider { text-align: center; color: var(--faint); margin: 12px 0; font-size: 13px; }
 
-/* ---------- 首页：玩法开关 + 地图规格选择（道具版实验玩法） ---------- */
-.mode-row {
+/* ---------- 首页：玩法两栏（经典 / 道具）+ 地图规格选择 ---------- */
+/* 两张玩法卡片并排：点击选中（描边高亮），创建/人机按钮走选中的玩法 */
+.mode-cards {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
 }
-/* 道具模式开关：隐藏原生 checkbox，画一个滑块开关 */
-.props-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.mode-card {
+  flex: 1;
+  min-width: 0;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
   cursor: pointer;
-  font-size: 14px;
+  transition: border-color .15s;
+}
+.mode-card.active {
+  border-color: var(--primary);
+}
+.mode-card-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text);
+}
+.mode-card-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 10px;
+  line-height: 1.6;
+}
+/* 道具模式栏内直接展示玩法介绍（金币规则 + 6 个道具价格效果） */
+.props-intro {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.props-intro-line { color: var(--text-3); margin: 2px 0; }
+.props-intro-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
   color: var(--text-2);
-  user-select: none;
 }
-.props-toggle input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+.props-intro-list b { color: var(--primary); }
+.mode-card .mode-create,
+.mode-card .mode-ai {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
 }
-.props-slider {
-  position: relative;
-  display: inline-block; /* 修复：span 默认 inline，宽高不生效，轨道会塌成 0 宽 */
-  width: 40px;
-  height: 22px;
-  background: var(--border);
-  border-radius: 999px;
-  transition: background .2s;
-  flex-shrink: 0;
-}
-.props-slider::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  transition: left .2s;
-}
-.props-toggle input:checked + .props-slider { background: var(--primary); }
-.props-toggle input:checked + .props-slider::after { left: 21px; }
-/* 地图规格：S/M/L 三个小胶囊按钮，点击切换 */
-.spec-picker {
+.mode-card .mode-create { color: #fff; background: var(--primary); border-color: var(--primary); }
+.mode-card .mode-ai { background: transparent; }
+
+/* 地图规格行：经典/道具各自的默认（10×10 / 12×12），可自由切换 */
+.spec-row {
   display: flex;
+  align-items: center;
   gap: 6px;
-  margin-left: auto; /* 靠右，和开关一行排开 */
+  margin-top: 12px;
 }
+.spec-label { font-size: 13px; color: var(--text-3); }
 .spec-btn {
   padding: 4px 10px;
   font-size: 13px;
@@ -190,12 +200,6 @@ h2 { text-align: center; margin: 8px 0; }
   border-color: var(--primary);
   color: #fff;
 }
-/* 道具模式开启时，创建/人机/加入按钮换装（🎁 前缀 + 主色描边） */
-button.props-on {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-button.props-on:hover { background: var(--hover); }
 
 /* ---------- 房间内徽标：显示玩法与规格（如「🎁 道具版 · 12×12」） ---------- */
 .mode-badge {

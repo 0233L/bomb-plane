@@ -18,9 +18,16 @@ Page({
     showRules: false,        // 规则弹窗
     diagrams: [],            // 规则弹窗里的 4 张飞机朝向图
     visitorCount: 0,         // 底部「已有 X 位玩家访问过」
-    propsOn: false,          // 道具模式开关（玩法：经典/道具）
-    spec: 'S',               // 地图规格：S=10×10 M=12×12 L=14×14
+    homeMode: 'classic',     // 当前选中的玩法栏：classic / props
+    spec: 'S',               // 地图规格：S=10×10 M=12×12 L=14×14（随玩法栏切换）
     modeHelp: ''             // 玩法提示文字
+  },
+
+  // 当前玩法栏记住的规格（每栏独立：bp_spec_classic / bp_spec_props，经典默认 S、道具默认 M）
+  specFor(mode) {
+    const key = mode === 'props' ? 'bp_spec_props' : 'bp_spec_classic';
+    const s = app.loadStorage(key, '');
+    return (s === 'S' || s === 'M' || s === 'L') ? s : (mode === 'props' ? 'M' : 'S');
   },
 
   onShow() {
@@ -48,9 +55,8 @@ Page({
 
   refresh() {
     const history = app.loadRoomHistory();
-    // 默认经典玩法 + S 规格（不恢复上次记忆：每次打开都从默认开始）
-    const propsOn = false;
-    const spec = 'S';
+    const homeMode = this.data.homeMode || 'classic';
+    const spec = this.specFor(homeMode);
     const sp = shared.getBoardSpec(spec);
     this.setData({
       themeClass: app.getThemeClass(),
@@ -60,28 +66,24 @@ Page({
       }),
       diagrams: app.rulesDiagrams(),
       visitorCount: app.globalData.state.totalVisitors,
-      propsOn: propsOn,
+      homeMode: homeMode,
       spec: spec,
-      modeHelp: propsOn
+      modeHelp: homeMode === 'props'
         ? '🎁 道具版 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架 · 金币买道具更刺激'
         : '经典玩法 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架'
     });
     this.updateThemeLabel();
   },
 
-  // 道具模式开关：记住选择；首次开道具时规格跳到道具版默认 M（手动改过规格后不再强制跳）
-  onPropsToggle(e) {
-    const propsOn = e.detail.value;
-    app.saveStorage('bp_mode', propsOn ? 'props' : 'classic');
-    if (propsOn && !app.loadStorage('bp_spec_manual', '')) {
-      app.saveStorage('bp_spec', 'M');
-    }
+  // 点玩法卡片（经典/道具）：切栏，规格自动换成该栏记着的选择
+  onModeTap(e) {
+    this.setData({ homeMode: e.currentTarget.dataset.mode });
     this.refresh();
   },
-  // 地图规格选择（10×10 / 12×12 / 14×14）
+  // 地图规格选择（10×10 / 12×12 / 14×14）：保存到当前玩法栏自己的键（互不影响）
   onSpecTap(e) {
-    app.saveStorage('bp_spec', e.currentTarget.dataset.spec);
-    app.saveStorage('bp_spec_manual', '1'); // 手动改过规格：以后开关联动不再强制跳
+    const mode = this.data.homeMode;
+    app.saveStorage(mode === 'props' ? 'bp_spec_props' : 'bp_spec_classic', e.currentTarget.dataset.spec);
     this.refresh();
   },
 
@@ -106,20 +108,24 @@ Page({
     this.setData({ roomInput: e.detail.value });
   },
 
-  // 创建房间（双人）：带当前玩法 + 规格
-  onCreateTap() {
+  // 创建房间（双人）：按钮自带 data-mode，直接以该栏玩法+该栏规格开局（即使刚才点的是另一栏）
+  onCreateTap(e) {
+    const mode = (e && e.currentTarget && e.currentTarget.dataset.mode) || this.data.homeMode;
+    this.setData({ homeMode: mode });
     app.globalData.socket.emit('createRoom', {
       name: this.data.name,
-      mode: this.data.propsOn ? 'props' : 'classic',
-      boardSize: this.data.spec
+      mode: mode,
+      boardSize: this.specFor(mode)
     });
   },
   // 人机对战：玩法×规格自由组合（经典/S 走最强算法，其余组合简单贪心）
-  onAITap() {
+  onAITap(e) {
+    const mode = (e && e.currentTarget && e.currentTarget.dataset.mode) || this.data.homeMode;
+    this.setData({ homeMode: mode });
     app.globalData.socket.emit('createRoomAI', {
       name: this.data.name,
-      mode: this.data.propsOn ? 'props' : 'classic',
-      boardSize: this.data.spec
+      mode: mode,
+      boardSize: this.specFor(mode)
     });
   },
   // 输入房间号加入（网页 / 小程序通用）：带当前玩法 + 规格
@@ -127,8 +133,8 @@ Page({
     app.globalData.socket.emit('joinRoom', {
       roomId: this.data.roomInput,
       name: this.data.name,
-      mode: this.data.propsOn ? 'props' : 'classic',
-      boardSize: this.data.spec
+      mode: this.data.homeMode,
+      boardSize: this.specFor(this.data.homeMode)
     });
   },
 

@@ -1285,44 +1285,36 @@ function renderRulesDiagram() {
   });
 }
 
-// ---------- 首页玩法与规格选择（道具版实验玩法） ----------
-// 玩法（经典/道具）和地图规格（S/M/L）相互独立、自由组合。
-// 记忆：bp_mode = 上次玩法；bp_spec = 上次规格；
-//       bp_spec_manual = 用户是否手动改过规格（手动改过后，开关联动不再强制跳规格）
-function savedMode() { return localStorage.getItem('bp_mode') === 'props' ? 'props' : 'classic'; }
-function savedSpec() {
-  const s = localStorage.getItem('bp_spec');
-  return (s === 'S' || s === 'M' || s === 'L') ? s : 'S';
+// ---------- 首页玩法与规格选择（两栏：经典 / 道具） ----------
+// 玩法两栏卡片 + 地图规格（S/M/L）自由组合。
+// 每栏记住自己的规格（localStorage：bp_spec_classic / bp_spec_props），
+// 经典默认 S、道具默认 M；切栏时规格自动换成该栏的选择。
+state.homeMode = 'classic'; // 当前选中的玩法栏：classic / props
+
+function savedSpecFor(mode) {
+  const key = mode === 'props' ? 'bp_spec_props' : 'bp_spec_classic';
+  const s = localStorage.getItem(key);
+  return (s === 'S' || s === 'M' || s === 'L') ? s : (mode === 'props' ? 'M' : 'S');
 }
 
 // 首页当前选择的玩法/规格（创建、加入房间时读取）
-function currentMode() { return $('#props-toggle').checked ? 'props' : 'classic'; }
-function currentSpec() {
-  const btn = document.querySelector('.spec-btn.active');
-  return (btn && btn.dataset.spec) ? btn.dataset.spec : 'S';
-}
+function currentMode() { return state.homeMode; }
+function currentSpec() { return savedSpecFor(state.homeMode); }
 
-// 同步首页 UI：开关状态、规格高亮、提示文字、创建/加入按钮图标
-// 注意：currentMode() 返回字符串 'props'/'classic'，赋给 checkbox.checked 前必须转布尔
-// （'classic' 字符串是 truthy，直接赋值会让开关永远变成勾选）
+// 同步首页 UI：玩法卡片高亮、规格按钮高亮、模式提示文字
 function renderHomeMode() {
-  const props = currentMode() === 'props';
-  const spec = currentSpec();
+  const mode = state.homeMode;
+  const spec = savedSpecFor(mode);
   const sp = BOARD_SPECS[spec];
-  $('#props-toggle').checked = props;
+  document.querySelectorAll('.mode-card').forEach(function (c) {
+    c.classList.toggle('active', c.dataset.mode === mode);
+  });
   document.querySelectorAll('.spec-btn').forEach(function (b) {
     b.classList.toggle('active', b.dataset.spec === spec);
   });
-  $('#mode-help').textContent = props
+  $('#mode-help').textContent = mode === 'props'
     ? '🎁 道具版 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架 · 金币买道具更刺激'
     : '经典玩法 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架';
-  // 道具模式开启时，创建/人机/加入三个按钮换装（🎁 前缀 + 强调样式）
-  document.querySelectorAll('#btn-create, #btn-ai, #btn-join').forEach(function (b) {
-    const hasGift = b.textContent.indexOf('🎁') !== -1;
-    b.classList.toggle('props-on', props);
-    if (props && !hasGift) b.textContent = '🎁 ' + b.textContent;
-    if (!props && hasGift) b.textContent = b.textContent.replace('🎁 ', '');
-  });
 }
 
 // ---------- 按钮事件 ----------
@@ -1330,44 +1322,38 @@ function bindUIEvents() {
   // 右上角主题切换：跟随系统 → 浅色 → 深色 循环
   $('#btn-theme').addEventListener('click', cycleTheme);
 
-  // 首页：玩法开关（经典/道具）+ 地图规格选择（S/M/L 自由组合）
-  // 开关变化：记住选择；首次开道具时规格跳到道具版默认 M（用户手动改过规格后不再强制跳）
-  $('#props-toggle').addEventListener('change', function () {
-    const propsOn = $('#props-toggle').checked; // 布尔：开/关
-    localStorage.setItem('bp_mode', propsOn ? 'props' : 'classic');
-    if (propsOn && !localStorage.getItem('bp_spec_manual')) {
-      // 首次开道具：规格跳到道具版默认 M（用户手动改过规格后不再强制跳）
-      localStorage.setItem('bp_spec', 'M');
-      document.querySelectorAll('.spec-btn').forEach(function (b) {
-        b.classList.toggle('active', b.dataset.spec === 'M');
-      });
-    }
-    renderHomeMode();
+  // 首页：玩法两栏卡片（点卡片任意处选中）+ 地图规格选择（S/M/L，每栏各自记忆）
+  // 点卡片切换玩法栏：规格自动换成该栏记着的选择
+  document.querySelectorAll('.mode-card').forEach(function (card) {
+    card.addEventListener('click', function () {
+      state.homeMode = card.dataset.mode;
+      renderHomeMode();
+    });
   });
   document.querySelectorAll('.spec-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      // 先把高亮切到点中的按钮，再渲染（renderHomeMode 读的是 .active）
-      document.querySelectorAll('.spec-btn').forEach(function (b) {
-        b.classList.toggle('active', b === btn);
-      });
-      localStorage.setItem('bp_spec', btn.dataset.spec);
-      localStorage.setItem('bp_spec_manual', '1'); // 手动改过规格：以后开关联动不再强制跳
+      // 规格保存到当前玩法栏自己的键（经典/道具互不影响）
+      localStorage.setItem(state.homeMode === 'props' ? 'bp_spec_props' : 'bp_spec_classic', btn.dataset.spec);
       renderHomeMode();
     });
   });
 
-  // 首页
-  $('#btn-create').addEventListener('click', function () {
-    const name = $('#name-input').value;
-    localStorage.setItem('bp_name', name.trim());
-    state.socket.emit('createRoom', { name: name, mode: currentMode(), boardSize: currentSpec() });
+  // 首页：两栏卡片内的「创建房间」/「人机对战」按钮（data-mode 指明用哪种玩法开局）
+  document.querySelectorAll('.mode-create').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      state.homeMode = btn.dataset.mode; // 直接以本栏玩法开局（即使刚才点的是另一栏）
+      const name = $('#name-input').value;
+      localStorage.setItem('bp_name', name.trim());
+      state.socket.emit('createRoom', { name: name, mode: currentMode(), boardSize: currentSpec() });
+    });
   });
-  // 人机对战：直接创建人机房间，玩法×规格自由组合
-  // （经典/S 走最强算法，其余组合 AI 用简单贪心，见 server.js scheduleAITurn）
-  $('#btn-ai').addEventListener('click', function () {
-    const name = $('#name-input').value;
-    localStorage.setItem('bp_name', name.trim());
-    state.socket.emit('createRoomAI', { name: name, mode: currentMode(), boardSize: currentSpec() });
+  document.querySelectorAll('.mode-ai').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      state.homeMode = btn.dataset.mode;
+      const name = $('#name-input').value;
+      localStorage.setItem('bp_name', name.trim());
+      state.socket.emit('createRoomAI', { name: name, mode: currentMode(), boardSize: currentSpec() });
+    });
   });
   $('#btn-join').addEventListener('click', function () {
     const name = $('#name-input').value;
@@ -1550,10 +1536,7 @@ function init() {
   if (savedName) $('#name-input').value = savedName;
 
   // 默认经典玩法 + S 规格（不恢复上次记忆：每次打开都从默认开始）
-  $('#props-toggle').checked = false;
-  document.querySelectorAll('.spec-btn').forEach(function (b) {
-    b.classList.toggle('active', b.dataset.spec === 'S');
-  });
+  state.homeMode = 'classic';
   renderHomeMode();
 
   renderRecentRooms();

@@ -28,24 +28,43 @@
       <label for="name-input">昵称</label>
       <input id="name-input" type="text" maxlength="12" placeholder="输入昵称">
 
-      <!-- 玩法与地图规格：玩法（经典/道具）和规格（10/12/14）自由组合 -->
-      <div class="mode-row">
-        <label class="props-toggle">
-          <input type="checkbox" id="props-toggle">
-          <span class="props-slider"></span>
-          <span class="props-label">🎁 道具模式</span>
-        </label>
-        <div class="spec-picker" id="spec-picker">
-          <button class="spec-btn active" data-spec="S">10×10</button>
-          <button class="spec-btn" data-spec="M">12×12</button>
-          <button class="spec-btn" data-spec="L">14×14</button>
+      <!-- 玩法两栏：经典模式 / 道具模式（点哪栏就按哪种玩法开局，道具栏自带玩法介绍） -->
+      <div class="mode-cards">
+        <div class="mode-card" data-mode="classic">
+          <div class="mode-card-title">🎯 经典模式</div>
+          <p class="mode-card-desc">传统炸飞机：轮流轰炸对手棋盘，先找出全部 3 架飞机机头的一方获胜</p>
+          <button class="mode-create" data-mode="classic">创建房间</button>
+          <button class="mode-ai" data-mode="classic">🤖 人机对战</button>
+        </div>
+        <div class="mode-card" data-mode="props">
+          <div class="mode-card-title">🎁 道具模式</div>
+          <p class="mode-card-desc">金币买道具，让对战更刺激！</p>
+          <div class="props-intro">
+            <p class="props-intro-line">开局 8 金币 · 击中机身 +1 · 机头 +5</p>
+            <p class="props-intro-line">道具使用占一步行动，价格明码标价：</p>
+            <ul class="props-intro-list">
+              <li>🔊 声呐脉冲 <b>3🪙</b> — 3×3 区域内飞机格的数量</li>
+              <li>🔍 探测者 Pro <b>4🪙</b> — 区域内随机揭示 1 格</li>
+              <li>💥 双发连射 <b>5🪙</b> — 一次行动揭示 2 格</li>
+              <li>👁 无所遁形 <b>5🪙</b> — 整架飞机全部揭示</li>
+              <li>🧨 吞噬者 <b>6🪙</b> — 摧毁 3×3 区域（机头命中=发现飞机）</li>
+              <li>🌋 毁灭菇 <b>10🪙</b> — 十字 5 格揭示 + 冻结周围格子</li>
+            </ul>
+          </div>
+          <button class="mode-create" data-mode="props">创建房间</button>
+          <button class="mode-ai" data-mode="props">🤖 人机对战</button>
         </div>
       </div>
-      <p class="help" id="mode-help">经典玩法 · 10×10 地图 · 3 架飞机</p>
+      <p class="help" id="mode-help"></p>
 
-      <button id="btn-create" class="primary">创建房间</button>
-      <button id="btn-ai">🤖 人机对战</button>
-      <p class="help">和会推理的电脑对战（每步枚举所有可能的飞机布局，打「机头概率 + 信息量」评分最高的格子）</p>
+      <!-- 地图大小：经典/道具各自默认（10×10 / 12×12），点小地图按钮自由切换 -->
+      <div class="spec-row">
+        <span class="spec-label">地图大小：</span>
+        <button class="spec-btn" data-spec="S">10×10</button>
+        <button class="spec-btn" data-spec="M">12×12</button>
+        <button class="spec-btn" data-spec="L">14×14</button>
+      </div>
+
       <div class="divider">或</div>
       <label for="room-input">房间号</label>
       <input id="room-input" type="text" maxlength="4" placeholder="4 位房间号">

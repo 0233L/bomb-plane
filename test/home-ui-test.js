@@ -1,7 +1,10 @@
 // ============================================
-// test/home-ui-test.js —— 首页菜单 UI 交互测试（jsdom 实测）
-// 验证：默认经典+S、地图规格点击切换、道具开关切换、按钮图标联动
+// test/home-ui-test.js —— 首页两栏卡片 UI 交互测试（jsdom 实测）
+// 验证：默认经典卡+S、点卡片切换玩法栏、每栏各自记住规格（互不串扰）、
+//       卡内创建/人机按钮按所点栏的玩法+规格开局、加入房间用当前选中栏
 // 用法：node test/home-ui-test.js
+// 说明：client.js 是严格模式 + 顶层 init，state 在 eval 作用域内取不到，
+//       所以被测源码和测试代码合并成一段脚本一次 eval（同一作用域）。
 // ============================================
 'use strict';
 const { JSDOM } = require('jsdom');
@@ -12,72 +15,96 @@ const wsSrc = fs.readFileSync('public/ws.js', 'utf8');
 const sharedSrc = fs.readFileSync('public/shared.js', 'utf8');
 const clientSrc = fs.readFileSync('public/client.js', 'utf8');
 
-let passed = 0, failed = 0;
-function check(name, cond) {
-  if (cond) { passed++; console.log('  ✓ ' + name); }
-  else { failed++; console.log('  ✗ ' + name); }
-}
-
 const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
 const win = dom.window;
-win.WebSocket = require('ws').WebSocket; // 连本地服务器（init 里 WSClient 会真实连接）
+win.WebSocket = require('ws').WebSocket; // init 里 WSClient 会真实连接本地服务器
 win.matchMedia = function () { // jsdom 不提供 matchMedia，给个最小实现
   return { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
 };
-win.eval(wsSrc);
-win.eval(sharedSrc);
+
+// 测试代码与被测源码同一 eval 作用域：能直接访问 state，拦截 emit 记录开局参数
+const testSrc = [
+  'window.__uiTest = function () {',
+  '  var passed = 0, failed = 0, lines = [], emits = [];',
+  '  function check(name, cond) {',
+  '    if (cond) { passed++; lines.push("  ✓ " + name); }',
+  '    else { failed++; lines.push("  ✗ " + name); }',
+  '  }',
+  '  function activeMode() { var c = document.querySelector(".mode-card.active"); return c ? c.dataset.mode : null; }',
+  '  function activeSpec() { var b = document.querySelector(".spec-btn.active"); return b && b.dataset.spec; }',
+  '  function lastEmit() { return emits[emits.length - 1]; }',
+  '  state.socket.emit = function (ev, data) { emits.push({ ev: ev, data: data }); };',
+  '',
+  '  // ===== 1. 默认状态：经典卡 + S =====',
+  '  lines.push("1. 默认状态");',
+  '  check("经典卡片默认选中", activeMode() === "classic");',
+  '  check("规格默认 S 高亮", activeSpec() === "S");',
+  '  check("帮助文字是经典", document.getElementById("mode-help").textContent.indexOf("经典") !== -1);',
+  '',
+  '  // ===== 2. 点道具卡片：选中 + 规格自动切道具默认 M =====',
+  '  lines.push("2. 点道具卡片");',
+  '  document.querySelector(".mode-card[data-mode=\\"props\\"]").click();',
+  '  check("道具卡片选中", activeMode() === "props");',
+  '  check("经典卡片取消选中", !document.querySelector(".mode-card[data-mode=\\"classic\\"]").classList.contains("active"));',
+  '  check("规格自动换成道具默认 M", activeSpec() === "M");',
+  '  check("帮助文字是道具版", document.getElementById("mode-help").textContent.indexOf("道具版") !== -1);',
+  '',
+  '  // ===== 3. 道具栏改规格 L：存入 bp_spec_props =====',
+  '  lines.push("3. 道具栏改规格");',
+  '  document.querySelector(".spec-btn[data-spec=\\"L\\"]").click();',
+  '  check("道具栏点 L 后高亮", activeSpec() === "L");',
+  '  check("存入 bp_spec_props", window.localStorage.getItem("bp_spec_props") === "L");',
+  '',
+  '  // ===== 4. 切回经典卡：规格自动换回经典默认 S =====',
+  '  lines.push("4. 切回经典卡片");',
+  '  document.querySelector(".mode-card[data-mode=\\"classic\\"]").click();',
+  '  check("经典卡片重新选中", activeMode() === "classic");',
+  '  check("规格自动换回经典默认 S", activeSpec() === "S");',
+  '',
+  '  // ===== 5. 经典栏改 L → 切道具：还是道具栏自己的 L（互不串扰） =====',
+  '  lines.push("5. 两栏规格互不串扰");',
+  '  document.querySelector(".spec-btn[data-spec=\\"L\\"]").click();',
+  '  check("经典栏点 L 后高亮", activeSpec() === "L");',
+  '  check("存入 bp_spec_classic", window.localStorage.getItem("bp_spec_classic") === "L");',
+  '  document.querySelector(".mode-card[data-mode=\\"props\\"]").click();',
+  '  check("切道具后规格仍是道具栏的 L", activeSpec() === "L");',
+  '  document.querySelector(".mode-card[data-mode=\\"classic\\"]").click();',
+  '  check("切回经典规格仍是经典栏的 L", activeSpec() === "L");',
+  '',
+  '  // ===== 6. 卡内按钮：按所点栏的玩法+规格开局 =====',
+  '  lines.push("6. 卡内创建/人机按钮");',
+  '  emits = [];',
+  '  document.querySelector(".mode-card[data-mode=\\"props\\"] .mode-create").click();',
+  '  check("道具卡「创建房间」emit 玩法 props", lastEmit().data.mode === "props");',
+  '  check("道具卡「创建房间」emit 规格 L（道具栏记忆）", lastEmit().data.boardSize === "L");',
+  '  document.querySelector(".mode-card[data-mode=\\"classic\\"] .mode-ai").click();',
+  '  check("经典卡「人机对战」emit 玩法 classic", lastEmit().data.mode === "classic");',
+  '  check("经典卡「人机对战」emit 规格 L（经典栏记忆）", lastEmit().data.boardSize === "L");',
+  '',
+  '  // ===== 7. 加入房间按钮：用当前选中栏的玩法+规格 =====',
+  '  lines.push("7. 加入房间按钮");',
+  '  emits = [];',
+  '  document.querySelector(".mode-card[data-mode=\\"props\\"]").click(); // 选中道具栏',
+  '  document.getElementById("room-input").value = "1234";',
+  '  document.getElementById("btn-join").click();',
+  '  check("加入房间 emit 玩法 props", lastEmit().data.mode === "props");',
+  '  check("加入房间 emit 规格 L", lastEmit().data.boardSize === "L");',
+  '  check("加入房间 emit 房间号", lastEmit().data.roomId === "1234");',
+  '',
+  '  return { passed: passed, failed: failed, lines: lines };',
+  '};'
+].join('\n');
+
 try {
-  win.eval(clientSrc);
+  win.eval(wsSrc + '\n' + sharedSrc + '\n' + clientSrc + '\n' + testSrc);
 } catch (e) {
   console.error('client.js 执行异常:', e.message);
-  console.error(e.stack.split('\n').slice(0, 5).join('\n'));
+  console.error((e.stack || '').split('\n').slice(0, 5).join('\n'));
+  process.exit(1);
 }
 
-const doc = win.document;
-const $ = function (sel) { return doc.querySelector(sel); };
-const $$ = function (sel) { return doc.querySelectorAll(sel); };
-const activeSpec = function () { return $('.spec-btn.active') && $('.spec-btn.active').dataset.spec; };
-const gift = function () { return $('#btn-create').textContent.indexOf('🎁') !== -1; };
-
-// ===== 1. 默认状态：经典 + S =====
-console.log('1. 默认状态');
-check('道具开关默认关闭', !$('#props-toggle').checked);
-check('规格默认 S 高亮', activeSpec() === 'S');
-check('帮助文字是经典', $('#mode-help').textContent.indexOf('经典') !== -1);
-check('创建按钮无 🎁', !gift());
-
-// ===== 2. 地图切换：点 M → M 高亮；点 L → L 高亮 =====
-console.log('2. 地图规格切换');
-$$('.spec-btn')[1].click(); // M
-check('点击 12×12 后 M 高亮', activeSpec() === 'M');
-check('帮助文字跟随 12×12', $('#mode-help').textContent.indexOf('12×12') !== -1);
-$$('.spec-btn')[2].click(); // L
-check('点击 14×14 后 L 高亮', activeSpec() === 'L');
-check('帮助文字跟随 14×14', $('#mode-help').textContent.indexOf('14×14') !== -1);
-$$('.spec-btn')[0].click(); // 回 S
-check('点击 10×10 后 S 高亮', activeSpec() === 'S');
-
-// ===== 3. 道具开关：开 → 道具样式；关 → 回经典 =====
-console.log('3. 道具模式开关');
-$('#props-toggle').click(); // 开
-check('开关已勾选', $('#props-toggle').checked);
-check('帮助文字是道具版', $('#mode-help').textContent.indexOf('道具版') !== -1);
-check('创建按钮带 🎁', gift());
-check('按钮有 props-on 样式', $('#btn-create').classList.contains('props-on'));
-check('规格仍是 S（手动改过不强制跳）', activeSpec() === 'S');
-$('#props-toggle').click(); // 关
-check('开关已取消', !$('#props-toggle').checked);
-check('帮助文字回经典', $('#mode-help').textContent.indexOf('经典') !== -1);
-check('创建按钮无 🎁', !gift());
-
-// ===== 4. 首次开道具（未手动改规格）→ 规格自动跳 M =====
-console.log('4. 首次开道具规格联动');
-win.localStorage.removeItem('bp_spec_manual');
-$$('.spec-btn')[0].click(); // 手动改过 S → manual=1
-win.localStorage.removeItem('bp_spec_manual'); // 模拟从未手动改过
-$('#props-toggle').click(); // 开
-check('首次开道具规格跳到 M', activeSpec() === 'M');
-
-console.log('\n结果: ' + passed + ' 通过, ' + failed + ' 失败');
-process.exitCode = failed ? 1 : 0;
+const result = win.__uiTest();
+console.log(result.lines.join('\n'));
+console.log('\n结果: ' + result.passed + ' 通过, ' + result.failed + ' 失败');
+process.exitCode = result.failed ? 1 : 0;
 setTimeout(function () { process.exit(process.exitCode); }, 500); // 等 ws 连接回收
