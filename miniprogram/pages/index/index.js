@@ -48,9 +48,9 @@ Page({
 
   refresh() {
     const history = app.loadRoomHistory();
-    // 玩法（经典/道具）与规格（S/M/L）独立记忆
-    const propsOn = app.loadStorage('bp_mode', '') === 'props';
-    const spec = app.loadStorage('bp_spec', 'S');
+    // 默认经典玩法 + S 规格（不恢复上次记忆：每次打开都从默认开始）
+    const propsOn = false;
+    const spec = 'S';
     const sp = shared.getBoardSpec(spec);
     this.setData({
       themeClass: app.getThemeClass(),

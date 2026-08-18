@@ -1303,8 +1303,10 @@ function currentSpec() {
 }
 
 // 同步首页 UI：开关状态、规格高亮、提示文字、创建/加入按钮图标
+// 注意：currentMode() 返回字符串 'props'/'classic'，赋给 checkbox.checked 前必须转布尔
+// （'classic' 字符串是 truthy，直接赋值会让开关永远变成勾选）
 function renderHomeMode() {
-  const props = currentMode();
+  const props = currentMode() === 'props';
   const spec = currentSpec();
   const sp = BOARD_SPECS[spec];
   $('#props-toggle').checked = props;
@@ -1331,14 +1333,23 @@ function bindUIEvents() {
   // 首页：玩法开关（经典/道具）+ 地图规格选择（S/M/L 自由组合）
   // 开关变化：记住选择；首次开道具时规格跳到道具版默认 M（用户手动改过规格后不再强制跳）
   $('#props-toggle').addEventListener('change', function () {
-    localStorage.setItem('bp_mode', currentMode());
-    if (currentMode() === 'props' && !localStorage.getItem('bp_spec_manual')) {
+    const propsOn = $('#props-toggle').checked; // 布尔：开/关
+    localStorage.setItem('bp_mode', propsOn ? 'props' : 'classic');
+    if (propsOn && !localStorage.getItem('bp_spec_manual')) {
+      // 首次开道具：规格跳到道具版默认 M（用户手动改过规格后不再强制跳）
       localStorage.setItem('bp_spec', 'M');
+      document.querySelectorAll('.spec-btn').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.spec === 'M');
+      });
     }
     renderHomeMode();
   });
   document.querySelectorAll('.spec-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
+      // 先把高亮切到点中的按钮，再渲染（renderHomeMode 读的是 .active）
+      document.querySelectorAll('.spec-btn').forEach(function (b) {
+        b.classList.toggle('active', b === btn);
+      });
       localStorage.setItem('bp_spec', btn.dataset.spec);
       localStorage.setItem('bp_spec_manual', '1'); // 手动改过规格：以后开关联动不再强制跳
       renderHomeMode();
@@ -1538,10 +1549,10 @@ function init() {
   const savedName = (localStorage.getItem('bp_name') || '').trim();
   if (savedName) $('#name-input').value = savedName;
 
-  // 恢复上次选择的玩法/规格（首页控件 + 按钮图标）
-  $('#props-toggle').checked = savedMode() === 'props';
+  // 默认经典玩法 + S 规格（不恢复上次记忆：每次打开都从默认开始）
+  $('#props-toggle').checked = false;
   document.querySelectorAll('.spec-btn').forEach(function (b) {
-    b.classList.toggle('active', b.dataset.spec === savedSpec());
+    b.classList.toggle('active', b.dataset.spec === 'S');
   });
   renderHomeMode();
 
