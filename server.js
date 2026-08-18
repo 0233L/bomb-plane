@@ -30,9 +30,9 @@ const COIN_HEAD = 5;    // 揭示到机头（找到机头离胜利最近，奖�
 // 价格初版，标注待实测调整；道具使用 = 一次标准行动（steps +1，双发连射 +2）。
 const ITEM_PRICES = {
   sonar: 3,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
-  pro: 4,     // 探测者 Pro：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格）
+  pro: 4,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格）
   burst: 5,   // 双发连射：一次行动揭示 2 格（steps +2）
-  expose: 5,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
+  expose: 4,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
   devour: 6,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
   doom: 10    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
 };
@@ -858,7 +858,7 @@ function doUseItem(room, seat, itemId, data) {
   }
 
   if (itemId === 'pro') {
-    // 探测者 Pro：3x3 内按 机身→机头→空格 的优先级随机揭示 1 格真实内容
+    // 探测者：3x3 内按 机身→机头→空格 的优先级随机揭示 1 格真实内容
     const row = data.row, col = data.col;
     if (!checkRegion(row, col, size)) return '区域越界（3x3 必须完整落在棋盘内）';
     if (hasFrozenCell(room, seat, regionCells(row, col))) return '选区里包含冻结的格子，还不能选中';
@@ -874,7 +874,7 @@ function doUseItem(room, seat, itemId, data) {
       : tiers[CELL_HEAD].length ? tiers[CELL_HEAD] : tiers[CELL_EMPTY];
     const pick = pool[Math.floor(Math.random() * pool.length)];
     room.coins[seat] -= price; // 先扣费，再揭示（揭示本身按正常规则赚金币）
-    console.log(`[${room.id}] ${room.players[seat].name} 探测者 Pro (${row},${col}) → 揭示 (${pick[0]},${pick[1]})`);
+    console.log(`[${room.id}] ${room.players[seat].name} 探测者 (${row},${col}) → 揭示 (${pick[0]},${pick[1]})`);
     tryReveal(room, seat, pick[0], pick[1]); // 记录/步数+1/金币/广播/判胜全部复用
     return;
   }

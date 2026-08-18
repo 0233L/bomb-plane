@@ -22,9 +22,18 @@
   margin-bottom: 12rpx;
 }
 .props-intro-line { font-size: 22rpx; color: var(--text-3); line-height: 1.7; }
-.props-intro-list { margin-top: 4rpx; }
-.props-intro-item { font-size: 22rpx; color: var(--text-2); line-height: 1.7; }
-.props-intro-item .gold { color: var(--primary); font-weight: bold; }
+/* 道具卡「查看道具说明」：小按钮样式 */
+.item-guide-btn {
+  display: inline-block;
+  margin-top: 12rpx;
+  padding: 8rpx 28rpx;
+  font-size: 26rpx;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 12rpx;
+}
+/* 弹窗里的道具价格（金色） */
+.gold { color: var(--primary); font-weight: bold; }
 .spec-row { display: flex; align-items: center; gap: 12rpx; margin-top: 8rpx; }
 .spec-label { font-size: 26rpx; color: var(--text-3); }
 .spec-btn {

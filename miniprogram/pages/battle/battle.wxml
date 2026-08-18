@@ -68,7 +68,7 @@
     <view class="board-wrap">
       <view class="board">
         <view wx:for="{{enemyCells}}" wx:key="index" class="board-cell {{item.cls}}"
-              style="width:{{cellW}};height:{{cellH}}"
+              style="width:{{cellW}};height:{{cellH}};{{item.style}}"
               data-r="{{item.r}}" data-c="{{item.c}}" bindtap="onEnemyCellTap"
               bindlongpress="onEnemyMark">
           <text wx:if="{{item.text}}" class="cell-sonar-text">{{item.text}}</text>
@@ -84,6 +84,7 @@
               data-id="{{item.id}}" bindtap="onItemTap">
           <text class="item-label">{{item.label}}</text>
           <text class="item-price">{{item.price}}🪙</text>
+          <text class="item-desc">{{item.desc}}</text>
         </view>
       </view>
     </scroll-view>

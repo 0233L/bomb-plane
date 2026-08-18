@@ -11,10 +11,10 @@ const state = app.globalData.state;
 const shared = app.shared;
 
 // 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 5, devour: 6, doom: 10 };
+const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 4, devour: 6, doom: 10 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
-  sonar: '声呐脉冲', pro: '探测者 Pro', burst: '双发连射', expose: '无所遁形', devour: '吞噬者',
+  sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者',
   doom: '毁灭菇'
 };
 const ITEM_TIPS = {
@@ -154,12 +154,12 @@ Page({
     // 道具版 + 非观战 + 非结束 + 步数不领先才可点；金币不够的单个置灰
     const canAct = !s.spectator && !s.over && s.steps[s.seat] <= s.steps[1 - s.seat];
     const ITEM_ORDER = [
-      { id: 'sonar', label: '🔊 声呐', price: 3 },
-      { id: 'pro', label: '🔍 探测者', price: 4 },
-      { id: 'burst', label: '💥 双发', price: 5 },
-      { id: 'expose', label: '👁 无所遁形', price: 5 },
-      { id: 'devour', label: '🧨 吞噬者', price: 6 },
-      { id: 'doom', label: '🌋 毁灭菇', price: 10 }
+      { id: 'sonar', label: '🔊 声呐', price: 3, desc: '区域内飞机数量' },
+      { id: 'pro', label: '🔍 探测者', price: 4, desc: '区域内随机揭 1 格' },
+      { id: 'burst', label: '💥 双发', price: 5, desc: '一次行动揭 2 格' },
+      { id: 'expose', label: '👁 无所遁形', price: 4, desc: '整架飞机全揭示' },
+      { id: 'devour', label: '🧨 吞噬者', price: 6, desc: '3×3 区域摧毁' },
+      { id: 'doom', label: '🌋 毁灭菇', price: 10, desc: '十字揭示+冻结' }
     ];
     const items = ITEM_ORDER.map(function (it) {
       return {
@@ -321,7 +321,7 @@ Page({
       this.render();
       return;
     }
-    // 声呐 / 探测者 Pro / 吞噬者：点任意格，选包含它的 3×3 区域
+    // 声呐 / 探测者 / 吞噬者：点任意格，选包含它的 3×3 区域
     const anchor = hoverAnchor(r, c, shared.getBoardSpec(state.boardSize).size);
     state.pickAnchor = anchor;
     state.pickCells = regionKeys(anchor.row, anchor.col);

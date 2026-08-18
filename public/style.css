@@ -162,12 +162,16 @@ h2 { text-align: center; margin: 8px 0; }
   line-height: 1.7;
 }
 .props-intro-line { color: var(--text-3); margin: 2px 0; }
-.props-intro-list {
-  margin: 4px 0 0;
-  padding-left: 16px;
-  color: var(--text-2);
+/* 道具卡「查看道具说明」：小按钮，不占满整行 */
+.item-guide-btn {
+  display: block;
+  width: auto;
+  margin: 6px auto 0;
+  padding: 6px 16px;
+  font-size: 13px;
 }
-.props-intro-list b { color: var(--primary); }
+/* 弹窗里的道具价格（金色） */
+.gold { color: #f59e0b; font-weight: bold; }
 .mode-card .mode-create,
 .mode-card .mode-ai {
   display: block;
@@ -430,6 +434,9 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 }
 .item-btn b { color: #f59e0b; font-size: 14px; }
 .item-btn:disabled b { color: var(--faint); }
+/* 按钮第二行：效果小字（不用选中也能看到每个道具干什么） */
+.item-desc { font-size: 11px; color: var(--text-2); opacity: .8; }
+.item-btn:disabled .item-desc { color: var(--faint); }
 /* 选中进入选区模式：主色描边 */
 .item-btn.active {
   border-color: var(--primary);

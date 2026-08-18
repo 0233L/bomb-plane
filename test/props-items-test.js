@@ -127,8 +127,8 @@ async function main() {
     check('声呐后步数 +1', res.steps[0] === 1);
   }
 
-  // ========== 2. 探测者 Pro：机身优先揭示 ==========
-  console.log('2. 探测者 Pro');
+  // ========== 2. 探测者：机身优先揭示 ==========
+  console.log('2. 探测者');
   {
     const { a, knownB } = await makePropsRoom();
     const plane = knownB[0];

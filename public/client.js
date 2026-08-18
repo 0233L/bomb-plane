@@ -215,10 +215,10 @@ function curSpec() {
 }
 
 // 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 5, devour: 6, doom: 10 };
+const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 4, devour: 6, doom: 10 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
-  sonar: '声呐脉冲', pro: '探测者 Pro', burst: '双发连射', expose: '无所遁形', devour: '吞噬者', doom: '毁灭菇'
+  sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者', doom: '毁灭菇'
 };
 const ITEM_TIPS = {
   sonar: '· 效果：3×3 区域内飞机格的数量。操作：点对方棋盘选 3×3 区域',
@@ -390,9 +390,23 @@ function renderBattleBoards() {
   // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const enemyMarks = {};
   state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s; });
-  // 声呐数字：显示在 3x3 锚点格上（金色小字，扫雷式推理用）
+  // 声呐数字：显示在 3x3 区域的正中心格（金色小字，扫雷式推理用）；
+  // 区域外圈再画金色细边框，一眼看清这次声呐探测的范围
   const sonarMap = {};
-  state.sonarResults.forEach(function (sr) { sonarMap[sr.row + ',' + sr.col] = sr.count; });
+  state.sonarResults.forEach(function (sr) { sonarMap[(sr.row + 1) + ',' + (sr.col + 1)] = sr.count; });
+  const sonarShadows = {}; // 'r,c' -> box-shadow 字符串（区域外圈 4 条边，可多个区域叠加）
+  state.sonarResults.forEach(function (sr) {
+    const r0 = sr.row, c0 = sr.col;
+    const addEdge = function (rr, cc, shadow) {
+      const k = rr + ',' + cc;
+      // 多个 box-shadow 之间用逗号分隔（角落格会有两条边叠加）；
+      // shadow 传 h v 两个偏移量，拼接成「h v blur spread color」4 个长度值——语法必须合法，
+      // 多了/少了长度值整条都会被 CSS 解析器丢弃（网页端和 jsdom 都一样）
+      sonarShadows[k] = (sonarShadows[k] ? sonarShadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
+    };
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 -3px'); addEdge(r0 + 2, c, '0 3px'); } // 上下边
+    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3px 0'); addEdge(r, c0 + 2, '-3px 0'); } // 左右边
+  });
 
   $('#enemy-board').classList.toggle('revealed', !!revealed);
   // 选区模式：对方棋盘用十字光标提示正在选区域
@@ -441,6 +455,8 @@ function renderBattleBoards() {
       td.classList.add('cell-sonar');
       td.textContent = count;
     }
+    // 声呐 3x3 区域外圈的金色细边框（内联样式优先于注释标记的 class 描边）
+    td.style.boxShadow = sonarShadows[r + ',' + c] || '';
     // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）
     if (state.pickCells.indexOf(r + ',' + c) !== -1) td.classList.add('cell-pick');
     if (state.pickHover.indexOf(r + ',' + c) !== -1) td.classList.add('cell-pick-hover');
@@ -702,7 +718,7 @@ function pickItemCell(r, c) {
     updateItemStatus();
     return;
   }
-  // 声呐 / 探测者 Pro / 吞噬者：点任意格，选包含它的 3×3 区域
+  // 声呐 / 探测者 / 吞噬者：点任意格，选包含它的 3×3 区域
   const anchor = hoverAnchor(r, c);
   state.pickAnchor = anchor;
   state.pickCells = regionKeys(anchor.row, anchor.col);
@@ -1090,7 +1106,7 @@ function bindSocketEvents() {
   });
 
   // 道具结果：声呐数字 / 吞噬摧毁 / 无所遁形整机揭示
-  // （探测者 Pro 和双发连射走上面的 revealResult，不在这里）
+  // （探测者 和双发连射走上面的 revealResult，不在这里）
   s.on('itemResult', function (d) {
     if (d.attacker === state.seat) {
       // 自己用的道具：结果已出，选区模式结束
@@ -1502,6 +1518,17 @@ function bindUIEvents() {
     $('#rules-modal').classList.add('hidden');
   });
   $('#rules-modal').addEventListener('click', function (e) {
+    if (e.target === this) this.classList.add('hidden');
+  });
+
+  // 首页「道具说明」弹窗：道具卡点「查看道具说明」打开，点深色背景或「知道了」关闭
+  $('#btn-item-guide').addEventListener('click', function () {
+    $('#item-guide-modal').classList.remove('hidden');
+  });
+  $('#btn-item-guide-close').addEventListener('click', function () {
+    $('#item-guide-modal').classList.add('hidden');
+  });
+  $('#item-guide-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.add('hidden');
   });
 

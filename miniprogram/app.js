@@ -243,9 +243,22 @@ function enemyBoardCells() {
   // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const enemyMarks = {};
   state.enemyShotsReceived.forEach(function (s) { enemyMarks[s.row + ',' + s.col] = s; });
-  // 声呐数字：显示在 3x3 锚点格上（扫雷式推理用）
+  // 声呐数字：显示在 3x3 区域的正中心格（扫雷式推理用）；
+  // 区域外圈再画金色细边框，一眼看清这次声呐探测的范围（多个区域可叠加）
   const sonarMap = {};
-  state.sonarResults.forEach(function (sr) { sonarMap[sr.row + ',' + sr.col] = sr.count; });
+  state.sonarResults.forEach(function (sr) { sonarMap[(sr.row + 1) + ',' + (sr.col + 1)] = sr.count; });
+  const sonarShadows = {}; // 'r,c' -> box-shadow 字符串
+  state.sonarResults.forEach(function (sr) {
+    const r0 = sr.row, c0 = sr.col;
+    const addEdge = function (rr, cc, shadow) {
+      const k = rr + ',' + cc;
+      // 多个 box-shadow 之间用逗号分隔（角落格会有两条边叠加）；
+      // shadow 传 h v 两个偏移量，拼接成「h v blur spread color」4 个长度值——语法必须合法
+      sonarShadows[k] = (sonarShadows[k] ? sonarShadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
+    };
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 -3rpx'); addEdge(r0 + 2, c, '0 3rpx'); } // 上下边
+    for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3rpx 0'); addEdge(r, c0 + 2, '-3rpx 0'); } // 左右边
+  });
   const cells = [];
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
@@ -293,7 +306,9 @@ function enemyBoardCells() {
       }
       // 道具选区高亮（battle 页选区交互时设置 state.pickCells）
       if (state.pickCells.indexOf(r + ',' + c) !== -1) cls += ' cell-pick';
-      cells.push({ r: r, c: c, cls: cls, text: text });
+      // 声呐区域外圈的金色细边框（内联样式，多个区域叠加不冲突）
+      const boxShadow = sonarShadows[r + ',' + c];
+      cells.push({ r: r, c: c, cls: cls, text: text, style: boxShadow ? 'box-shadow:' + boxShadow : '' });
     }
   }
   return cells;
@@ -454,7 +469,7 @@ socket.on('revealResult', function (d) {
 });
 
 // 道具结果：声呐数字 / 吞噬摧毁 / 无所遁形整机揭示
-// （探测者 Pro 和双发连射走上面的 revealResult，不在这里）
+// （探测者 和双发连射走上面的 revealResult，不在这里）
 socket.on('itemResult', function (d) {
   if (d.attacker === state.seat) {
     // 自己用的道具：结果已出，选区模式结束

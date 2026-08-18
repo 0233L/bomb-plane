@@ -80,7 +80,9 @@
 .item-btn.disabled { opacity: .4; }
 .item-label { font-size: 26rpx; color: var(--text-2); }
 .item-price { font-size: 24rpx; color: #f59e0b; }
+.item-desc { font-size: 20rpx; color: var(--text-2); opacity: .8; }
 .item-btn.disabled .item-price { color: var(--faint); }
+.item-btn.disabled .item-desc { color: var(--faint); }
 /* 选区状态条：操作指引 + 确认/取消 */
 .item-status {
   display: flex;

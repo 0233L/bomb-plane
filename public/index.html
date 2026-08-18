@@ -40,16 +40,8 @@
           <div class="mode-card-title">🎁 道具模式</div>
           <p class="mode-card-desc">金币买道具，让对战更刺激！</p>
           <div class="props-intro">
-            <p class="props-intro-line">开局 8 金币 · 击中机身 +1 · 机头 +5</p>
-            <p class="props-intro-line">道具使用占一步行动，价格明码标价：</p>
-            <ul class="props-intro-list">
-              <li>🔊 声呐脉冲 <b>3🪙</b> — 3×3 区域内飞机格的数量</li>
-              <li>🔍 探测者 Pro <b>4🪙</b> — 区域内随机揭示 1 格</li>
-              <li>💥 双发连射 <b>5🪙</b> — 一次行动揭示 2 格</li>
-              <li>👁 无所遁形 <b>5🪙</b> — 整架飞机全部揭示</li>
-              <li>🧨 吞噬者 <b>6🪙</b> — 摧毁 3×3 区域（机头命中=发现飞机）</li>
-              <li>🌋 毁灭菇 <b>10🪙</b> — 十字 5 格揭示 + 冻结周围格子</li>
-            </ul>
+            <p class="props-intro-line">开局 8 金币 · 击中机身 +1 · 机头 +5 · 道具使用占一步行动</p>
+            <button id="btn-item-guide" class="item-guide-btn">📖 查看道具说明</button>
           </div>
           <button class="mode-create" data-mode="props">创建房间</button>
           <button class="mode-ai" data-mode="props">🤖 人机对战</button>
@@ -180,12 +172,12 @@
     </div>
     <!-- 道具面板（道具版专属）：点道具 → 点对方棋盘选区域 → 确认执行（金币不够的置灰） -->
     <div id="items-panel" class="items-panel hidden">
-      <button class="item-btn" data-item="sonar">🔊 声呐脉冲<b>3</b></button>
-      <button class="item-btn" data-item="pro">🔍 探测者 Pro<b>4</b></button>
-      <button class="item-btn" data-item="burst">💥 双发连射<b>5</b></button>
-      <button class="item-btn" data-item="expose">👁 无所遁形<b>5</b></button>
-      <button class="item-btn" data-item="devour">🧨 吞噬者<b>6</b></button>
-      <button class="item-btn" data-item="doom">🌋 毁灭菇<b>10</b></button>
+      <button class="item-btn" data-item="sonar"><span>🔊 声呐脉冲<b>3</b></span><span class="item-desc">区域内飞机数量</span></button>
+      <button class="item-btn" data-item="pro"><span>🔍 探测者<b>4</b></span><span class="item-desc">区域内随机揭 1 格</span></button>
+      <button class="item-btn" data-item="burst"><span>💥 双发连射<b>5</b></span><span class="item-desc">一次行动揭 2 格</span></button>
+      <button class="item-btn" data-item="expose"><span>👁 无所遁形<b>4</b></span><span class="item-desc">整架飞机全揭示</span></button>
+      <button class="item-btn" data-item="devour"><span>🧨 吞噬者<b>6</b></span><span class="item-desc">3×3 区域摧毁</span></button>
+      <button class="item-btn" data-item="doom"><span>🌋 毁灭菇<b>10</b></span><span class="item-desc">十字揭示+冻结</span></button>
     </div>
     <!-- 道具选区状态条：操作指引 + 确认/取消 -->
     <div id="item-status" class="item-status hidden">
@@ -244,6 +236,29 @@
 
       <div class="btn-row">
         <button id="btn-rules-close" class="primary">知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 道具说明弹窗：首页道具卡「查看道具说明」点开（价格 + 效果 + 操作方式） -->
+  <div id="item-guide-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>🎁 道具说明</h2>
+
+      <p class="rules-p">开局双方各 <b>8 金币</b>：击中机身 +1、机头 +5。金币双方互见，道具用完即走、即时扣费。</p>
+      <p class="rules-p"><b>使用道具算一次行动</b>（双发连射占两步），选中道具后按操作提示点击对方棋盘即可。</p>
+
+      <ul class="rules-list">
+        <li><b>🔊 声呐脉冲 <span class="gold">3🪙</span></b> — 3×3 区域内飞机格的数量。点对方棋盘选 3×3 区域</li>
+        <li><b>🔍 探测者 <span class="gold">4🪙</span></b> — 3×3 区域内随机揭示 1 格真实内容。点对方棋盘选 3×3 区域</li>
+        <li><b>💥 双发连射 <span class="gold">5🪙</span></b> — 一次行动揭示 2 格（占两步）。点对方棋盘上的 2 个未知格</li>
+        <li><b>👁 无所遁形 <span class="gold">4🪙</span></b> — 完整揭示整架飞机（10 格全显示）。点已揭示的机头（红色）格</li>
+        <li><b>🧨 吞噬者 <span class="gold">6🪙</span></b> — 摧毁 3×3 区域（命中机头 = 发现飞机）。点对方棋盘选 3×3 区域</li>
+        <li><b>🌋 毁灭菇 <span class="gold">10🪙</span></b> — 十字 5 格揭示 + 相邻未揭示格冻结 2 回合。点对方棋盘任意格作十字中心</li>
+      </ul>
+
+      <div class="btn-row">
+        <button id="btn-item-guide-close" class="primary">知道了</button>
       </div>
     </div>
   </div>

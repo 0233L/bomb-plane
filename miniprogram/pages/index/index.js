@@ -16,6 +16,7 @@ Page({
     roomInput: '',           // 房间号输入框
     rooms: [],               // 最近加入的房间列表
     showRules: false,        // 规则弹窗
+    showItemGuide: false,    // 道具说明弹窗（道具卡「查看道具说明」点开）
     diagrams: [],            // 规则弹窗里的 4 张飞机朝向图
     visitorCount: 0,         // 底部「已有 X 位玩家访问过」
     homeMode: 'classic',     // 当前选中的玩法栏：classic / props
@@ -152,5 +153,8 @@ Page({
   // 规则弹窗
   onRulesTap() { this.setData({ showRules: true }); },
   onRulesClose() { this.setData({ showRules: false }); },
+  // 道具说明弹窗
+  onItemGuideTap() { this.setData({ showItemGuide: true }); },
+  onItemGuideClose() { this.setData({ showItemGuide: false }); },
   noop() { /* 拦截点击穿透 */ }
 });
