@@ -11,7 +11,7 @@ const state = app.globalData.state;
 const shared = app.shared;
 
 // 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { pro: 2, sonar: 3, expose: 4, burst: 5, devour: 6, doom: 10 };
+const ITEM_PRICES = { pro: 2, sonar: 3, expose: 5, burst: 5, devour: 5, doom: 10 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
   sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者',
@@ -40,8 +40,8 @@ Page({
     scoreVisible: false,
     scoreA: 0,
     scoreB: 0,
-    myName: '', myDot: false, mySteps: 0, myHeads: '0/3', myTurn: '',
-    enemyName: '', enemyDot: false, enemySteps: 0, enemyHeads: '0/3', enemyTurn: '',
+    myName: '', myAvatar: '', myDot: false, mySteps: 0, myHeads: '0/3', myTurn: '',
+    enemyName: '', enemyAvatar: '', enemyDot: false, enemySteps: 0, enemyHeads: '0/3', enemyTurn: '',
     boardTitleMy: '', boardTitleEnemy: '', boardNote: '',
     myCells: [],
     enemyCells: [],
@@ -115,23 +115,25 @@ Page({
     });
 
     // ---- 面板（对齐 updateBattlePanels） ----
-    let myName, myDot, mySteps, myHeads, myTurn;
-    let enemyName, enemyDot, enemySteps, enemyHeads, enemyTurn;
+    let myName, myAvatar, myDot, mySteps, myHeads, myTurn;
+    let enemyName, enemyAvatar, enemyDot, enemySteps, enemyHeads, enemyTurn;
     let boardTitleMy, boardTitleEnemy;
     const sp = shared.getBoardSpec(s.boardSize); // 当前房间规格（机头数按规格显示）
     const headsOf = function (seat) { return (sp.planeCount - s.headsLeft[seat]) + '/' + sp.planeCount; };
 
     if (s.spectator) {
-      myName = s.names[0]; myDot = !!s.online[0];
+      myName = s.names[0]; myAvatar = s.avatars[0] || ''; myDot = !!s.online[0];
       mySteps = s.steps[0]; myHeads = headsOf(1); myTurn = '👁 观战中';
-      enemyName = s.names[1]; enemyDot = !!s.online[1];
+      enemyName = s.names[1]; enemyAvatar = s.avatars[1] || ''; enemyDot = !!s.online[1];
       enemySteps = s.steps[1]; enemyHeads = headsOf(0); enemyTurn = '';
       boardTitleMy = (s.names[0] || '1号') + ' 的棋盘';
       boardTitleEnemy = (s.names[1] || '2号') + ' 的棋盘';
     } else {
       myName = s.names[s.seat] + '（我）'; myDot = !!s.online[s.seat];
+      // 我的头像用本地值（对局中换的头像立刻生效），对手用服务器广播的
+      myAvatar = app.myAvatar();
       mySteps = s.steps[s.seat]; myHeads = headsOf(1 - s.seat);
-      enemyName = s.names[1 - s.seat]; enemyDot = !!s.online[1 - s.seat];
+      enemyName = s.names[1 - s.seat]; enemyAvatar = s.avatars[1 - s.seat] || ''; enemyDot = !!s.online[1 - s.seat];
       enemySteps = s.steps[1 - s.seat]; enemyHeads = headsOf(s.seat);
       boardTitleMy = '我的棋盘';
       boardTitleEnemy = '对方棋盘';
@@ -156,9 +158,9 @@ Page({
     const ITEM_ORDER = [
       { id: 'pro', label: '🔍 探测者', price: 2, desc: '身→头→空优先揭 1 格' },
       { id: 'sonar', label: '🔊 声呐', price: 3, desc: '区域内飞机数量' },
-      { id: 'expose', label: '👁 无所遁形', price: 4, desc: '整架飞机全揭示' },
+      { id: 'expose', label: '👁 无所遁形', price: 5, desc: '整架飞机全揭示' },
       { id: 'burst', label: '💥 双发', price: 5, desc: '一次行动揭 2 格' },
-      { id: 'devour', label: '🧨 吞噬者', price: 6, desc: '3×3 区域摧毁' },
+      { id: 'devour', label: '🧨 吞噬者', price: 5, desc: '3×3 区域摧毁' },
       { id: 'doom', label: '🌋 毁灭菇', price: 10, desc: '十字揭示+冻结' }
     ];
     const items = ITEM_ORDER.map(function (it) {
@@ -206,8 +208,8 @@ Page({
       scoreVisible: scoreVisible,
       scoreA: s.score[a],
       scoreB: s.score[1 - a],
-      myName: myName, myDot: myDot, mySteps: mySteps, myHeads: myHeads, myTurn: myTurn,
-      enemyName: enemyName, enemyDot: enemyDot, enemySteps: enemySteps,
+      myName: myName, myAvatar: myAvatar, myDot: myDot, mySteps: mySteps, myHeads: myHeads, myTurn: myTurn,
+      enemyName: enemyName, enemyAvatar: enemyAvatar, enemyDot: enemyDot, enemySteps: enemySteps,
       enemyHeads: enemyHeads, enemyTurn: enemyTurn,
       boardTitleMy: boardTitleMy, boardTitleEnemy: boardTitleEnemy, boardNote: boardNote,
       myCells: myCells,

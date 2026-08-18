@@ -29,6 +29,7 @@
     <view class="battle-panel">
       <view class="panel-left">
         <text class="dot {{myDot ? 'dot-on' : 'dot-off'}}"></text>
+        <text class="avatar" wx:if="{{myAvatar}}">{{myAvatar}}</text>
         <text class="panel-name">{{myName}}</text>
       </view>
       <view class="panel-right">
@@ -52,6 +53,7 @@
     <view class="battle-panel">
       <view class="panel-left">
         <text class="dot {{enemyDot ? 'dot-on' : 'dot-off'}}"></text>
+        <text class="avatar" wx:if="{{enemyAvatar}}">{{enemyAvatar}}</text>
         <text class="panel-name">{{enemyName}}</text>
       </view>
       <view class="panel-right">

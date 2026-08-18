@@ -121,6 +121,58 @@ function removeRoomFromHistory(roomId) {
   renderRecentRooms();
 }
 
+// ---------- 我的头像（localStorage bp_avatar，首次访问随机分配） ----------
+// 有就返回；没有/坏了（不在池里）就随机一个存起来——坏数据自动修复
+function myAvatar() {
+  const saved = localStorage.getItem('bp_avatar');
+  if (saved && AVATAR_POOL.indexOf(saved) !== -1) return saved;
+  const av = randomAvatar();
+  localStorage.setItem('bp_avatar', av);
+  return av;
+}
+
+// 换成新头像：存起来 + 更新 state + 刷新所有显示我的头像的位置
+function setMyAvatar(emoji) {
+  localStorage.setItem('bp_avatar', emoji);
+  state.avatar = emoji;
+  renderMyAvatar();
+  updateBattlePanels(); // 对战页自己的面板可能正在显示头像
+}
+
+// 刷新首页（+邀请页）的我的头像显示
+function renderMyAvatar() {
+  const av = myAvatar();
+  const home = $('#home-avatar'); if (home) home.textContent = av;
+  const invite = $('#invite-avatar'); if (invite) invite.textContent = av;
+}
+
+// 比分牌 tooltip 文本：头像 + 昵称。
+// 观战视角（seat 被借用为 0）全用广播的头像；玩家视角自己的座位用本地头像（对局中换了立刻生效）
+function myAvatarLabel(seat) {
+  const av = state.spectator
+    ? (state.avatars[seat] || '')
+    : (seat === state.seat ? state.avatar : (state.avatars[seat] || ''));
+  return (av ? av + ' ' : '') + state.names[seat];
+}
+
+// 打开头像选择面板：把池子渲染成按钮网格 + 🎲 随机按钮
+function openAvatarModal() {
+  const pool = $('#avatar-pool');
+  if (pool && !pool.children.length) {
+    AVATAR_POOL.forEach(function (emoji) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = emoji;
+      btn.addEventListener('click', function () {
+        setMyAvatar(emoji);
+        $('#avatar-modal').classList.add('hidden');
+      });
+      pool.appendChild(btn);
+    });
+  }
+  $('#avatar-modal').classList.remove('hidden');
+}
+
 // ---------- 匿名访客 ID（访客统计用，不存任何个人信息） ----------
 // 首次访问生成一次，之后一直复用；清掉浏览器存储 = 算一个新访客（可接受）
 function getVisitorId() {
@@ -157,7 +209,8 @@ function renderRecentRooms() {
   list.forEach(function (e) {
     const li = document.createElement('li');
     const info = document.createElement('span');
-    info.textContent = '房间 ' + e.roomId + ' · ' + e.name;
+    // 历史记录里的房间都是"我"进过的，头像统一显示当前的头像
+    info.textContent = '房间 ' + e.roomId + ' · ' + myAvatar() + ' ' + e.name;
     const joinBtn = document.createElement('button');
     joinBtn.textContent = '进入';
     joinBtn.addEventListener('click', function () {
@@ -178,6 +231,8 @@ function renderRecentRooms() {
 const state = {
   token: null, roomId: null, seat: null, name: '',
   names: ['', ''],           // 双方昵称
+  avatar: '',                // 我自己的头像 emoji（localStorage bp_avatar，首次访问随机）
+  avatars: ['', ''],         // 双方头像（服务器广播，与 names 一一对应）
   online: [false, false],    // 双方是否在线（绿点/红点）
   mode: 'classic',           // 当前房间玩法：classic（经典）| props（道具版）
   boardSize: 'S',            // 当前房间地图规格：S=10×10/3架 | M=12×12/4架 | L=14×14/6架
@@ -578,6 +633,7 @@ function updateDeployUI() {
   $('#btn-unconfirm').classList.toggle('hidden', !confirmed);
 
   $('#deploy-opponent-name').textContent = state.names[1 - state.seat] || '等待加入…';
+  $('#deploy-opponent-avatar').textContent = state.avatars[1 - state.seat] || '';
   const hasOpp = !!state.names[1 - state.seat];
   $('#deploy-opponent-dot').classList.toggle('hidden', !hasOpp);
   if (hasOpp) setDot($('#deploy-opponent-dot'), state.online[1 - state.seat]);
@@ -636,6 +692,8 @@ function updateBattlePanels() {
   if (state.spectator) {
     // 观战视角：固定按 1 号玩家（房主）在左、2 号玩家在右显示，昵称不加「（我）」
     $('#panel-my-name').textContent = state.names[0];
+    $('#panel-my-avatar').textContent = state.avatars[0] || '';
+    $('#panel-enemy-avatar').textContent = state.avatars[1] || '';
     setDot($('#panel-my-dot'), state.online[0]);
     $('#panel-my-steps').textContent = state.steps[0];
     $('#panel-my-heads').textContent = (planeCount - state.headsLeft[1]) + '/' + planeCount;
@@ -647,6 +705,9 @@ function updateBattlePanels() {
     $('#panel-enemy-turn').textContent = '';
   } else {
     $('#panel-my-name').textContent = state.names[state.seat] + '（我）';
+    // 我的头像用本地值（对局中换的头像立刻生效），对手用服务器广播的
+    $('#panel-my-avatar').textContent = state.avatar;
+    $('#panel-enemy-avatar').textContent = state.avatars[1 - state.seat] || '';
     setDot($('#panel-my-dot'), state.online[state.seat]);
     $('#panel-my-steps').textContent = mine;
     $('#panel-my-heads').textContent = (planeCount - state.headsLeft[1 - state.seat]) + '/' + planeCount;
@@ -684,9 +745,9 @@ function updateBattlePanels() {
     scoreEl.classList.remove('hidden');
     const a = state.spectator ? 0 : state.seat; // 观战者固定左 = 1 号玩家
     $('#score-a').textContent = state.score[a];
-    $('#score-a').dataset.name = state.names[a];
+    $('#score-a').dataset.name = myAvatarLabel(a);
     $('#score-b').textContent = state.score[1 - a];
-    $('#score-b').dataset.name = state.names[1 - a];
+    $('#score-b').dataset.name = myAvatarLabel(1 - a);
   } else {
     scoreEl.classList.add('hidden');
   }
@@ -1150,6 +1211,7 @@ function bindSocketEvents() {
     state.seat = 0;
     state.name = d.name;
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     state.online = d.online;
     state.myPlanes = [];
     state.deployConfirmed = d.deployConfirmed || [false, false]; // 人机房间：AI 已经确认
@@ -1170,6 +1232,7 @@ function bindSocketEvents() {
     state.seat = 1;
     state.name = d.name;
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     state.online = d.online;
     state.myPlanes = [];
     state.deployConfirmed = [false, false];
@@ -1194,6 +1257,7 @@ function bindSocketEvents() {
     state.boardSize = d.boardSize || 'S';
     state.coins = d.coins || [0, 0];
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     state.online = d.online;
     state.steps = d.steps;
     state.score = d.score;
@@ -1227,6 +1291,7 @@ function bindSocketEvents() {
   // 对手加入（房主收到）
   s.on('opponentJoined', function (d) {
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     updateDeployUI();
   });
 
@@ -1245,6 +1310,7 @@ function bindSocketEvents() {
   // 开战
   s.on('battleStart', function (d) {
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     state.steps = d.steps;
     state.score = d.score;
     state.online = d.online;
@@ -1302,6 +1368,7 @@ function bindSocketEvents() {
   // 双方同意，重新开始
   s.on('rematchStart', function (d) {
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     state.steps = [0, 0];
     state.coins = [0, 0]; // 每局金币在 battleStart 时由服务器下发
     state.headsLeft = [curSpec().planeCount, curSpec().planeCount];
@@ -1356,6 +1423,7 @@ function bindSocketEvents() {
     state.seat = d.seat;
     state.name = d.name;
     state.names = d.names;
+    state.avatars = d.avatars || ['', ''];
     state.online = d.online;
     state.steps = d.steps;
     state.score = d.score;
@@ -1489,7 +1557,7 @@ function bindUIEvents() {
       if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
       const name = $('#name-input').value;
       localStorage.setItem('bp_name', name.trim());
-      state.socket.emit('createRoom', { name: name, mode: currentMode(), boardSize: currentSpec() });
+      state.socket.emit('createRoom', { name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
     });
   });
   document.querySelectorAll('.mode-ai').forEach(function (btn) {
@@ -1497,13 +1565,13 @@ function bindUIEvents() {
       if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
       const name = $('#name-input').value;
       localStorage.setItem('bp_name', name.trim());
-      state.socket.emit('createRoomAI', { name: name, mode: currentMode(), boardSize: currentSpec() });
+      state.socket.emit('createRoomAI', { name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
     });
   });
   $('#btn-join').addEventListener('click', function () {
     const name = $('#name-input').value;
     localStorage.setItem('bp_name', name.trim());
-    state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name, mode: currentMode(), boardSize: currentSpec() });
+    state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
   });
   // 对局中的「返回菜单」按钮（部署页 + 对战页 + 观战等待页各一个）
   document.querySelectorAll('.btn-back-menu').forEach(function (btn) {
@@ -1600,7 +1668,7 @@ function bindUIEvents() {
     const name = $('#invite-name-input').value;
     localStorage.setItem('bp_name', name.trim());
     // 房间号存在 state 里（而不是网址里），即使加入失败清掉了网址也能重试
-    state.socket.emit('joinRoom', { roomId: state.inviteRoomId, name: name });
+    state.socket.emit('joinRoom', { roomId: state.inviteRoomId, name: name, avatar: myAvatar() });
   });
   $('#btn-invite-back').addEventListener('click', function () {
     state.inviteRoomId = null;
@@ -1628,6 +1696,21 @@ function bindUIEvents() {
     $('#rules-modal').classList.add('hidden');
   });
   $('#rules-modal').addEventListener('click', function (e) {
+    if (e.target === this) this.classList.add('hidden');
+  });
+
+  // 头像选择面板：点自己的头像（首页/邀请页/对战页面板）打开；🎲 随机 / 点背景关闭
+  ['#home-avatar', '#invite-avatar', '#panel-my-avatar'].forEach(function (sel) {
+    const el = $(sel);
+    if (el) el.addEventListener('click', openAvatarModal);
+  });
+  $('#btn-avatar-random').addEventListener('click', function () {
+    setMyAvatar(randomAvatar());
+  });
+  $('#btn-avatar-close').addEventListener('click', function () {
+    $('#avatar-modal').classList.add('hidden');
+  });
+  $('#avatar-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.add('hidden');
   });
 
@@ -1729,6 +1812,10 @@ function init() {
   // 记住上次用的昵称
   const savedName = (localStorage.getItem('bp_name') || '').trim();
   if (savedName) $('#name-input').value = savedName;
+
+  // 我的头像：首次访问自动随机分配，并在首页/邀请页显示
+  state.avatar = myAvatar();
+  renderMyAvatar();
 
   // 默认经典玩法 + S 规格（不恢复上次记忆：每次打开都从默认开始）
   state.homeMode = 'classic';

@@ -137,11 +137,19 @@ async function main() {
   index.onNameInput({ detail: { value: '小程序玩家' } });
   check('昵称写入本地存储', storage.get('bp_name') === '小程序玩家');
 
+  // 头像：首次访问自动分配池内随机头像，可手动更换（写入存储 + 通知首页刷新）
+  check('首次自动分配池内头像', shared.AVATAR_POOL.indexOf(app.myAvatar()) !== -1);
+  app.setMyAvatar('🥰');
+  await waitUntil(function () { return index.data.myAvatar === '🥰'; }, 5000, '换头像后首页刷新');
+  check('换头像写入本地存储', storage.get('bp_avatar') === '🥰' && app.myAvatar() === '🥰');
+  check('换头像后首页显示同步', index.data.myAvatar === '🥰');
+
   // 1. 小程序创建房间 → 自动进部署页
   index.onCreateTap();
   await waitUntil(function () { return state.roomId && currentPage === 'deploy'; }, 5000, '创建房间并进入部署页');
   check('创建房间成功并进入部署页（房间号: ' + state.roomId + '）', /^[A-Z0-9]{4}$/.test(state.roomId));
   check('房主是 0 号玩家', state.seat === 0 && !state.spectator);
+  check('房间带头像（房主 = 本地头像）', state.avatars[0] === app.myAvatar());
 
   deploy.onLoad();
   deploy.onShow();
@@ -172,10 +180,12 @@ async function main() {
   console.log('— 跨端对战 —');
   const W = new WSClient('http://localhost:3000');
   await waitUntil(function () { return W.connected; }, 5000, '网页端连接');
-  W.emit('joinRoom', { roomId: state.roomId, name: '网页玩家' });
+  W.emit('joinRoom', { roomId: state.roomId, name: '网页玩家', avatar: '🦊' });
   await waitUntil(function () { return state.names[1] === '网页玩家'; }, 5000, '网页端加入');
   check('网页端加入后昵称同步', state.names[1] === '网页玩家');
+  check('网页端加入后头像同步', state.avatars[1] === '🦊' && state.avatars[0] === app.myAvatar());
   check('部署页显示对方信息', deploy.data.oppName === '网页玩家' && deploy.data.hasOpp);
+  check('部署页显示对方头像', deploy.data.oppAvatar === '🦊');
 
   // 小程序确认部署（取消确认再确认，各走一遍）
   deploy.onConfirmTap();
@@ -196,6 +206,8 @@ async function main() {
   battle.onShow();
   check('对战页渲染 200 格双棋盘', battle.data.myCells.length === 100 && battle.data.enemyCells.length === 100);
   check('己方面板显示昵称', battle.data.myName.indexOf('小程序玩家') !== -1);
+  check('对战面板显示自己头像', battle.data.myAvatar === app.myAvatar());
+  check('对战面板显示对方头像', battle.data.enemyAvatar === '🦊');
 
   // 5. 打完整局：小程序端走页面真实点击路径，网页端直接 emit
   console.log('— 对局进行中 —');
@@ -243,6 +255,7 @@ async function main() {
   check('再来一局后回到部署页', state.phase === 'deploy');
   deploy.onShow();
   check('重开一局计数清零', deploy.data.countText.indexOf('0 / 3') !== -1);
+  check('再来一局后头像保留', deploy.data.oppAvatar === '🦊' && state.avatars[1] === '🦊');
 
   // 7. 断线重连（模拟网络断开：底层 socket 被关闭，客户端自动重连 + 自动 rejoin 恢复现场）
   console.log('— 断线重连 —');
@@ -257,6 +270,7 @@ async function main() {
     state.roomId === before.roomId && state.phase === 'deploy');
   deploy.onShow();
   check('重连后本地草稿 3 架飞机不丢', state.draft.length === 3);
+  check('重连后头像保留', state.avatars[0] === app.myAvatar() && state.avatars[1] === '🦊');
 
   console.log('\n结果: ' + passed + ' 通过, ' + failed + ' 失败');
   // 显式退出：自动重连定时器和 WebSocket 连接会让 Node 进程一直挂着

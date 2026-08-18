@@ -21,6 +21,8 @@ const PLANE_COUNT = shared.PLANE_COUNT;
 const state = {
   token: null, roomId: null, seat: null, name: '',
   names: ['', ''],
+  avatar: '',            // 我自己的头像 emoji（wx storage bp_avatar，首次访问随机）
+  avatars: ['', ''],     // 双方头像（服务器广播，与 names 一一对应）
   online: [false, false],
   mode: 'classic',          // 当前房间玩法：classic（经典）| props（道具版）
   boardSize: 'S',           // 当前房间地图规格：S=10×10/3架 | M=12×12/4架 | L=14×14/6架
@@ -117,6 +119,23 @@ function getVisitorId() {
   id = 'v' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   saveStorage('bp_visitor_id', id);
   return id;
+}
+
+// ---------- 我的头像（wx storage bp_avatar，首次访问随机分配） ----------
+// 有就返回；没有/坏了（不在池里）就随机一个存起来——坏数据自动修复
+function loadAvatar() {
+  const saved = loadStorage('bp_avatar', '');
+  if (saved && shared.AVATAR_POOL.indexOf(saved) !== -1) return saved;
+  const av = shared.randomAvatar();
+  saveStorage('bp_avatar', av);
+  return av;
+}
+
+// 换成新头像：写 storage + 更新 state + 通知页面重新渲染（对应网页版 setMyAvatar）
+function setMyAvatar(emoji) {
+  saveStorage('bp_avatar', emoji);
+  state.avatar = emoji;
+  emitLocal('avatar', { avatar: emoji });
 }
 
 // ---------- 主题（跟随系统 / 浅色 / 深色，对应网页右上角按钮） ----------
@@ -379,6 +398,7 @@ socket.on('roomCreated', function (d) {
   state.seat = 0;
   state.name = d.name;
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   state.online = d.online;
   state.myPlanes = [];
   state.deployConfirmed = d.deployConfirmed || [false, false];
@@ -397,6 +417,7 @@ socket.on('joinedRoom', function (d) {
   state.seat = 1;
   state.name = d.name;
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   state.online = d.online;
   state.myPlanes = [];
   state.deployConfirmed = [false, false];
@@ -413,6 +434,7 @@ socket.on('spectatorJoined', function (d) {
   state.roomId = d.roomId;
   state.seat = 0; // 借用 1 号玩家的视角：左 = 房主，右 = 2 号玩家
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   state.online = d.online;
   state.mode = d.mode || 'classic';
   state.boardSize = d.boardSize || 'S';
@@ -453,6 +475,7 @@ socket.on('roomClosed', function (d) {
 
 socket.on('opponentJoined', function (d) {
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   emitLocal('opponentJoined', d);
 });
 
@@ -468,6 +491,7 @@ socket.on('deployReady', function (d) {
 
 socket.on('battleStart', function (d) {
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   state.steps = d.steps;
   state.score = d.score;
   state.online = d.online;
@@ -579,6 +603,7 @@ socket.on('rematchVote', function (d) {
 
 socket.on('rematchStart', function (d) {
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   state.steps = [0, 0];
   state.coins = [0, 0]; // 金币在下一局 battleStart 时由服务器下发
   state.sonarResults = [];
@@ -636,6 +661,7 @@ socket.on('reconnected', function (d) {
   state.seat = d.seat;
   state.name = d.name;
   state.names = d.names;
+  state.avatars = d.avatars || ['', ''];
   state.online = d.online;
   state.mode = d.mode || 'classic';
   state.boardSize = d.boardSize || 'S';
@@ -725,6 +751,9 @@ App({
   myBoardCells: myBoardCells,
   enemyBoardCells: enemyBoardCells,
   isFrozen: isFrozen,
+  myAvatar: loadAvatar,
+  setMyAvatar: setMyAvatar,
+  AVATAR_POOL: shared.AVATAR_POOL,
   shared: shared,
   PLANE_COUNT: PLANE_COUNT
 });

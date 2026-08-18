@@ -80,3 +80,26 @@
 .room-actions .link { margin-left: 24rpx; }
 .footer-card { margin-top: 20rpx; }
 .footer-stats { display: block; text-align: center; color: var(--muted); font-size: 24rpx; margin-top: 16rpx; }
+
+/* 首页：昵称 + 头像行（点头像换头像） */
+.avatar-row { display: flex; align-items: center; gap: 8rpx; }
+.avatar-hint { font-size: 24rpx; color: var(--muted); }
+
+/* 头像选择弹窗：emoji 网格 */
+.avatar-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 24rpx 0;
+}
+.avatar-option {
+  width: 15%;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 48rpx;
+  padding: 8rpx 0;
+  border-radius: 8rpx;
+  border: 1rpx solid var(--border);
+  background: var(--surface);
+}
+.avatar-option:active { background: var(--hover); }

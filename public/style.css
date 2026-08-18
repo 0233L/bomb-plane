@@ -277,6 +277,36 @@ button.primary:hover { background: var(--primary-hover); }
 .names-tag { color: var(--muted); }
 button.small-btn { padding: 6px 12px; font-size: 13px; }
 
+/* ---------- 头像 emoji ---------- */
+/* 跨平台字体回退：Windows/安卓都能显示彩色 emoji，而不是黑白字形 */
+.avatar {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  margin-right: 4px;
+}
+.avatar-click { cursor: pointer; }           /* 我的头像：可点击换头像 */
+.avatar-click:hover { transform: scale(1.15); }
+.player-panel h3 .avatar { font-size: 18px; } /* 对战面板标题里的头像略小一档 */
+.avatar-row { display: flex; align-items: center; gap: 6px; } /* 首页昵称行：标签 + 头像并排 */
+
+/* 头像选择弹窗：emoji 网格 */
+.avatar-pool {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+.avatar-pool button {
+  font-size: 26px;
+  padding: 6px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.avatar-pool button:hover { background: var(--hover); transform: scale(1.1); }
+
 /* ---------- 双方累计比分（信息条中间一项，第二局起显示） ---------- */
 /* 只显示数字；鼠标悬停在数字上时，下方气泡显示对应玩家昵称 */
 .battle-score {
@@ -657,6 +687,7 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   .battle-info-row { gap: 8px; }
   .player-panel { min-width: 0; padding: 8px 10px; }
   .player-panel h3 { font-size: 14px; }
+  .avatar { font-size: 16px; } /* 手机端头像跟着面板一起缩小 */
   .player-panel p { font-size: 12px; }
   .battle-score { padding: 8px 12px; font-size: 15px; }
   /* 手机端格子缩到 28px：❄ / ✕ / 声呐数字都要跟着缩小

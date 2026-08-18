@@ -122,15 +122,18 @@ async function main() {
   console.log('— 房间与部署 —');
 
   // 1. 建房 + 加入
-  A.emit('createRoom', { name: '小明' });
+  A.emit('createRoom', { name: '小明', avatar: '🐱' });
   const created = await waitFor(A, 'roomCreated');
   check('创建房间并拿到 4 位房间号', /^[A-Z0-9]{4}$/.test(created.roomId) && created.seat === 0);
+  check('roomCreated 带头像（对家位空串）', created.avatars[0] === '🐱' && created.avatars[1] === '');
 
-  B.emit('joinRoom', { roomId: created.roomId, name: '小红' });
+  B.emit('joinRoom', { roomId: created.roomId, name: '小红', avatar: '🦊' });
   const joined = await waitFor(B, 'joinedRoom');
   check('加入房间成功', joined.roomId === created.roomId && joined.seat === 1);
+  check('joinedRoom 双方头像同步', joined.avatars[0] === '🐱' && joined.avatars[1] === '🦊');
   const oppJoined = await waitFor(A, 'opponentJoined');
   check('房主收到对手加入通知', oppJoined.names[1] === '小红');
+  check('opponentJoined 双方头像同步', oppJoined.avatars[0] === '🐱' && oppJoined.avatars[1] === '🦊');
 
   // 2. 双方部署并确认
   const deployA = randomDeployment();
@@ -153,6 +156,7 @@ async function main() {
   const battle = await waitFor(A, 'battleStart');
   check('双方确认后开战，步数归零', battle.steps[0] === 0 && battle.steps[1] === 0);
   check('第一局比分从 0:0 开始', battle.score[0] === 0 && battle.score[1] === 0);
+  check('battleStart 双方头像正确', battle.avatars[0] === '🐱' && battle.avatars[1] === '🦊');
 
   // 3. 步数规则
   console.log('— 步数规则 —');
@@ -254,6 +258,7 @@ async function main() {
     Array.isArray(specOver.planes) &&
     shared.validateDeployment(specOver.planes[0]) === null &&
     shared.validateDeployment(specOver.planes[1]) === null);
+  check('观战快照带头像', specOver.avatars[0] === '🐱' && specOver.avatars[1] === '🦊');
   G0.disconnect();
 
   // 5. 再来一局（含投票数显示）
@@ -263,10 +268,13 @@ async function main() {
   const vote1 = await voteB;
   check('投票广播（1 票）', vote1.votes[0] === true && vote1.votes[1] === false);
 
-  const restartP = Promise.all([waitFor(A, 'rematchStart'), waitFor(B, 'rematchStart')]);
+  const rematchA = waitFor(A, 'rematchStart');
+  const rematchB = waitFor(B, 'rematchStart');
   B.emit('rematch');
-  await restartP;
+  const rem = await rematchA;
+  await rematchB;
   check('双方同意后重新开始', true);
+  check('rematchStart 头像保留', rem.avatars[0] === '🐱' && rem.avatars[1] === '🦊');
 
   // 再来一局后步数已归零（重新部署、重新开战）
   const dA2 = randomDeployment();
@@ -292,6 +300,7 @@ async function main() {
   A2.emit('rejoin', { token: created.token, roomId: created.roomId });
   const restored = await waitFor(A2, 'reconnected');
   check('重连成功并恢复现场', restored.phase === 'battle' && restored.seat === 0 && restored.steps[0] === 0);
+  check('重连快照头像保留', restored.avatars[0] === '🐱' && restored.avatars[1] === '🦊');
   const reconnB2 = await reconnB;
   check('B 收到 A 上线的状态通知', reconnB2.seat === 0 && reconnB2.connected === true);
 
@@ -314,6 +323,7 @@ async function main() {
   B2.emit('rejoin', { token: joined.token, roomId: created.roomId });
   const restoredB = await waitFor(B2, 'reconnected');
   check('断线方等待后重连成功', restoredB.phase === 'battle' && restoredB.seat === 1);
+  check('断线方重连快照头像保留', restoredB.avatars[0] === '🐱' && restoredB.avatars[1] === '🦊');
   const st2 = await reconnA2;
   check('A2 收到 B 上线的状态通知', st2.seat === 1 && st2.connected === true);
 
@@ -527,10 +537,11 @@ async function main() {
   P.on('error', function () {}); // 领先时被拒等预期内的错误，吞掉即可
 
   const deployP = waitFor(P, 'deployReady');
-  P.emit('createRoomAI', { name: '玩家甲' });
+  P.emit('createRoomAI', { name: '玩家甲', avatar: '🐼' });
   const aiRoom = await waitFor(P, 'roomCreated');
   check('人机房间创建（对手是 🤖 电脑）', aiRoom.isAI === true && aiRoom.names[1] === '🤖 电脑');
   check('AI 永远在线（绿点恒亮）', aiRoom.online[1] === true);
+  check('人机房间头像：真人回显 + AI 固定 🤖', aiRoom.avatars[0] === '🐼' && aiRoom.avatars[1] === '🤖');
   const aiDeploy = await deployP;
   check('AI 自动部署并确认', aiDeploy.seat === 1 && aiDeploy.confirmed[1] === true);
 
@@ -614,6 +625,7 @@ async function main() {
   P2.emit('rejoin', { token: aiRoom.token, roomId: aiRoom.roomId });
   const reAI = await waitFor(P2, 'reconnected');
   check('人机房间重连成功（AI 依旧在线）', reAI.phase === 'battle' && reAI.isAI === true && reAI.online[1] === true);
+  check('人机房间重连头像保留', reAI.avatars[0] === '🐼' && reAI.avatars[1] === '🤖');
 
   // 玩家垫一步（若被拒则无碍），然后 AI 必然走一步（先注册监听再 emit）
   const afterRejoinP = waitForMatch(P2, 'revealResult', function (d) { return d.attacker === 1; }, 5000);
@@ -629,6 +641,7 @@ async function main() {
   S.emit('joinRoom', { roomId: aiRoom.roomId, name: '观众丁' });
   const specAI = await waitFor(S, 'spectatorJoined');
   check('人机房间观战快照正常', specAI.names[1] === '🤖 电脑' && specAI.online[1] === true);
+  check('人机房间观战快照带头像', specAI.avatars[0] === '🐼' && specAI.avatars[1] === '🤖');
   S.emit('reveal', { row: 2, col: 2 });
   await sleep(150);
   check('人机房间观战者也不能下棋', errS.length === 1);

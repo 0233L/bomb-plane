@@ -58,6 +58,7 @@ Page({
     confirmed: false,
     showUnconfirm: false,
     oppName: '',
+    oppAvatar: '',
     hasOpp: false,
     oppOnline: false,
     readyStatus: ''
@@ -133,6 +134,7 @@ Page({
       confirmed: confirmed,
       showUnconfirm: confirmed,
       oppName: s.names[1 - s.seat] || '等待加入…',
+      oppAvatar: s.avatars[1 - s.seat] || '',
       hasOpp: !!s.names[1 - s.seat],
       oppOnline: !!s.online[1 - s.seat],
       readyStatus: readyStatus

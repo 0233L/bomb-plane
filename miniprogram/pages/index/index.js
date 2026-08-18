@@ -21,7 +21,10 @@ Page({
     visitorCount: 0,         // 底部「已有 X 位玩家访问过」
     homeMode: 'classic',     // 当前选中的玩法栏：classic / props
     spec: 'S',               // 地图规格：S=10×10 M=12×12 L=14×14（随玩法栏切换）
-    modeHelp: ''             // 玩法提示文字
+    modeHelp: '',            // 玩法提示文字
+    myAvatar: '',            // 我的头像 emoji（点它换头像）
+    avatarPool: [],          // 头像选择面板里的 emoji 池
+    showAvatarPicker: false  // 头像选择弹窗
   },
 
   // 当前玩法栏记住的规格（每栏独立：bp_spec_classic / bp_spec_props，经典默认 S、道具默认 M）
@@ -47,11 +50,15 @@ Page({
     // 访客统计回报（可能早于本页订阅到达，所以 refresh() 里也直接读全局 state）
     this._visitRefresh = this.refresh.bind(this);
     app.on('visitResult', this._visitRefresh);
+    // 换头像后（可能在别处触发）刷新首页显示
+    this._avatarRefresh = this.refresh.bind(this);
+    app.on('avatar', this._avatarRefresh);
   },
 
   onUnload() {
     if (this._roomsAliveRefresh) app.off('roomsAlive', this._roomsAliveRefresh);
     if (this._visitRefresh) app.off('visitResult', this._visitRefresh);
+    if (this._avatarRefresh) app.off('avatar', this._avatarRefresh);
   },
 
   refresh() {
@@ -62,8 +69,10 @@ Page({
     this.setData({
       themeClass: app.getThemeClass(),
       name: (app.loadStorage('bp_name', '') || '').trim(),
+      myAvatar: app.myAvatar(),
+      // 历史房间都是"我"进过的，头像统一显示当前的头像
       rooms: history.map(function (e) {
-        return { roomId: e.roomId, token: e.token, name: e.name };
+        return { roomId: e.roomId, token: e.token, name: e.name, avatar: app.myAvatar() };
       }),
       diagrams: app.rulesDiagrams(),
       visitorCount: app.globalData.state.totalVisitors,
@@ -115,6 +124,7 @@ Page({
     this.setData({ homeMode: mode });
     app.globalData.socket.emit('createRoom', {
       name: this.data.name,
+      avatar: app.myAvatar(),
       mode: mode,
       boardSize: this.specFor(mode)
     });
@@ -125,6 +135,7 @@ Page({
     this.setData({ homeMode: mode });
     app.globalData.socket.emit('createRoomAI', {
       name: this.data.name,
+      avatar: app.myAvatar(),
       mode: mode,
       boardSize: this.specFor(mode)
     });
@@ -134,6 +145,7 @@ Page({
     app.globalData.socket.emit('joinRoom', {
       roomId: this.data.roomInput,
       name: this.data.name,
+      avatar: app.myAvatar(),
       mode: this.data.homeMode,
       boardSize: this.specFor(this.data.homeMode)
     });
@@ -147,6 +159,22 @@ Page({
   // 删除某个历史房间记录
   onRoomDel(e) {
     app.removeRoomFromHistory(e.currentTarget.dataset.room);
+    this.refresh();
+  },
+
+  // 头像选择：点我的头像弹面板；点某个 emoji 或 🎲 随机即换
+  onAvatarTap() {
+    this.setData({ showAvatarPicker: true, avatarPool: app.AVATAR_POOL });
+  },
+  onAvatarClose() { this.setData({ showAvatarPicker: false }); },
+  onAvatarPick(e) {
+    app.setMyAvatar(e.currentTarget.dataset.emoji);
+    this.setData({ showAvatarPicker: false });
+    this.refresh();
+  },
+  onAvatarRandom() {
+    app.setMyAvatar(app.shared.randomAvatar());
+    this.setData({ showAvatarPicker: false });
     this.refresh();
   },
 

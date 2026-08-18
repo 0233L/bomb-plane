@@ -29,6 +29,20 @@
   const CELL_BODY = 1;      // 机身（绿色）
   const CELL_HEAD = 2;      // 机头（红色）
 
+  // ---------- 头像 emoji 池 ----------
+  // 全部是单码点 emoji（避开 ZWJ 连字和肤色修饰符），跨平台彩色渲染最稳。
+  // 表情 + 动物为主，适合当头像。玩家可从中自选或随机。
+  const AVATAR_POOL = [
+    '😀', '😄', '😊', '😎', '🤩', '😜', '🤔', '🥰',  // 表情
+    '🐱', '🐶', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', // 动物
+    '🍀', '🌟'                                      // 其它
+  ];
+
+  // 随机抽一个头像（首次进入自动分配 / 面板里的「🎲 随机」按钮用）
+  function randomAvatar() {
+    return AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
+  }
+
   // ---------- 飞机形状 ----------
   // 每架飞机由 10 个格子组成，用「机头所在格」作为原点 (0,0)，
   // 其余格子用相对偏移 [行偏移, 列偏移] 表示（行向下增长、列向右增长）。
@@ -125,7 +139,9 @@
     getPlaneCells: getPlaneCells,
     canPlacePlane: canPlacePlane,
     buildBoard: buildBoard,
-    validateDeployment: validateDeployment
+    validateDeployment: validateDeployment,
+    AVATAR_POOL: AVATAR_POOL,
+    randomAvatar: randomAvatar
   };
 
   if (typeof module !== 'undefined' && module.exports) {

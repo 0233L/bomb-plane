@@ -127,6 +127,12 @@ function emitToRoom(room, event, data) {
   set.forEach(function (conn) { conn.emit(event, data); });
 }
 
+// 房间双方头像数组（下标 = 座位，与 names 一一对应；空位返回 ''）
+function avatarsOf(room) {
+  // 固定按 2 个座位补齐（建房后 players 只有 1 位，但 names 广播固定 2 位，两者长度保持一致）
+  return [0, 1].map(function (i) { return room.players[i] ? room.players[i].avatar || '' : ''; });
+}
+
 // 给单个 socket 发中文错误提示（客户端会弹小提示条）
 function sendError(socket, message) {
   socket.emit('error', { message: message });
@@ -192,7 +198,8 @@ function startRematch(room) {
   console.log(`[${room.id}] 双方同意再来一局`);
   resetToDeploy(room);
   emitToRoom(room, 'rematchStart', {
-    names: room.players.map(function (p) { return p.name; })
+    names: room.players.map(function (p) { return p.name; }),
+    avatars: avatarsOf(room)
   });
   if (room.isAI) aiDeployAndConfirm(room); // AI 自动重新部署
 }
@@ -291,6 +298,7 @@ function handleCreateRoom(socket, data) {
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
     name: name, token: token,
+    avatar: String(data.avatar || '').slice(0, 8), // 头像 emoji（纯转发，不校验；限长防超大消息）
     socketId: socket.id, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -306,6 +314,7 @@ function handleCreateRoom(socket, data) {
   socket.emit('roomCreated', {
     roomId: room.id, token: token, seat: 0, name: name,
     names: [name, ''],
+    avatars: avatarsOf(room),
     online: [true, false],
     isAI: false,
     mode: p.mode,
@@ -331,6 +340,7 @@ function handleCreateRoomAI(socket, data) {
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
     name: name, token: token,
+    avatar: String(data.avatar || '').slice(0, 8), // 头像 emoji（纯转发，不校验；限长防超大消息）
     socketId: socket.id, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -338,6 +348,7 @@ function handleCreateRoomAI(socket, data) {
   // AI 坐 1 号位：没有 socket，永不掉线，走棋由服务器定时器驱动
   room.players[1] = {
     name: '🤖 电脑', token: crypto.randomBytes(8).toString('hex'),
+    avatar: '🤖', // AI 固定机器人头像
     socketId: null, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -354,6 +365,7 @@ function handleCreateRoomAI(socket, data) {
   socket.emit('roomCreated', {
     roomId: room.id, token: token, seat: 0, name: name,
     names: [name, '🤖 电脑'],
+    avatars: avatarsOf(room),
     online: [true, true],
     isAI: true,
     mode: room.mode,
@@ -520,6 +532,7 @@ function handleJoinRoom(socket, data) {
   const token = crypto.randomBytes(8).toString('hex');
   room.players[1] = {
     name: name, token: token,
+    avatar: String(data.avatar || '').slice(0, 8), // 头像 emoji（纯转发，不校验；限长防超大消息）
     socketId: socket.id, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -536,12 +549,16 @@ function handleJoinRoom(socket, data) {
   socket.emit('joinedRoom', {
     roomId: room.id, token: token, seat: 1, name: name,
     names: [room.players[0].name, name],
+    avatars: avatarsOf(room),
     online: [room.players[0].connected, true], // 房主可能正处于断线中
     mode: room.mode,
     boardSize: room.boardSize
   });
   // 通知房主：对手来了
-  emitToOthers(socket, room.id, 'opponentJoined', { names: [room.players[0].name, name] });
+  emitToOthers(socket, room.id, 'opponentJoined', {
+    names: [room.players[0].name, name],
+    avatars: avatarsOf(room)
+  });
 }
 
 // 观战席：房间已满时进入。能看双方已揭示的格子，不能下棋；
@@ -560,6 +577,7 @@ function handleSpectatorJoin(socket, room, name) {
     boardSize: room.boardSize,
     coins: room.coins,
     names: room.players.map(function (p) { return p.name; }),
+    avatars: avatarsOf(room),
     online: room.players.map(function (p) { return p.connected; }),
     steps: room.steps,
     score: room.score,
@@ -635,6 +653,7 @@ function handleRejoin(socket, data) {
     seat: seat,
     name: player.name,
     names: room.players.map(function (p) { return p ? p.name : ''; }),
+    avatars: avatarsOf(room),
     online: room.players.map(function (p) { return !!p && p.connected; }),
     phase: room.phase,
     mode: room.mode,
@@ -688,6 +707,7 @@ function handleDeployConfirm(socket, data) {
     console.log(`[${room.id}] 双方部署完成，开战（${room.mode}/${room.boardSize}）`);
     emitToRoom(room, 'battleStart', {
       names: room.players.map(function (p) { return p.name; }),
+      avatars: avatarsOf(room),
       steps: room.steps,
       score: room.score,
       online: room.players.map(function (p) { return p.connected; }),

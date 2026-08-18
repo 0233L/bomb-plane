@@ -203,3 +203,11 @@ page {
 .mini-cell { width: 20%; height: 56rpx; box-sizing: border-box; border: 1rpx solid var(--grid); background: var(--surface); }
 .mini-cell.cell-head { background: #ef5350; }
 .mini-cell.cell-body { background: #66bb6a; }
+
+/* ---------- 头像 emoji（全局：各页都用） ---------- */
+.avatar {
+  font-size: 40rpx;
+  line-height: 1;
+  margin-right: 8rpx;
+}
+.avatar-click { padding: 4rpx; }

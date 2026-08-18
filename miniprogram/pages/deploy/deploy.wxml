@@ -33,6 +33,7 @@
 
   <view class="opponent-row">
     <text class="dot {{oppOnline ? 'dot-on' : 'dot-off'}}" wx:if="{{hasOpp}}"></text>
+    <text class="avatar" wx:if="{{oppAvatar}}">{{oppAvatar}}</text>
     <text class="opp-name">{{oppName}}</text>
   </view>
   <view class="ready-status">{{readyStatus}}</view>
