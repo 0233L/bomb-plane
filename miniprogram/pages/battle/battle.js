@@ -19,7 +19,7 @@ const ITEM_NAMES = {
 };
 const ITEM_TIPS = {
   sonar: '· 在对方棋盘选 3×3 区域，显示其中飞机格的数量',
-  pro: '· 在对方棋盘选 3×3 区域，随机揭示其中 1 格真实内容',
+  pro: '· 在对方棋盘选 3×3 区域，按「机身→机头→空」优先揭示 1 格真实内容',
   burst: '· 点对方棋盘 2 个未知格，一次行动同时揭示',
   expose: '· 点已揭示的机头格，完整揭示整架飞机（10 格全显示）',
   devour: '· 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机',
@@ -155,7 +155,7 @@ Page({
     const canAct = !s.spectator && !s.over && s.steps[s.seat] <= s.steps[1 - s.seat];
     const ITEM_ORDER = [
       { id: 'sonar', label: '🔊 声呐', price: 3, desc: '区域内飞机数量' },
-      { id: 'pro', label: '🔍 探测者', price: 4, desc: '区域内随机揭 1 格' },
+      { id: 'pro', label: '🔍 探测者', price: 4, desc: '身→头→空优先揭 1 格' },
       { id: 'burst', label: '💥 双发', price: 5, desc: '一次行动揭 2 格' },
       { id: 'expose', label: '👁 无所遁形', price: 4, desc: '整架飞机全揭示' },
       { id: 'devour', label: '🧨 吞噬者', price: 6, desc: '3×3 区域摧毁' },
