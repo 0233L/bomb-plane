@@ -611,8 +611,11 @@ function renderBattleBoards() {
     const regionKey = r + ',' + c;
     const regionEdge = regionShadows && regionShadows[regionKey];
     if (regionEdge) {
-      // 轮廓线格（与声呐外圈框、上一步蓝框等已有阴影逗号合并）
+      // 轮廓线格（与声呐外圈框、上一步蓝框等已有阴影逗号合并）。
+      // 标记格（绿框）也拼进内联阴影：区域线是内联样式，会盖掉 class 的绿框——
+      // 和上方声呐框同款处理，预览框不能把棋盘标记遮住
       td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + regionEdge : regionEdge;
+      if (hasMark) td.style.boxShadow += ',inset 0 0 0 5px #66bb6a';
     } else if (!isRegionPick) {
       if (state.pickCells.indexOf(regionKey) !== -1) td.classList.add('cell-pick');
       if (state.pickHover.indexOf(regionKey) !== -1) td.classList.add('cell-pick-hover');
