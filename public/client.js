@@ -1766,7 +1766,12 @@ function bindUIEvents() {
     btn.addEventListener('click', function () { showRulesTab(btn.dataset.tab); });
   });
   $('#btn-rules').addEventListener('click', function () {
-    showRulesTab('classic'); // 默认展示经典模式栏
+    showRulesTab('classic'); // 首页按钮：默认展示经典模式栏
+    $('#rules-modal').classList.remove('hidden');
+  });
+  // 对战界面「规则」按钮：优先显示当前模式的规则栏（道具版→道具栏，经典版→经典栏）
+  $('#btn-battle-rules').addEventListener('click', function () {
+    showRulesTab(state.mode === 'props' ? 'props' : 'classic');
     $('#rules-modal').classList.remove('hidden');
   });
   $('#btn-rules-close').addEventListener('click', function () {

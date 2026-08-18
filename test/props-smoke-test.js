@@ -79,7 +79,7 @@ async function main() {
   await battleB;
   check('battleStart 带 mode=props', battle.mode === 'props');
   check('battleStart 带 boardSize=M', battle.boardSize === 'M');
-  check('battleStart 金币 = [8,8]', battle.coins && battle.coins[0] === 8 && battle.coins[1] === 8);
+  check('battleStart 金币 = [6,6]', battle.coins && battle.coins[0] === 6 && battle.coins[1] === 6);
 
   // ---- 2. 道具房间揭示：金币按 空0/身1/头5 结算 ----
   console.log('2. 道具版揭示金币结算');
@@ -90,7 +90,7 @@ async function main() {
   check('revealResult 带 coins 字段', Array.isArray(first.coins));
   check('revealResult 带 coinGain（空=0 身=1 头=3）', [0, 1, 3].indexOf(first.coinGain) !== -1);
   const coinsAfter = first.coins[0];
-  check('A 的金币 = 8 + coinGain', coinsAfter === 8 + first.coinGain);
+  check('A 的金币 = 6 + coinGain', coinsAfter === 6 + first.coinGain);
 
   // ---- 3. 非法规格/玩法回退经典；人机房间强制经典 S ----
   console.log('3. 回退规则与人机房间');

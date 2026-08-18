@@ -76,7 +76,7 @@ async function main() {
   b.emit('deployConfirm', { planes: randomDeployment(SPEC) });
   const battle = await pA;
   await pB;
-  check('开战成功，金币 = 8', battle.coins && battle.coins[0] === 8);
+  check('开战成功，金币 = 6', battle.coins && battle.coins[0] === 6);
 
   // 攒 10 金币：逐格揭示直到 coins >= 10（空格 +0 也合法），B 每轮拉平。
   // ⚠️ revealResult 是双方互发的广播——监听必须按 attacker 过滤，
@@ -87,9 +87,9 @@ async function main() {
     return p;
   };
   const size = shared.getBoardSpec(SPEC).size;
-  let coins = 8, tries = 0;
+  let coins = 6, tries = 0;
   const bRevealed = {}; // B 已揭示过的坐标（「对手不受限」环节要避开，防止重复揭示挂起）
-  while (coins < 10 && tries < 30) { // 上限 30 次：行扫描攒 +2 金币，几乎不可能失手
+  while (coins < 10 && tries < 60) { // 上限 60 次：6 金币起步要 +4（约 4 个机身），行扫描期望 8+ 个机身，几乎不可能失手
     const r = await reveal(a, Math.floor(tries / size), tries % size, 0);
     coins = r.coins[0];
     const bRow = size - 1 - Math.floor(tries / size), bCol = tries % size;

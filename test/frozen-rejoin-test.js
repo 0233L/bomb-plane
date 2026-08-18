@@ -39,6 +39,9 @@ function waitForMatch(socket, event, predicate, timeoutMs) {
     socket.on(event, handler);
   });
 }
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
 function randomDeployment(spec) {
   const sp = shared.getBoardSpec(spec);
   const dirs = ['up', 'down', 'left', 'right'];
@@ -92,6 +95,9 @@ async function main() {
     const bCell = pickUnknown(usedB);
     b.emit('reveal', { row: bCell[0], col: bCell[1] });
     await waitForMatch(a, 'revealResult', function (d2) { return d2.attacker === 1; });
+    // 节奏控制：本地循环极快（每轮几毫秒），1 秒内消息超过 20 条会被
+    // 服务器当洪水关连接（server.js 的 msgTimes 限速）——小睡模拟真人手速
+    await sleep(80);
   }
   console.log('— A 攒够金币 ' + coin + ' —');
 

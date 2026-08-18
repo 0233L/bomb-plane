@@ -172,19 +172,21 @@ async function main() {
   {
     const { a, b, knownA, knownB } = await makePropsRoom();
     roomA = { a: a, b: b, knownA: knownA, knownB: knownB };
-    // 攒 10 金币：揭示 2 个机身（每轮 B 拉平步数）
+    // 攒 10 金币：揭示 1 个机身（+1）+ 1 个机头（+3）= 6 + 4 = 10（每轮 B 拉平步数）
     const bodies = planeCells(knownB).filter(function (c) { return contentOf(knownB, c[0], c[1]) === 'body'; });
-    const b1 = bodies[0], b2 = bodies[1];
-    let r = await aReveal(a, b1[0], b1[1]); // 1:0，coins 9
-    check('第一个机身揭示 +1 金币', r.coins[0] === 9);
+    const b1 = bodies[0];
+    const heads = planeCells(knownB).filter(function (c) { return contentOf(knownB, c[0], c[1]) === 'head'; });
+    const h1 = heads[0];
+    let r = await aReveal(a, b1[0], b1[1]); // 1:0，coins 7
+    check('第一个机身揭示 +1 金币', r.coins[0] === 7);
     await bReveal(b, 1, 1); // 1:1
-    r = await aReveal(a, b2[0], b2[1]); // 2:1，coins 10
-    check('第二个机身揭示后金币 = 10', r.coins[0] === 10);
+    r = await aReveal(a, h1[0], h1[1]); // 2:1，coins 7 + 3 = 10
+    check('机头揭示 +3 金币，攒到 10 买毁灭菇', r.coins[0] === 10);
     await bReveal(b, 2, 2); // 2:2
-    // 找中心：5 格全未揭示（不含 b1/b2），且至少打中一架飞机（机身/机头都行）
-    const center = findCenter(knownB, [b1, b2], null, null);
+    // 找中心：5 格全未揭示（不含 b1/h1），且至少打中一架飞机（机身/机头都行）
+    const center = findCenter(knownB, [b1, h1], null, null);
     // 要求十字含飞机格（更全面），找不到就再换一次部署——通常几轮内必找到
-    let center2 = findCenter(knownB, [b1, b2], 'body', null) || center;
+    let center2 = findCenter(knownB, [b1, h1], 'body', null) || center;
     if (!center2) { console.log('  !! 没找到合适的十字中心，跳过本房间核心断言'); }
     const res = await aUse(a, 'doom', { row: center2.row, col: center2.col },
       function (d) { return d.itemId === 'doom' && d.attacker === 0; });
@@ -202,7 +204,7 @@ async function main() {
     check('毁灭菇步数 +1', res.steps[0] === 3 && res.steps[1] === 2);
     // 冻结集：与服务器同规则计算
     const revealedSet = {};
-    [b1, b2].forEach(function (c) { revealedSet[c[0] + ',' + c[1]] = true; });
+    [b1, h1].forEach(function (c) { revealedSet[c[0] + ',' + c[1]] = true; });
     const expectFrozen = frozenExpect(center2.cross, revealedSet);
     check('冻结格数量与 8 邻域期望一致（' + expectFrozen.length + '）',
       Array.isArray(res.frozen) && res.frozen.length === expectFrozen.length);
@@ -219,7 +221,7 @@ async function main() {
     check('冻结格全部来自十字的 8 邻域', allIn);
     roomA.center = center2;
     roomA.frozen = res.frozen;
-    roomA.b1 = b1; roomA.b2 = b2;
+    roomA.b1 = b1; roomA.h1 = h1;
   }
 
   // ========== 2. 冻结拒绝（自己） + 对手不受影响 ==========
@@ -253,7 +255,7 @@ async function main() {
     roomA.center.cross.forEach(function (c) { crossKeys[c[0] + ',' + c[1]] = true; });
     const freeBodies = bodies.filter(function (c) {
       return !frozenKeys[c[0] + ',' + c[1]] && !crossKeys[c[0] + ',' + c[1]] &&
-        !(c[0] === roomA.b1[0] && c[1] === roomA.b1[1]) && !(c[0] === roomA.b2[0] && c[1] === roomA.b2[1]);
+        !(c[0] === roomA.b1[0] && c[1] === roomA.b1[1]) && !(c[0] === roomA.h1[0] && c[1] === roomA.h1[1]);
     });
     const fb1 = freeBodies[0], fb2 = freeBodies[1];
     const f2 = roomA.frozen[1] || roomA.frozen[0];

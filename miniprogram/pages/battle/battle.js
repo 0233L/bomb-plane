@@ -57,10 +57,14 @@ Page({
     over: false,
     overTitle: '', overDetail: '', overStatus: '',
     showRematchBtn: false, rematchText: '再来一局',
-    pending: {}               // 'r,c' -> true：已点击、等待服务器回复的格子
+    pending: {},              // 'r,c' -> true：已点击、等待服务器回复的格子
+    showRules: false,         // 规则弹窗（对战页副本，首页那份不动）
+    rulesTab: 'classic',      // 当前规则栏：经典 / 道具（打开时默认当前模式）
+    battleDiagrams: []        // 4 种飞机朝向示意图（复用首页规则弹窗的数据源）
   },
 
   onLoad() {
+    this.setData({ battleDiagrams: app.rulesDiagrams() }); // 规则弹窗的朝向示意图
     this._subs = [];
     // 收到揭示结果 / 出错：先清掉"处理中"格子的样式，再整页重渲染
     // （其余事件直接整页重渲染即可）
@@ -450,6 +454,16 @@ Page({
       }
     });
   },
+
+  // ---------- 规则弹窗（对战页副本）：打开时默认当前模式的规则栏 ----------
+  onRulesTap() {
+    this.setData({ showRules: true, rulesTab: state.mode === 'props' ? 'props' : 'classic' });
+  },
+  onRulesClose() { this.setData({ showRules: false }); },
+  onRulesTabTap(e) {
+    this.setData({ rulesTab: e.currentTarget.dataset.tab });
+  },
+  noop() {},
 
   // 邀请：复制房间号（朋友在网页端输入房间号即可加入）
   onCopyRoomTap() {

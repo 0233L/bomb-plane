@@ -106,7 +106,7 @@
 
       <block wx:if="{{rulesTab === 'props'}}">
         <view class="rules-h3">金币经济</view>
-        <view class="rules-p">开局双方各 <text class="gold">8 金币</text>：击中机身 +1、机头 +3。金币双方互见，道具即时扣费。</view>
+        <view class="rules-p">开局双方各 <text class="gold">6 金币</text>：击中机身 +1、机头 +3。金币双方互见，道具即时扣费。</view>
         <view class="rules-p">道具使用都算<b>一次行动</b>，选中道具后按操作提示点击对方棋盘即可。基础玩法与经典模式相同，见「🎯 经典模式」栏。</view>
 
         <view class="rules-h3">道具列表（按价格从低到高）</view>

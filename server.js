@@ -20,7 +20,7 @@ const shared = require('./public/shared.js');
 const { BOARD_SIZE, CELL_EMPTY, CELL_HEAD, CELL_BODY, buildBoard, validateDeployment, getBoardSpec, getPlaneCells } = shared;
 
 // ---------- 道具版经济常量（经典模式不用，仅 room.mode === 'props' 时生效） ----------
-const COIN_START = 8;   // 开局每人金币
+const COIN_START = 6;   // 开局每人金币
 const COIN_EMPTY = 0;   // 揭示到空格的金币
 const COIN_BODY = 1;    // 揭示到机身
 const COIN_HEAD = 3;    // 揭示到机头（找到机头离胜利最近，奖励适度下调）
@@ -84,7 +84,7 @@ function createRoom() {
     phase: 'waiting',         // waiting（等人）| deploy（部署）| battle（对战）| over（结束）
     mode: 'classic',          // classic（经典推理）| props（道具版：金币 + 道具）
     boardSize: 'S',           // 地图规格：S=10×10/3架 | M=12×12/4架 | L=14×14/6架
-    coins: [COIN_START, COIN_START], // 道具版金币（开局各 8，每局重置；经典版不用）
+    coins: [COIN_START, COIN_START], // 道具版金币（开局各 6，每局重置；经典版不用）
     sonarHistory: [],         // 声呐脉冲的历史结果 [{row, col, count}]（观战/重连时补发）
     frozenCells: [],          // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己）
     steps: [0, 0],            // 双方各揭示了多少格（步数）
