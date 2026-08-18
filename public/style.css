@@ -426,6 +426,17 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 /* 道具版金币行（经典模式隐藏）：金币数字金色突出 */
 .coins-row b { color: #f59e0b; }
 
+/* 金币图标：SVG data-URI 绘制的金色硬币（外圆 + 深金描边 + 内环 + ¥），
+   替代 emoji 🪙——emoji 依赖系统字体（老安卓缺字、风格不搭），SVG 跨平台渲染一致。
+   用 em 单位：跟随所在元素字号自动缩放，不用单独适配手机端 */
+.coin-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em; /* 与文字基线对齐 */
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23f59e0b' stroke='%23b45309' stroke-width='1.5'/%3E%3Ccircle cx='12' cy='12' r='7' fill='none' stroke='%23ffe9b8' stroke-width='1.5'/%3E%3Ctext x='12' y='16' text-anchor='middle' font-size='11' font-family='sans-serif' font-weight='bold' fill='%237c4a03'%3E%C2%A5%3C/text%3E%3C/svg%3E") no-repeat center / contain;
+}
+
 /* ---------- 道具版：道具面板 + 选区状态条（对战页） ---------- */
 .items-panel {
   display: flex;
@@ -655,4 +666,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   .board td.cell-destroyed::after,
   .board td.cell-head-destroyed::after { font-size: 12px; }
   .board td.cell-sonar { font-size: 12px; }
+  /* 手机端金币行略放大：图标 em 跟随字号，数字 15px 起太小 */
+  .panel-coins { font-size: 15px; }
+  .panel-coins b { font-size: 17px; }
+  .coins-row { font-size: 13px; }
 }
