@@ -256,9 +256,9 @@ button.primary:hover { background: var(--primary-hover); }
   background: var(--surface);
   border-radius: 10px;
   padding: 10px 16px;
+  padding-right: 52px; /* 整条栏保持全宽居中，只让条内右侧内容让出悬浮的主题按钮的位置 */
   box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
   margin-bottom: 10px;
-  margin-right: 52px; /* 给右上角固定的主题按钮留位置，避免和「返回菜单」重叠 */
   font-size: 14px;
 }
 .room-tag { color: var(--text-3); }
