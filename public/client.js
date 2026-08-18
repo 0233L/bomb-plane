@@ -599,7 +599,7 @@ function renderBattleBoards() {
     }
     // 道具选区高亮：区域型道具（声呐/探测者/吞噬者/毁灭菇）只画区域「外部轮廓」——
     // 外缘线内联 box-shadow（3×3 = 外圈 12 条边、毁灭菇 = 十字外缘），区域内部无线条；
-    // 锚点格（3×3 左上角 / 毁灭菇中心）用浅金背景填充指示——锚点格若画完整方框，
+    // 高亮格（3×3 区域中心 / 毁灭菇十字中心）用浅金背景填充指示——高亮格若画完整方框，
     // 就形成「内部轮廓」（用户实测反馈过）。非区域型道具（双发/无所遁形）是单格或
     // 双格，没有内部线问题，保持每格独立 outline 描边。
     const isRegionPick = state.itemPick && (state.itemPick.itemId === 'sonar' ||
@@ -617,9 +617,17 @@ function renderBattleBoards() {
       if (state.pickCells.indexOf(regionKey) !== -1) td.classList.add('cell-pick');
       if (state.pickHover.indexOf(regionKey) !== -1) td.classList.add('cell-pick-hover');
     }
-    // 锚点格：浅金背景填充（无线条）。注意它可能同时是轮廓角格（3×3 左上角），
-    // 两样都加：外圈角线 + 填充，互不冲突
-    if (pickKeys && regionKey === pickKeys[0]) td.classList.add('cell-pick-anchor');
+    // 高亮格：浅金背景填充（无线条）。3×3 区域道具（声呐/探测者/吞噬者）的高亮格是
+    // 区域**中心**（不是左上角锚点——用户反馈左上角浅黄会误导选区位置）；毁灭菇的
+    // keys[0] 本身就是十字中心，不动。高亮格可能同时是轮廓格，两样都加：线 + 填充
+    if (pickKeys) {
+      let highlightKey = pickKeys[0];
+      if (isRegionPick && state.itemPick.itemId !== 'doom') {
+        const p = pickKeys[0].split(',');
+        highlightKey = (+p[0] + 1) + ',' + (+p[1] + 1); // 3×3 区域中心 = 左上角右下移一格
+      }
+      if (regionKey === highlightKey) td.classList.add('cell-pick-anchor');
+    }
   });
 
   // ---- 上一手揭示的格子：蓝色框框选 ----
@@ -847,7 +855,7 @@ function crossKeys(row, col) {
 // 区域型道具（声呐/探测者/吞噬者 3×3、毁灭菇十字）选区的「外部轮廓」阴影地图。
 // 只画区域最外缘的线（3×3 = 外圈 12 条边；十字 = 4 个臂格各 3 条边），区域内部
 // 无线条——内部任何线条（含锚点格的完整方框）都会形成「内部轮廓」。
-// 锚点格（keys[0]：3×3 左上角 / 十字中心）不加框线，由调用方加 cell-pick-anchor
+// 高亮格（3×3 区域中心 / 十字中心）不加框线，由调用方加 cell-pick-anchor
 // 浅金填充指示。inset 阴影的可见区在偏移相反侧：0 3px 画顶部、0 -3px 画底部、
 // 3px 0 画左侧、-3px 0 画右侧（与声呐外圈框同款差集模型），线画在方格内部。
 // keys 是选区的 'r,c' 数组（固定选区 = pickCells，悬停预览 = pickHover，keys[0]
