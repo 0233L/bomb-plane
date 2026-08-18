@@ -104,13 +104,13 @@ async function main() {
   const created4 = await waitFor(e, 'roomCreated');
   check('9 个 emoji 被截断为 4 个', created4.avatars[0] === '😀'.repeat(4));
 
-  console.log('— 人机房间：AI 固定 🤖 —');
+  console.log('— 人机房间：AI 不用头像（昵称自带 🤖） —');
   const f = new WSClient('http://localhost:3000');
   await waitFor(f, 'connect');
   f.emit('createRoomAI', { name: '打AI', avatar: '🐻', mode: 'classic', boardSize: SPEC });
   const aiRoom = await waitFor(f, 'roomCreated');
   check('真人头像回显', aiRoom.avatars[0] === '🐻');
-  check('AI 位置固定 🤖', aiRoom.avatars[1] === '🤖');
+  check('AI 位置无头像（昵称「🤖 电脑」自带图标）', aiRoom.avatars[1] === '');
 
   console.log('\n结果: ' + passed + ' 通过, ' + failed + ' 失败');
   process.exitCode = failed ? 1 : 0;

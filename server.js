@@ -348,7 +348,7 @@ function handleCreateRoomAI(socket, data) {
   // AI 坐 1 号位：没有 socket，永不掉线，走棋由服务器定时器驱动
   room.players[1] = {
     name: '🤖 电脑', token: crypto.randomBytes(8).toString('hex'),
-    avatar: '🤖', // AI 固定机器人头像
+    avatar: '', // AI 不用头像：昵称「🤖 电脑」自带机器人图标，避免头像和图标重复
     socketId: null, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
