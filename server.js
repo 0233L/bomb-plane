@@ -32,7 +32,7 @@ const ITEM_PRICES = {
   sonar: 3,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
   pro: 2,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格）
   burst: 5,   // 双发连射：一次行动揭示 2 格（只占一步）
-  expose: 6,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
+  expose: 5,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
   devour: 5,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
   doom: 10    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
 };
@@ -451,8 +451,8 @@ const aiSamples = parseInt(process.env.AI_SAMPLES || '120', 10);
 // 吞噬者永不用：摧毁的格子 AI 自己也永远探测不了 = 自损信息，赌 25% 机头不值 6 金币
 function aiDecideItem(room, shots, size, myFrozen, pf) {
   const coins = room.coins[1];
-  // 1) 无所遁形（价格 6，阈值联动）
-  if (coins >= 6) {
+  // 1) 无所遁形（价格 5，阈值联动）
+  if (coins >= 5) {
     const head = ai.findExposeHead(shots, size);
     if (head) return { itemId: 'expose', data: { row: head.row, col: head.col } };
   }

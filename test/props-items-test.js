@@ -204,7 +204,7 @@ async function main() {
     // 无所遁形：整架 10 格全揭示
     const res = await aUse(a, 'expose', { row: plane.headRow, col: plane.headCol }, function (d) { return d.itemId === 'expose' && d.attacker === 0; });
     check('无所遁形揭示 10 格', Array.isArray(res.cells) && res.cells.length === 10);
-    check('金币 = 13 - 6 = 7（无所遁形现价 6）', res.coins[0] === 7);
+    check('金币 = 13 - 5 = 8（无所遁形现价 5）', res.coins[0] === 8);
     // 那架飞机的任意一格现在都已揭示：reveal 机身格应被拒
     const bodyCell = shared.getPlaneCells(plane.headRow, plane.headCol, plane.dir)[5];
     const ep = waitForMatch(a, 'error', function (d) { return true; });
