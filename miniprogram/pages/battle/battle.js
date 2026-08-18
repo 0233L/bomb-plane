@@ -254,6 +254,12 @@ Page({
   onEnemyMark(e) {
     const r = e.currentTarget.dataset.r;
     const c = e.currentTarget.dataset.c;
+    // 道具选区模式下，长按优先「取消道具选中」（避免误标到棋盘上）
+    if (state.itemPick) {
+      this.clearItemPick();
+      this.render();
+      return;
+    }
     if (state.spectator) return toast('观战模式不能标注');
     if (state.over) return toast('对局已结束');
     const key = r + ',' + c;

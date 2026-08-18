@@ -91,6 +91,22 @@ const testSrc = [
   '  check("加入房间 emit 规格 L", lastEmit().data.boardSize === "L");',
   '  check("加入房间 emit 房间号", lastEmit().data.roomId === "1234");',
   '',
+  '  // ===== 8. 道具选区模式下右键 = 取消选中（而不是标记） =====',
+  '  lines.push("8. 道具选区右键取消");',
+  '  state.seat = 0;',
+  '  state.spectator = false;',
+  '  state.over = false;',
+  '  state.enemyShotsReceived = [];',
+  '  state.marks = {};',
+  '  var enemyTd = document.querySelector("#enemy-board td");', // init 已给对手棋盘绑好右键处理器
+  '  state.itemPick = { itemId: "sonar" };',
+  '  enemyTd.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));',
+  '  check("选区模式下右键取消道具选中", state.itemPick === null);',
+  '  check("取消时没有误标到棋盘", Object.keys(state.marks).length === 0);',
+  '  state.itemPick = null;',
+  '  enemyTd.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));',
+  '  check("非选区模式右键正常循环标注机头", state.marks["0,0"] === "head");',
+  '',
   '  return { passed: passed, failed: failed, lines: lines };',
   '};'
 ].join('\n');

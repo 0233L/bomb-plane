@@ -245,10 +245,17 @@ function makeBoard(tableEl, onCellClick) {
       if (onCellClick) {
         td.addEventListener('click', function () { onCellClick(r, c); });
       }
-      // 对方棋盘右键 = 循环标注（无 → 机头 → 机身 → 空 → 无），注释是纯本地标记
+      // 对方棋盘右键 = 循环标注（无 → 机头 → 机身 → 空 → 无），注释是纯本地标记；
+      // 但如果正处于道具选区模式，右键优先「取消道具选中」（避免误标到棋盘上）
       if (tableEl.id === 'enemy-board') {
         td.addEventListener('contextmenu', function (e) {
           e.preventDefault();
+          if (state.itemPick) {
+            clearItemPick();
+            renderBattleBoards();
+            updateItemButtons();
+            return;
+          }
           onEnemyMark(r, c);
         });
       }
