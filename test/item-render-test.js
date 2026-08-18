@@ -1,0 +1,164 @@
+// ============================================
+// test/item-render-test.js —— 道具结果渲染位置测试（jsdom 实测）
+// 背景：itemResult 的揭示格（吞噬者/无所遁形/毁灭菇）以前无条件进 enemyShotsReceived，
+//       对方用道具会把我的格子画到对方棋盘上。修复后按施放者分流：
+//       自己用的 → 对方棋盘；对方用的 → 我的棋盘（与 revealResult 同规则）。
+// 用法：先启动服务器（RECYCLE_SECONDS=3 node server.js）再运行
+// 说明：与 sonar-render-test 同款手法——client.js 与测试代码合并一次 eval，
+//       state 同作用域可取；itemResult 事件处理器通过 state.socket.emit 真实触发。
+// ============================================
+'use strict';
+const { JSDOM } = require('jsdom');
+const fs = require('fs');
+
+const html = fs.readFileSync('public/index.html', 'utf8');
+const wsSrc = fs.readFileSync('public/ws.js', 'utf8');
+const sharedSrc = fs.readFileSync('public/shared.js', 'utf8');
+const clientSrc = fs.readFileSync('public/client.js', 'utf8');
+
+const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
+const win = dom.window;
+win.WebSocket = require('ws').WebSocket; // init 里 WSClient 会真实连接本地服务器
+win.matchMedia = function () {
+  return { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
+};
+
+const testSrc = [
+  'window.__itemTest = function () {',
+  '  var passed = 0, failed = 0, lines = [];',
+  '  function check(name, cond) {',
+  '    if (cond) { passed++; lines.push("  ✓ " + name); }',
+  '    else { failed++; lines.push("  ✗ " + name); }',
+  '  }',
+  '  function setup() {',
+  '    state.boardSize = "M";',
+  '    state.seat = 0;',
+  '    state.spectator = false;',
+  '    state.over = false;',
+  '    state.revealedPlanes = null;',
+  '    state.myPlanes = [];',
+  '    state.myShotsReceived = [];',
+  '    state.enemyShotsReceived = [];',
+  '    state.frozenCells = [];',
+  '    state.steps = [0, 0];',
+  '    state.marks = {};',
+  '    state.mode = "props";',
+  '    state.itemPick = null;',
+  '    state.pickCells = [];',
+  '    state.pickHover = [];',
+  '    state.sonarResults = [];',
+  '    state.coins = [8, 8];',
+  '  }',
+  '  function tdIn(boardId, r, c) {',
+  '    return document.querySelector("#" + boardId + " td[data-row=\\"" + r + "\\"][data-col=\\"" + c + "\\"]");',
+  '  }',
+  '  function hasCls(td, cls) { return td && td.className.indexOf(cls) !== -1; }',
+  '  // 我的棋盘放一架飞机（机头 (2,2) 朝上），用于断言 body 渲染在正确的棋盘',
+  '  function setupWithPlane() {',
+  '    setup();',
+  '    state.myPlanes = [{ headRow: 2, headCol: 2, dir: "up" }];',
+  '    state.myShotsReceived = [{ row: 2, col: 2, result: "head" }]; // 机头已被对方揭示',
+  '  }',
+  '  // 机头 (2,2) up 的飞机：机身 [3,0],[3,1],[3,2],[3,3],[3,4],[4,2],[5,1],[5,2],[5,3]',
+  '  var EXPOSE_CELLS = [[3, 1], [4, 2], [5, 3]];',
+  '',
+  '  // ===== 1. 对方用无所遁形（揭示我的整架飞机）→ 画在我的棋盘 =====',
+  '  lines.push("1. 对方用无所遁形 → 我的棋盘显示整机");',
+  '  setupWithPlane();',
+  '  renderBattleBoards();', // 基线渲染（清场后）
+  '  handleItemResult({',
+  '    itemId: "expose", attacker: 1, headsLeft: [3, 4], steps: [2, 3], coins: [8, 4],',
+  '    row: 2, col: 2, cells: EXPOSE_CELLS',
+  '  });',
+  '  check("我的棋盘 (3,1) 显示机身", hasCls(tdIn("my-board", 3, 1), "cell-body"));',
+  '  check("我的棋盘 (5,3) 显示机身", hasCls(tdIn("my-board", 5, 3), "cell-body"));',
+  '  check("我的棋盘机身格不再调暗", !hasCls(tdIn("my-board", 3, 1), "dimmed"));',
+  '  check("对方棋盘没有这些机身格", !hasCls(tdIn("enemy-board", 3, 1), "cell-body") && !hasCls(tdIn("enemy-board", 5, 3), "cell-body"));',
+  '  check("揭示格进了我的记录", state.myShotsReceived.length === 1 + EXPOSE_CELLS.length);',
+  '',
+  '  // ===== 2. 自己用无所遁形 → 画在对方棋盘（回归保护） =====',
+  '  lines.push("2. 自己用无所遁形 → 对方棋盘显示整机");',
+  '  setupWithPlane();',
+  '  renderBattleBoards();',
+  '  handleItemResult({',
+  '    itemId: "expose", attacker: 0, headsLeft: [4, 3], steps: [3, 2], coins: [4, 8],',
+  '    row: 2, col: 2, cells: EXPOSE_CELLS',
+  '  });',
+  '  check("对方棋盘 (3,1) 显示机身", hasCls(tdIn("enemy-board", 3, 1), "cell-body"));',
+  '  check("揭示格进了对方棋盘记录", state.enemyShotsReceived.length === EXPOSE_CELLS.length);',
+  '  check("我的记录没被污染", state.myShotsReceived.length === 1);',
+  '',
+  '  // ===== 3. 对方用吞噬者 → 我的棋盘显示深灰 + 灰机头 =====',
+  '  lines.push("3. 对方用吞噬者 → 我的棋盘显示摧毁");',
+  '  setup();',
+  '  state.myPlanes = [{ headRow: 3, headCol: 3, dir: "up" }];',
+  '  renderBattleBoards();',
+  '  handleItemResult({',
+  '    itemId: "devour", attacker: 1, headsLeft: [3, 4], steps: [2, 3], coins: [8, 2],',
+  '    row: 3, col: 3, headHit: [3, 3],',
+  '    destroyed: [[3, 3], [2, 3], [4, 3], [3, 2], [3, 4], [3, 5]] // 3x3 含机头在内的摧毁区',
+  '  });',
+  '  check("我的棋盘 (2,3) 显示摧毁格", hasCls(tdIn("my-board", 2, 3), "cell-destroyed"));',
+  '  check("我的棋盘机头格显示灰色机头", hasCls(tdIn("my-board", 3, 3), "cell-head-destroyed"));',
+  '  check("对方棋盘没有摧毁标记", !hasCls(tdIn("enemy-board", 2, 3), "cell-destroyed"));',
+  '  check("摧毁格已入我的记录", state.myShotsReceived.some(function (s) { return s.row === 3 && s.col === 3 && s.result === "head" && s.destroyed; }));',
+  '',
+  '  // ===== 4. 自己用吞噬者 → 画在对方棋盘 =====',
+  '  lines.push("4. 自己用吞噬者 → 对方棋盘显示摧毁");',
+  '  setup();',
+  '  renderBattleBoards();',
+  '  handleItemResult({',
+  '    itemId: "devour", attacker: 0, headsLeft: [4, 3], steps: [3, 2], coins: [2, 8],',
+  '    row: 3, col: 3, headHit: null, destroyed: [[3, 3], [2, 3], [4, 3]]',
+  '  });',
+  '  check("对方棋盘 (2,3) 显示摧毁格", hasCls(tdIn("enemy-board", 2, 3), "cell-destroyed"));',
+  '  check("我的棋盘没有摧毁标记", !hasCls(tdIn("my-board", 2, 3), "cell-destroyed"));',
+  '',
+  '  // ===== 5. 对方用毁灭菇 → 揭示画我的棋盘，冻结不记录 =====',
+  '  lines.push("5. 对方用毁灭菇 → 我的棋盘显示十字揭示");',
+  '  setupWithPlane();',
+  '  renderBattleBoards();',
+  '  handleItemResult({',
+  '    itemId: "doom", attacker: 1, headsLeft: [4, 4], steps: [2, 3], coins: [0, 8],',
+  '    row: 2, col: 2,',
+  '    cells: [{ row: 2, col: 2, result: "head" }, { row: 3, col: 2, result: "body" }, { row: 4, col: 2, result: "empty" }],',
+  '    frozen: [{ row: 1, col: 1, owner: 1, expiry: 5 }]',
+  '  });',
+  '  check("我的棋盘 (3,2) 机身格被揭示不调暗", !hasCls(tdIn("my-board", 3, 2), "dimmed"));',
+  '  check("我的棋盘 (4,2) 空格被揭示不调暗", !hasCls(tdIn("my-board", 4, 2), "dimmed"));',
+  '  check("对方的冻结不记录（只约束施放者自己）", state.frozenCells.length === 0);',
+  '  check("对方棋盘没有这架飞机的格", !hasCls(tdIn("enemy-board", 3, 2), "cell-body"));',
+  '',
+  '  // ===== 6. 自己用毁灭菇 → 揭示画对方棋盘，冻结记录并在对方棋盘显示 ❄ =====',
+  '  lines.push("6. 自己用毁灭菇 → 对方棋盘显示揭示 + 冻结 ❄");',
+  '  setup();',
+  '  renderBattleBoards();',
+  '  handleItemResult({',
+  '    itemId: "doom", attacker: 0, headsLeft: [4, 4], steps: [3, 2], coins: [0, 8],',
+  '    row: 2, col: 2,',
+  '    cells: [{ row: 2, col: 2, result: "empty" }],',
+  '    frozen: [{ row: 1, col: 1, owner: 0, expiry: 5 }]',
+  '  });',
+  '  check("冻结已记录", state.frozenCells.length === 1);',
+  '  check("对方棋盘冻结格显示 ❄", hasCls(tdIn("enemy-board", 1, 1), "cell-frozen") && tdIn("enemy-board", 1, 1).textContent === "❄");',
+  '  check("我的棋盘没有 ❄", !hasCls(tdIn("my-board", 1, 1), "cell-frozen"));',
+  '',
+  '  // ===== 7. 对方用毁灭菇：冻结 owner 是对方 → 不拦截我的点击 =====',
+  '  lines.push("7. 对方冻结不影响我的点击判断");',
+  '  setup();',
+  '  state.frozenCells = [{ row: 5, col: 5, owner: 1, expiry: 99 }];',
+  '  state.steps = [0, 0];',
+  '  check("isFrozen(5,5) 为 false（对方施放的不约束我）", !isFrozen(5, 5));',
+  '  state.frozenCells = [{ row: 5, col: 5, owner: 0, expiry: 99 }];',
+  '  check("isFrozen(5,5) 为 true（自己施放的才约束）", isFrozen(5, 5));',
+  '',
+  '  return { passed: passed, failed: failed, lines: lines };',
+  '};'
+].join('\n');
+
+win.eval(wsSrc + '\n' + sharedSrc + '\n' + clientSrc + '\n' + testSrc);
+const res = win.__itemTest();
+res.lines.forEach(function (l) { console.log(l); });
+console.log('\n结果: ' + res.passed + ' 通过, ' + res.failed + ' 失败');
+process.exitCode = res.failed ? 1 : 0;
+setTimeout(function () { process.exit(process.exitCode); }, 500); // 等 ws 连接回收

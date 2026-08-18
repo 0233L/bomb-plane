@@ -238,6 +238,7 @@ const ITEM_TIPS = {
 function makeBoard(tableEl, onCellClick) {
   const size = curSpec().size;
   tableEl.innerHTML = '';
+  let suppressNextClick = false; // 长按标注后抑制紧随的 click，防止误揭示/误选道具格
   for (let r = 0; r < size; r++) {
     const tr = document.createElement('tr');
     for (let c = 0; c < size; c++) {
@@ -245,7 +246,10 @@ function makeBoard(tableEl, onCellClick) {
       td.dataset.row = r;
       td.dataset.col = c;
       if (onCellClick) {
-        td.addEventListener('click', function () { onCellClick(r, c); });
+        td.addEventListener('click', function () {
+          if (suppressNextClick) { suppressNextClick = false; return; }
+          onCellClick(r, c);
+        });
       }
       // 对方棋盘右键 = 标注机身（绿框，再右键取消）；纯本地标记；
       // 但如果正处于道具选区模式，右键优先「取消道具选中」（避免误标到棋盘上）
@@ -259,6 +263,34 @@ function makeBoard(tableEl, onCellClick) {
             return;
           }
           onEnemyMark(r, c);
+        });
+        // 手机端没有右键：长按 500ms = 标注（与右键同逻辑）。
+        // iOS 长按弹系统菜单已用 CSS 禁掉（-webkit-touch-callout）
+        let longPressTimer = null;
+        let longPressed = false;
+        td.addEventListener('touchstart', function () {
+          longPressed = false;
+          clearTimeout(longPressTimer);
+          longPressTimer = setTimeout(function () {
+            longPressed = true;
+            if (state.itemPick) {
+              clearItemPick();
+              renderBattleBoards();
+              updateItemButtons();
+              return;
+            }
+            onEnemyMark(r, c);
+          }, 500);
+        });
+        td.addEventListener('touchend', function () {
+          clearTimeout(longPressTimer);
+          if (longPressed) {
+            suppressNextClick = true; // 长按已触发：别让随后的 click 造成揭示
+            longPressed = false;
+          }
+        });
+        td.addEventListener('touchmove', function () {
+          clearTimeout(longPressTimer); // 滑动手指 = 放弃长按（滚动时不误标）
         });
       }
       // 道具选区的悬停预览（只在对方棋盘 + 区域型道具选区模式时生效）
@@ -369,7 +401,7 @@ function renderBattleBoards() {
   const myPlanesSrc = (state.spectator && revealed) ? (revealed[0] || []) : state.myPlanes;
   const myBoard = buildBoard(myPlanesSrc, state.boardSize);
   const myMarks = {};
-  state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
+  state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s; }); // 存对象：destroyed 要区分渲染
 
   // ---- 声呐数字 + 3x3 区域外框：画在「被探测方」的棋盘上 ----
   // 声呐探测的是对方的棋盘：我放的 → 对方棋盘；对方放的 → 我的棋盘。
@@ -401,11 +433,19 @@ function renderBattleBoards() {
     td.className = '';
     td.textContent = ''; // 清掉上次渲染留下的文字（如声呐数字）
     const cell = myBoard[r][c];
-    if (cell === CELL_HEAD) td.classList.add('cell-head');
-    else if (cell === CELL_BODY) td.classList.add('cell-body');
-    if (!myMarks[r + ',' + c]) {
-      // 没被打过的格子：蒙上深色遮罩调暗（被打过的保持原色高亮，不加额外标记）
-      td.classList.add('dimmed');
+    const mk = myMarks[r + ',' + c]; // 对方打过/道具作用过的记录（对象）
+    if (mk && mk.result === 'destroyed') {
+      // 对方吞噬者摧毁我的格：深灰 + ✕（内容保密，和对方棋盘同款）
+      td.classList.add('cell-destroyed');
+    } else if (mk && mk.result === 'head' && mk.destroyed) {
+      td.classList.add('cell-head-destroyed'); // 机头被摧毁：灰色机头（视为已发现）
+    } else {
+      if (cell === CELL_HEAD) td.classList.add('cell-head');
+      else if (cell === CELL_BODY) td.classList.add('cell-body');
+      if (!mk) {
+        // 没被打过的格子：蒙上深色遮罩调暗（被打过的保持原色高亮，不加额外标记）
+        td.classList.add('dimmed');
+      }
     }
     // 对方放的声呐：数字 + 外框画在我的棋盘上（被探测方视角）
     const sonarCount = sonarMaps.mine[r + ',' + c];
@@ -1208,56 +1248,7 @@ function bindSocketEvents() {
     updateBattlePanels();
   });
 
-  // 道具结果：声呐数字 / 吞噬摧毁 / 无所遁形整机揭示
-  // （探测者 和双发连射走上面的 revealResult，不在这里）
-  s.on('itemResult', function (d) {
-    if (d.attacker === state.seat) {
-      // 自己用的道具：结果已出，选区模式结束
-      state.itemPick = null;
-      state.pickCells = [];
-      state.pickAnchor = null;
-      state.pickReady = false;
-      state.pickHover = [];
-      if (d.itemId === 'devour' && d.headHit) {
-        toast('吞噬者命中机头！🎯 你找到了一架飞机');
-      }
-      if (d.itemId === 'sonar') {
-        toast('声呐：区域内有 ' + d.count + ' 个非空格');
-      }
-    }
-    if (d.itemId === 'sonar') {
-      // 声呐数字：记入历史（attacker = 施放者座位，渲染时决定画在谁的棋盘上）
-      state.sonarResults.push({ row: d.row, col: d.col, count: d.count, attacker: d.attacker });
-    } else if (d.itemId === 'devour') {
-      // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）
-      (d.destroyed || []).forEach(function (cell) {
-        if (d.headHit && cell[0] === d.headHit[0] && cell[1] === d.headHit[1]) return; // 机头格单独处理
-        if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
-        state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'destroyed' });
-      });
-      if (d.headHit && !state.enemyShotsReceived.some(function (s) { return s.row === d.headHit[0] && s.col === d.headHit[1]; })) {
-        state.enemyShotsReceived.push({ row: d.headHit[0], col: d.headHit[1], result: 'head', destroyed: true });
-      }
-    } else if (d.itemId === 'expose') {
-      // 无所遁形：整架飞机的 10 格补全揭示（都是机身，机头已揭示过）
-      (d.cells || []).forEach(function (cell) {
-        if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
-        state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'body' });
-      });
-    } else if (d.itemId === 'doom') {
-      // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（记录完整冻结信息，过期由 isFrozen 判断）
-      (d.cells || []).forEach(function (cell) {
-        if (state.enemyShotsReceived.some(function (s) { return s.row === cell.row && s.col === cell.col; })) return;
-        state.enemyShotsReceived.push({ row: cell.row, col: cell.col, result: cell.result });
-      });
-      state.frozenCells = state.frozenCells.concat(d.frozen || []);
-    }
-    state.headsLeft = d.headsLeft;
-    state.steps = d.steps;
-    state.coins = d.coins || state.coins; // 道具版：金币随时同步
-    renderBattleBoards();
-    updateBattlePanels();
-  });
+  s.on('itemResult', handleItemResult);
 
   // 对局结束
   s.on('gameOver', function (d) {
@@ -1634,6 +1625,66 @@ function bindUIEvents() {
 }
 
 // ---------- 启动 ----------
+// 道具结果处理（顶层函数：sonar 数字 / 吞噬摧毁 / 无所遁形整机 / 毁灭菇揭示冻结）
+// （探测者 和双发连射走 revealResult，不在这里）
+// 提示：抽成顶层函数是为了 jsdom 渲染测试能直接调用（item-render-test）。
+function handleItemResult(d) {
+  if (d.attacker === state.seat) {
+    // 自己用的道具：结果已出，选区模式结束
+    state.itemPick = null;
+    state.pickCells = [];
+    state.pickAnchor = null;
+    state.pickReady = false;
+    state.pickHover = [];
+    if (d.itemId === 'devour' && d.headHit) {
+      toast('吞噬者命中机头！🎯 你找到了一架飞机');
+    }
+    if (d.itemId === 'sonar') {
+      toast('声呐：区域内有 ' + d.count + ' 个非空格');
+    }
+  }
+  if (d.itemId === 'sonar') {
+    // 声呐数字：记入历史（attacker = 施放者座位，渲染时决定画在谁的棋盘上）
+    state.sonarResults.push({ row: d.row, col: d.col, count: d.count, attacker: d.attacker });
+  } else if (d.itemId === 'devour') {
+    // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）。
+    // ⚠️ 按施放者分流：自己用的 → 对方棋盘（enemy）；对方用的 → 我的棋盘（my）。
+    // 之前无条件进 enemy，对方用道具会把我的格子画到对方棋盘上（渲染 bug）
+    const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
+    (d.destroyed || []).forEach(function (cell) {
+      if (d.headHit && cell[0] === d.headHit[0] && cell[1] === d.headHit[1]) return; // 机头格单独处理
+      if (target.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+      target.push({ row: cell[0], col: cell[1], result: 'destroyed' });
+    });
+    if (d.headHit && !target.some(function (s) { return s.row === d.headHit[0] && s.col === d.headHit[1]; })) {
+      target.push({ row: d.headHit[0], col: d.headHit[1], result: 'head', destroyed: true });
+    }
+  } else if (d.itemId === 'expose') {
+    // 无所遁形：整架飞机的 10 格补全揭示（都是机身，机头已揭示过）。分流同吞噬者
+    const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
+    (d.cells || []).forEach(function (cell) {
+      if (target.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+      target.push({ row: cell[0], col: cell[1], result: 'body' });
+    });
+  } else if (d.itemId === 'doom') {
+    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结。揭示分流同吞噬者；
+    // 冻结只记自己施放的（冻结只约束施放者自己，别把对方的也收进数组）
+    const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
+    (d.cells || []).forEach(function (cell) {
+      if (target.some(function (s) { return s.row === cell.row && s.col === cell.col; })) return;
+      target.push({ row: cell.row, col: cell.col, result: cell.result });
+    });
+    if (d.attacker === state.seat) {
+      state.frozenCells = state.frozenCells.concat(d.frozen || []);
+    }
+  }
+  state.headsLeft = d.headsLeft;
+  state.steps = d.steps;
+  state.coins = d.coins || state.coins; // 道具版：金币随时同步
+  renderBattleBoards();
+  updateBattlePanels();
+}
+
 function init() {
   // 用原生 WebSocket 长连接（一次建立、持续复用，消息更快更稳）
   // ws.js 的 WSClient 接口与 socket.io 兼容，断开后自动重连

@@ -518,6 +518,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   border: 1px solid var(--board-border);
   text-align: center;
   user-select: none;
+  -webkit-touch-callout: none; /* iOS 长按不弹系统文本选择菜单（手机端长按 = 标注） */
+  -webkit-user-select: none;
   font-size: 20px;
   line-height: 1;
 }
