@@ -1160,6 +1160,15 @@ function handleRematch(socket) {
   }
 }
 
+// 对局中换头像：存进玩家记录（重连/观战加入时随 avatarsOf 下发），并广播给房间所有人（含观战者）
+function handleSetAvatar(socket, data) {
+  const loc = locate(socket);
+  if (!loc) return; // 不在房间（比如首页换头像）：只存本地，无需同步
+  const avatar = Array.from(String(data.avatar || '')).slice(0, 4).join(''); // 与建房同款：按码点截 4 个
+  loc.player.avatar = avatar;
+  emitToRoom(loc.room, 'avatarUpdated', { seat: loc.seat, avatar: avatar });
+}
+
 // ---------- 连接层：原生 WebSocket（替代 socket.io，2026-08 全站迁移） ----------
 // 协议：客户端发 { type: 事件名, data: 数据 }，服务器按 type 分发到
 // 同一个 handleXxx 处理函数；服务器广播同样发 { type, data }。
@@ -1252,6 +1261,7 @@ function handleWsMessage(conn, raw) {
     reveal: handleReveal,
     useItem: handleUseItem,
     rematch: handleRematch,
+    setAvatar: handleSetAvatar,
     leaveRoom: handleLeaveRoom,
     visit: handleVisit
   };

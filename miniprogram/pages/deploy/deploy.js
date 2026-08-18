@@ -70,6 +70,7 @@ Page({
     this._sub('deployReady', () => this.render());
     this._sub('opponentJoined', () => this.render());
     this._sub('playerStatus', () => this.render());
+    this._sub('avatarUpdated', () => this.render());
     this._sub('reconnected', () => { this.refreshDraft(); this.render(); });
     this._sub('theme', () => this.setData({ themeClass: app.getThemeClass() }));
   },

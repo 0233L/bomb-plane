@@ -65,7 +65,7 @@ Page({
     // 收到揭示结果 / 出错：先清掉"处理中"格子的样式，再整页重渲染
     // （其余事件直接整页重渲染即可）
     const self = this;
-    ['battleStart', 'gameOver', 'playerStatus', 'rematchVote', 'rematchStart',
+    ['battleStart', 'gameOver', 'playerStatus', 'avatarUpdated', 'rematchVote', 'rematchStart',
       'spectatorCount', 'reconnected', 'theme'].forEach(function (e) {
       self._sub(e, function () { self.render(); });
     });

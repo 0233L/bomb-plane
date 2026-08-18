@@ -131,10 +131,12 @@ function loadAvatar() {
   return av;
 }
 
-// 换成新头像：写 storage + 更新 state + 通知页面重新渲染（对应网页版 setMyAvatar）
+// 换成新头像：写 storage + 更新 state + 通知页面重新渲染（对应网页版 setMyAvatar）。
+// 在房间里时通知服务器，对方和观战者马上看到新头像（不在房间时服务器静默忽略）
 function setMyAvatar(emoji) {
   saveStorage('bp_avatar', emoji);
   state.avatar = emoji;
+  socket.emit('setAvatar', { avatar: emoji });
   emitLocal('avatar', { avatar: emoji });
 }
 
@@ -621,6 +623,12 @@ socket.on('gameOver', function (d) {
 socket.on('playerStatus', function (d) {
   state.online[d.seat] = d.connected;
   emitLocal('playerStatus', d);
+});
+
+// 对方（或观战视角的任一玩家）换了头像：更新双方头像数组
+socket.on('avatarUpdated', function (d) {
+  state.avatars[d.seat] = d.avatar;
+  emitLocal('avatarUpdated', d);
 });
 
 socket.on('rematchVote', function (d) {

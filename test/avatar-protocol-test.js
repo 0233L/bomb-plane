@@ -3,6 +3,7 @@
 // 验证服务器对 avatar 字段的转发/限长/缺省处理：
 //   建房带头像 → roomCreated 回显；加入带头像 → joinedRoom/opponentJoined 同步；
 //   部署后 battleStart 带头像；断线重连 reconnected 保留原头像；
+//   对局中 setAvatar 换头像 → 对方收到 avatarUpdated、重连后带新头像；
 //   不传 avatar → ''（而不是 undefined）；怪异内容原样透传；超长内容按码点截 4 个（每 emoji 1 码点）；
 //   AI 房间 2 号位固定 '🤖'
 // 用法（先起服务器）：
@@ -82,6 +83,26 @@ async function main() {
   a2.emit('rejoin', { token: created.token, roomId: created.roomId });
   const rec = await recP;
   check('重连 reconnected 保留原头像', rec.avatars[0] === '🐱' && rec.avatars[1] === '🦊');
+
+  // 对局中换头像：广播给房间所有人（对方实时收到；先注册监听再发，防漏）
+  console.log('— 房间 1 续：对局中换头像同步 —');
+  const avUpdP = waitFor(b, 'avatarUpdated');
+  a2.emit('setAvatar', { avatar: '🐼' });
+  const avUpd = await avUpdP;
+  check('对方收到 avatarUpdated（座位 + 新头像）', avUpd.seat === 0 && avUpd.avatar === '🐼');
+  // 再断线重连：服务器存的是新头像
+  a2.disconnect();
+  const a3 = new WSClient('http://localhost:3000');
+  await waitFor(a3, 'connect');
+  const rec2P = waitFor(a3, 'reconnected');
+  a3.emit('rejoin', { token: created.token, roomId: created.roomId });
+  const rec2 = await rec2P;
+  check('再次重连带的是新头像', rec2.avatars[0] === '🐼' && rec2.avatars[1] === '🦊');
+  // setAvatar 的超长内容同样按码点截断
+  const avUpd2P = waitFor(b, 'avatarUpdated');
+  a3.emit('setAvatar', { avatar: '😀'.repeat(9) });
+  const avUpd2 = await avUpd2P;
+  check('setAvatar 超长按码点截 4 个', avUpd2.avatar === '😀'.repeat(4));
 
   console.log('— 房间 2：不传 avatar（缺省） —');
   const c = new WSClient('http://localhost:3000');

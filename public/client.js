@@ -138,10 +138,12 @@ function myAvatar() {
   return av;
 }
 
-// 换成新头像：存起来 + 更新 state + 刷新所有显示我的头像的位置
+// 换成新头像：存起来 + 更新 state + 刷新所有显示我的头像的位置。
+// 在房间里时通知服务器，对方和观战者马上看到新头像（不在房间时服务器静默忽略）
 function setMyAvatar(emoji) {
   safeSet('bp_avatar', emoji);
   state.avatar = emoji;
+  state.socket.emit('setAvatar', { avatar: emoji });
   renderMyAvatar();
   updateBattlePanels(); // 对战页自己的面板可能正在显示头像
 }
@@ -1408,6 +1410,13 @@ function bindSocketEvents() {
   // 双方在线状态变化（断线 / 重连 / 离开）：更新绿点/红点，不做其它反应
   s.on('playerStatus', function (d) {
     state.online[d.seat] = d.connected;
+    updateBattlePanels();
+    updateDeployUI();
+  });
+
+  // 对方（或观战视角的任一玩家）换了头像：更新面板上的头像
+  s.on('avatarUpdated', function (d) {
+    state.avatars[d.seat] = d.avatar;
     updateBattlePanels();
     updateDeployUI();
   });
