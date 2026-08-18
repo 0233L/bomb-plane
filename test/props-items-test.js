@@ -179,7 +179,7 @@ async function main() {
     check('吞噬摧毁 9 格', Array.isArray(res.destroyed) && res.destroyed.length === 9);
     check('机头命中有明确反馈', Array.isArray(res.headHit) && res.headHit[0] === plane.headRow && res.headHit[1] === plane.headCol);
     check('吞噬命中机头 → 对方机头数 -1', res.headsLeft[1] === 3);
-    check('吞噬不给金币', res.coins[0] === 2); // 8 - 6 = 2，没有 +5
+    check('吞噬不给金币', res.coins[0] === 3); // 8 - 5 = 3，没有 +5
     check('吞噬后步数 +1', res.steps[0] === 1);
     // 被摧毁的机身不能再被揭示：reveal 那架飞机的第二个机身格 → 应该拒绝
     const bodyCell = shared.getPlaneCells(plane.headRow, plane.headCol, plane.dir)[2];
@@ -204,7 +204,7 @@ async function main() {
     // 无所遁形：整架 10 格全揭示
     const res = await aUse(a, 'expose', { row: plane.headRow, col: plane.headCol }, function (d) { return d.itemId === 'expose' && d.attacker === 0; });
     check('无所遁形揭示 10 格', Array.isArray(res.cells) && res.cells.length === 10);
-    check('金币 = 13 - 4 = 9（无所遁形已降价为 4）', res.coins[0] === 9);
+    check('金币 = 13 - 6 = 7（无所遁形现价 6）', res.coins[0] === 7);
     // 那架飞机的任意一格现在都已揭示：reveal 机身格应被拒
     const bodyCell = shared.getPlaneCells(plane.headRow, plane.headCol, plane.dir)[5];
     const ep = waitForMatch(a, 'error', function (d) { return true; });
@@ -216,10 +216,10 @@ async function main() {
   // ========== 6. 规则边界 ==========
   console.log('6. 规则边界');
   {
-    // 金币不足：吞噬者 6 用一次 → 剩 2。B 走一步拉平步数，再买就被金币不足拒绝
+    // 金币不足：吞噬者 5 用一次 → 剩 3。B 走一步拉平步数，再买就被金币不足拒绝
     const { a, b } = await makePropsRoom();
     const reg = { row: 0, col: 0 };
-    await aUse(a, 'devour', { row: reg.row, col: reg.col }, function (d) { return d.itemId === 'devour' && d.attacker === 0; }); // 剩 2 金币，steps 1:0
+    await aUse(a, 'devour', { row: reg.row, col: reg.col }, function (d) { return d.itemId === 'devour' && d.attacker === 0; }); // 剩 3 金币，steps 1:0
     await bReveal(b, 0, 0); // steps 1:1
     const e1p = waitForMatch(a, 'error', function (d) { return true; });
     a.emit('useItem', { itemId: 'devour', row: reg.row, col: reg.col });

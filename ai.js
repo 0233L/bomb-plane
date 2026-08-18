@@ -633,7 +633,9 @@ function chooseSonarAnchor(probField, size, frozenCells) {
 }
 
 // 找「机头已揭示但整架飞机还没被完整揭示」的机头格（无所遁形用）。
-// 判定：该机头 4 个朝向里，存在某个朝向的 10 格全在棋盘内且还有未揭示格。
+// 判定：该机头 4 个朝向里，「合法朝向」≥2 且仍有未揭示格（信息不足，值得用无所遁形）。
+// 合法朝向 = 10 格全在棋盘内、且不含已揭示空格（空格会排除该朝向）。
+// 只剩 1 个合法朝向 → 飞机位置已确定，普通揭示即可，花 6 金币是浪费。
 // 返回 {row, col}；没有则返回 null。
 function findExposeHead(shotsReceived, size) {
   const shotTable = buildShotTableAny(shotsReceived, size);
@@ -641,17 +643,26 @@ function findExposeHead(shotsReceived, size) {
   for (let i = 0; i < shotTable.length; i++) {
     if (shotTable[i] !== 3) continue; // 只看已揭示机头格
     const r = Math.floor(i / size), c = i % size;
+    let legalCount = 0;  // 合法朝向数（排除出界与已揭示空格冲突）
+    let hasUnknown = false;
     for (let d = 0; d < dirs.length; d++) {
       const cells = getPlaneCells(r, c, dirs[d]);
       let inBoard = true;
-      let hasUnknown = false;
+      let emptyHit = false;  // 朝向内出现已揭示空格 → 该朝向不可能
+      let unknownHit = false;
       for (let k = 0; k < cells.length; k++) {
         const rr = cells[k][0], cc = cells[k][1];
         if (rr < 0 || rr >= size || cc < 0 || cc >= size) { inBoard = false; break; }
-        if (shotTable[rr * size + cc] === 0) hasUnknown = true;
+        const st = shotTable[rr * size + cc];
+        if (st === 1) emptyHit = true;
+        if (st === 0) unknownHit = true;
       }
-      if (inBoard && hasUnknown) return { row: r, col: c };
+      if (inBoard && !emptyHit) {
+        legalCount++;
+        if (unknownHit) hasUnknown = true;
+      }
     }
+    if (legalCount >= 2 && hasUnknown) return { row: r, col: c };
   }
   return null;
 }
