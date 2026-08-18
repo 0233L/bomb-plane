@@ -139,7 +139,7 @@ async function main() {
     a.emit('useItem', { itemId: 'pro', row: reg.row, col: reg.col });
     const res = await p;
     check('Pro 揭示结果必为机身', res.result === 'body');
-    check('Pro 后金币 = 8 - 4 + 1', res.coins[0] === 5);
+    check('Pro 后金币 = 8 - 2 + 1 = 7（探测者已降价为 2）', res.coins[0] === 7);
     check('Pro 后步数 +1', res.steps[0] === 1);
   }
 

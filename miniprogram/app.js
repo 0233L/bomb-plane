@@ -256,7 +256,9 @@ function enemyBoardCells() {
       // shadow 传 h v 两个偏移量，拼接成「h v blur spread color」4 个长度值——语法必须合法
       sonarShadows[k] = (sonarShadows[k] ? sonarShadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
     };
-    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 -3rpx'); addEdge(r0 + 2, c, '0 3rpx'); } // 上下边
+    // 注意：inset 阴影的可见区是「元素盒 − 偏移后的阴影盒」——偏移 -3rpx 的可见条带在元素
+    // 的相反侧。所以上边行要向下偏移（0 3rpx 画顶部）、下边行要向上偏移（0 -3rpx 画底部）
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3rpx'); addEdge(r0 + 2, c, '0 -3rpx'); } // 上下边
     for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3rpx 0'); addEdge(r, c0 + 2, '-3rpx 0'); } // 左右边
   });
   const cells = [];

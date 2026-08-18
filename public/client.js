@@ -215,7 +215,7 @@ function curSpec() {
 }
 
 // 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { sonar: 3, pro: 4, burst: 5, expose: 4, devour: 6, doom: 10 };
+const ITEM_PRICES = { pro: 2, sonar: 3, expose: 4, burst: 5, devour: 6, doom: 10 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
   sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者', doom: '毁灭菇'
@@ -405,7 +405,9 @@ function renderBattleBoards() {
       // 多了/少了长度值整条都会被 CSS 解析器丢弃（网页端和 jsdom 都一样）
       sonarShadows[k] = (sonarShadows[k] ? sonarShadows[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f6c945';
     };
-    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 -3px'); addEdge(r0 + 2, c, '0 3px'); } // 上下边
+    // 注意：inset 阴影的可见区是「元素盒 − 偏移后的阴影盒」——偏移 -3px 的可见条带在元素
+    // 的相反侧。所以上边行要向下偏移（0 3px 画顶部）、下边行要向上偏移（0 -3px 画底部）
+    for (let c = c0; c <= c0 + 2; c++) { addEdge(r0, c, '0 3px'); addEdge(r0 + 2, c, '0 -3px'); } // 上下边
     for (let r = r0; r <= r0 + 2; r++) { addEdge(r, c0, '3px 0'); addEdge(r, c0 + 2, '-3px 0'); } // 左右边
   });
 
@@ -673,9 +675,29 @@ function isFrozen(r, c) {
 // 在道具选区模式点对方棋盘：按道具类型记录选区，高亮预览，完整后由用户确认执行
 function pickItemCell(r, c) {
   const id = state.itemPick.itemId;
+  const key = r + ',' + c;
+  // 二次确认：选区完整后，再点一次「定位格」视作确认（3×3 道具的定位格 = 锚点左上角；
+  // 毁灭菇 = 十字中心；无所遁形 = 机头格；双发 = 任一已选格）。
+  // 区域内其他格仍算重新定位，不会误触确认
+  if (state.pickReady) {
+    if (id === 'burst') {
+      if (state.pickCells.indexOf(key) !== -1) { confirmItem(); return; }
+      state.pickCells = [key]; // 点新格：重新从第 1 格选起
+      state.pickReady = false;
+      renderBattleBoards();
+      updateItemStatus();
+      return;
+    }
+    if (id === 'sonar' || id === 'pro' || id === 'devour') {
+      // 再点锚点（左上角）确认；点区域内其他格 = 重新定位（走下方逻辑）
+      if (r === state.pickAnchor.row && c === state.pickAnchor.col) { confirmItem(); return; }
+    } else {
+      // 毁灭菇 / 无所遁形：定位格是 pickCells[0]（十字中心 / 机头格）
+      if (key === state.pickCells[0]) { confirmItem(); return; }
+    }
+  }
   if (id === 'burst') {
-    // 双发连射：先点第 1 格再点第 2 格（点已选格 = 取消重选；点已揭示格被拒）
-    const key = r + ',' + c;
+    // 双发连射：先点第 1 格再点第 2 格（未满 2 格时点已选格 = 取消重选；点已揭示格被拒）
     if (state.pickCells.indexOf(key) !== -1) {
       state.pickCells = []; // 反悔：取消重选
     } else {
@@ -726,6 +748,34 @@ function pickItemCell(r, c) {
   state.pickReady = true;
   renderBattleBoards();
   updateItemStatus();
+}
+
+// 发送道具使用请求（点「确认使用」按钮 / 二次点击定位格共用；金币在服务器扣，这里只管发送）
+function confirmItem() {
+  if (!state.itemPick || !state.pickReady) return;
+  const id = state.itemPick.itemId;
+  const data = { itemId: id };
+  if (id === 'burst') {
+    // 双发连射：2 个格子坐标
+    const a = state.pickCells[0].split(',');
+    const b = state.pickCells[1].split(',');
+    data.row = +a[0]; data.col = +a[1];
+    data.row2 = +b[0]; data.col2 = +b[1];
+  } else if (id === 'sonar' || id === 'pro' || id === 'devour') {
+    // 区域型道具：3x3 锚点（左上角）
+    data.row = state.pickAnchor.row;
+    data.col = state.pickAnchor.col;
+  } else if (id === 'doom') {
+    // 毁灭菇：十字中心格（pickCells[0] 就是中心）
+    const a = state.pickCells[0].split(',');
+    data.row = +a[0]; data.col = +a[1];
+  } else {
+    // 无所遁形：已揭示的机头格
+    const a = state.pickCells[0].split(',');
+    data.row = +a[0]; data.col = +a[1];
+  }
+  clearItemPick();
+  state.socket.emit('useItem', data);
 }
 
 // 悬停预览（仅区域型道具）：鼠标移到哪，预览包含它的 3×3 区域
@@ -1464,32 +1514,9 @@ function bindUIEvents() {
     });
   });
 
-  // 道具确认执行：把选区发给服务器（金币在服务器扣，这里只管发送）
+  // 道具确认执行：点「确认使用」按钮把选区发给服务器（二次点击定位格见 pickItemCell）
   $('#item-confirm').addEventListener('click', function () {
-    if (!state.itemPick || !state.pickReady) return;
-    const id = state.itemPick.itemId;
-    const data = { itemId: id };
-    if (id === 'burst') {
-      // 双发连射：2 个格子坐标
-      const a = state.pickCells[0].split(',');
-      const b = state.pickCells[1].split(',');
-      data.row = +a[0]; data.col = +a[1];
-      data.row2 = +b[0]; data.col2 = +b[1];
-    } else if (id === 'sonar' || id === 'pro' || id === 'devour') {
-      // 区域型道具：3x3 锚点（左上角）
-      data.row = state.pickAnchor.row;
-      data.col = state.pickAnchor.col;
-    } else if (id === 'doom') {
-      // 毁灭菇：十字中心格（pickCells[0] 就是中心）
-      const a = state.pickCells[0].split(',');
-      data.row = +a[0]; data.col = +a[1];
-    } else {
-      // 无所遁形：已揭示的机头格
-      const a = state.pickCells[0].split(',');
-      data.row = +a[0]; data.col = +a[1];
-    }
-    clearItemPick();
-    state.socket.emit('useItem', data);
+    confirmItem();
   });
 
   // 取消道具选择：清空选区，回到普通揭示模式
