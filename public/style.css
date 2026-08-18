@@ -148,6 +148,7 @@ h2 { text-align: center; margin: 8px 0; }
 }
 .props-slider {
   position: relative;
+  display: inline-block; /* 修复：span 默认 inline，宽高不生效，轨道会塌成 0 宽 */
   width: 40px;
   height: 22px;
   background: var(--border);
