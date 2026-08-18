@@ -89,9 +89,11 @@ async function main() {
   const size = shared.getBoardSpec(SPEC).size;
   let coins = 6, tries = 0;
   const bRevealed = {}; // B 已揭示过的坐标（「对手不受限」环节要避开，防止重复揭示挂起）
+  const aRevealed = {}; // A 已揭示过的坐标（毁灭菇十字中心要避开：十字 5 格若含已揭示格，revealed 会少于 5）
   while (coins < 10 && tries < 60) { // 上限 60 次：6 金币起步要 +4（约 4 个机身），行扫描期望 8+ 个机身，几乎不可能失手
     const r = await reveal(a, Math.floor(tries / size), tries % size, 0);
     coins = r.coins[0];
+    aRevealed[Math.floor(tries / size) + ',' + (tries % size)] = true;
     const bRow = size - 1 - Math.floor(tries / size), bCol = tries % size;
     bRevealed[bRow + ',' + bCol] = true;
     await reveal(b, bRow, bCol, 1); // B 拉平
@@ -99,9 +101,16 @@ async function main() {
   }
   check('攒够 10 金币（最终 ' + coins + '）', coins >= 10);
 
-  // 毁灭菇：选 1..size-2 内的中心
-  const centerRow = 1 + Math.floor(Math.random() * (shared.getBoardSpec(SPEC).size - 2));
-  const centerCol = 1 + Math.floor(Math.random() * (shared.getBoardSpec(SPEC).size - 2));
+  // 毁灭菇：选 1..size-2 内、十字 5 格都未被 A 揭示过的中心（保证 revealed 恰好 5 格）
+  let centerRow = 1, centerCol = 1, foundCenter = false;
+  for (let r = 1; r <= size - 2 && !foundCenter; r++) {
+    for (let c = 1; c <= size - 2; c++) {
+      const crossOk = [[r, c], [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].every(function (p) {
+        return !aRevealed[p[0] + ',' + p[1]];
+      });
+      if (crossOk) { centerRow = r; centerCol = c; foundCenter = true; break; }
+    }
+  }
   const doomP = waitForMatch(a, 'itemResult', function (d) { return d.itemId === 'doom' && d.attacker === 0; }, 15000);
   a.emit('useItem', { itemId: 'doom', row: centerRow, col: centerCol });
   const doom = await doomP;
