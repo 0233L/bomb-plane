@@ -524,17 +524,16 @@ function renderBattleBoards() {
       td.style.boxShadow = ''; // 无声呐框：清掉内联样式，class 标记正常生效
     }
     // 道具选区高亮：金色描边（点选固定的选区 + 鼠标悬停预览）；
-    // 毁灭菇选区画「3×3 完整外圈方框」（内联 box-shadow，与声呐外圈框逗号合并），
+    // 毁灭菇选区画「十字轮廓」（doomShadows 地图：4 个臂格各 3 条外缘线，内联
+    // box-shadow，与声呐外圈框逗号合并），中心格无框线 → 走下方 cell-pick 高亮；
     // 其他道具保持每格独立 outline 描边。
-    // 注意：方框的 4 个角格只走框线——它们不在 pickCells/pickHover 里（十字选区
-    // 只存中心 + 4 臂 5 格），所以框线直接按 doomShadows 地图画，不查成员
     const isDoomPick = state.itemPick && state.itemPick.itemId === 'doom';
     const doomKeys = isDoomPick && (state.pickCells.length ? state.pickCells : state.pickHover);
     const doomShadows = doomKeys && doomKeys.length ? doomPickShadows(doomKeys) : null;
     const doomKey = r + ',' + c;
     const doomEdge = doomShadows && doomShadows[doomKey];
     if (doomEdge) {
-      // 毁灭菇方框（含角格：角格只走框线，不在 pickCells/pickHover 里）
+      // 毁灭菇十字轮廓的臂格（轮廓线格不在 pickCells/pickHover 外的角格，就是臂格本身）
       td.style.boxShadow = td.style.boxShadow ? td.style.boxShadow + ',' + doomEdge : doomEdge;
     } else {
       if (state.pickCells.indexOf(doomKey) !== -1) td.classList.add('cell-pick');
@@ -753,7 +752,8 @@ function crossKeys(row, col) {
 
 // 毁灭菇十字选区：3×3 完整外圈方框（和声呐外圈框完全同款差集模型——inset 阴影的
 // 可见区在偏移相反侧：0 3px 画顶部、0 -3px 画底部、3px 0 画左侧、-3px 0 画右侧）。
-// 外圈 12 条边围成完整方框（4 个角格只走框线、不高亮），中心格加内缩 2px 小框标记定位格。
+// 毁灭菇选区的「十字轮廓」：只画十字 5 格的外缘线（每臂 3 条边），中心格无线条
+// （走 cell-pick 高亮）；轮廓内部没有任何线条。inset 阴影 = 线画在方格内部。
 // keys[0] 是十字中心（'r,c'）；返回 {'r,c': box-shadow}，与声呐外圈框逗号合并
 function doomPickShadows(keys) {
   const c = keys[0].split(',');
@@ -763,15 +763,22 @@ function doomPickShadows(keys) {
     const k = rr + ',' + cc2;
     map[k] = (map[k] ? map[k] + ',inset ' : 'inset ') + shadow + ' 0 0 #f59e0b';
   };
-  for (let r = cr - 1; r <= cr + 1; r++) {
-    for (let c2 = cc - 1; c2 <= cc + 1; c2++) {
-      if (r === cr - 1) addEdge(r, c2, '0 3px');   // 顶边
-      if (r === cr + 1) addEdge(r, c2, '0 -3px');  // 底边
-      if (c2 === cc - 1) addEdge(r, c2, '3px 0');  // 左边
-      if (c2 === cc + 1) addEdge(r, c2, '-3px 0'); // 右边
-    }
-  }
-  map[cr + ',' + cc] = 'inset 0 0 0 2px #f59e0b'; // 中心：内缩 2px 定位标记
+  // 上臂（中心正上方）：顶边 + 左右两条竖边
+  addEdge(cr - 1, cc, '0 3px');
+  addEdge(cr - 1, cc, '3px 0');
+  addEdge(cr - 1, cc, '-3px 0');
+  // 下臂：底边 + 左右两条竖边
+  addEdge(cr + 1, cc, '0 -3px');
+  addEdge(cr + 1, cc, '3px 0');
+  addEdge(cr + 1, cc, '-3px 0');
+  // 左臂：顶边 + 底边 + 左边一条竖边
+  addEdge(cr, cc - 1, '0 3px');
+  addEdge(cr, cc - 1, '0 -3px');
+  addEdge(cr, cc - 1, '3px 0');
+  // 右臂：顶边 + 底边 + 右边一条竖边
+  addEdge(cr, cc + 1, '0 3px');
+  addEdge(cr, cc + 1, '0 -3px');
+  addEdge(cr, cc + 1, '-3px 0');
   return map;
 }
 
