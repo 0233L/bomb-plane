@@ -42,7 +42,8 @@ Page({
     scoreB: 0,
     myName: '', myAvatar: '', myDot: false, mySteps: 0, myHeads: '0/3', myTurn: '',
     enemyName: '', enemyAvatar: '', enemyDot: false, enemySteps: 0, enemyHeads: '0/3', enemyTurn: '',
-    boardTitleMy: '', boardTitleEnemy: '', boardNote: '',
+    boardTitleMy: '', boardTitleEnemy: '', boardNoteMy: '', boardNoteEnemy: '',
+    modeBadge: '',          // 玩法徽章（道具版才显示：「道具版 · 规格 · 架数」）
     myCells: [],
     enemyCells: [],
     cellW: '10%',             // 格子宽度（按规格 10/12/14 自适应）
@@ -96,6 +97,9 @@ Page({
         roomId: s.roomId,
         spectator: s.spectator,
         spectatorCount: s.spectatorCount,
+        modeBadge: s.mode === 'props'
+          ? '🎁 道具版 · ' + shared.getBoardSpec(s.boardSize).size + '×' + shared.getBoardSpec(s.boardSize).size + ' · ' + shared.getBoardSpec(s.boardSize).planeCount + ' 架' : '',
+        boardNoteMy: '', boardNoteEnemy: '',
         showWait: true
       });
       return;
@@ -118,6 +122,12 @@ Page({
     let myName, myAvatar, myDot, mySteps, myHeads, myTurn;
     let enemyName, enemyAvatar, enemyDot, enemySteps, enemyHeads, enemyTurn;
     let boardTitleMy, boardTitleEnemy;
+    // 棋盘标题旁的操作提示（观战者不需要，留空）
+    let boardNoteMy = '', boardNoteEnemy = '';
+    if (!s.spectator) {
+      boardNoteMy = '（对方打过的位置高亮）';
+      boardNoteEnemy = '（点未知格揭示 · 长按可标注机身）';
+    }
     const sp = shared.getBoardSpec(s.boardSize); // 当前房间规格（机头数按规格显示）
     const headsOf = function (seat) { return (sp.planeCount - s.headsLeft[seat]) + '/' + sp.planeCount; };
 
@@ -177,9 +187,9 @@ Page({
 
     // ---- 结束横幅（对齐 goOver + updateOverRematchStatus） ----
     let overTitle = '', overDetail = '', overStatus = '', showRematchBtn = false, rematchText = '再来一局';
-    let boardNote = '';
     if (s.over) {
-      boardNote = '（暗色 = 对方没被你探测过的格子）';
+      boardNoteMy = '';
+      boardNoteEnemy = '（暗色 = 对方没被你探测过的格子）';
       myTurn = '🏁 对局结束';
       enemyTurn = '';
       const votes = s.rematchVotes.filter(Boolean).length;
@@ -211,7 +221,10 @@ Page({
       myName: myName, myAvatar: myAvatar, myDot: myDot, mySteps: mySteps, myHeads: myHeads, myTurn: myTurn,
       enemyName: enemyName, enemyAvatar: enemyAvatar, enemyDot: enemyDot, enemySteps: enemySteps,
       enemyHeads: enemyHeads, enemyTurn: enemyTurn,
-      boardTitleMy: boardTitleMy, boardTitleEnemy: boardTitleEnemy, boardNote: boardNote,
+      boardTitleMy: boardTitleMy, boardTitleEnemy: boardTitleEnemy,
+      boardNoteMy: boardNoteMy, boardNoteEnemy: boardNoteEnemy,
+      modeBadge: s.mode === 'props'
+        ? '🎁 道具版 · ' + sp.size + '×' + sp.size + ' · ' + sp.planeCount + ' 架' : '',
       myCells: myCells,
       enemyCells: enemyCells,
       cellW: (100 / sp.size).toFixed(2) + '%',
@@ -229,8 +242,9 @@ Page({
 
   // 点对方棋盘：道具选区模式优先（选区域而不是揭示），否则正常揭示
   onEnemyCellTap(e) {
-    const r = e.currentTarget.dataset.r;
-    const c = e.currentTarget.dataset.c;
+    // dataset 取出来恒为字符串，必须转数字再比对/发送（服务器 Number.isInteger 严格校验）
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
     if (state.itemPick) return this.pickItemCell(r, c);
     if (state.spectator) return toast('观战模式不能下棋');
     if (state.over) return toast('对局已结束，点「再来一局」继续');
@@ -254,8 +268,8 @@ Page({
   // 长按对方棋盘的未揭示格：标注「机身」（绿框），再长按 = 取消。只保留机身一种标注
   // 纯本地猜测，不发给服务器；格子被揭示后渲染时自动不显示
   onEnemyMark(e) {
-    const r = e.currentTarget.dataset.r;
-    const c = e.currentTarget.dataset.c;
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
     // 道具选区模式下，长按优先「取消道具选中」（避免误标到棋盘上）
     if (state.itemPick) {
       this.clearItemPick();

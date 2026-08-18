@@ -152,16 +152,6 @@ h2 { text-align: center; margin: 8px 0; }
   margin: 6px 0 10px;
   line-height: 1.6;
 }
-/* 道具模式栏内直接展示玩法介绍（金币规则 + 6 个道具价格效果） */
-.props-intro {
-  background: var(--bg);
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin-bottom: 10px;
-  font-size: 12px;
-  line-height: 1.7;
-}
-.props-intro-line { color: var(--text-3); margin: 2px 0; }
 /* 弹窗里的道具价格（金色） */
 .gold { color: #f59e0b; font-weight: bold; }
 /* 规则弹窗两栏 tab：经典模式 / 道具模式 */
@@ -255,8 +245,6 @@ button.primary { background: var(--primary); border-color: var(--primary); color
 button.primary:hover { background: var(--primary-hover); }
 
 .btn-row { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
-
-/* 首页人机对战的难度选择按钮（三个小按钮均分一行） */
 
 /* ---------- 顶部栏 ---------- */
 .topbar {
@@ -661,11 +649,6 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .toast.show { opacity: 1; }
 
 .help { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
-
-/* ---------- 玩法说明卡片 ---------- */
-.card.rules { max-width: 380px; }
-.card.rules h3 { margin-bottom: 8px; font-size: 15px; }
-.card.rules ol { padding-left: 20px; font-size: 13px; color: var(--text-3); line-height: 1.8; }
 
 /* ---------- 最近加入的房间列表 ---------- */
 #recent-card h3 { font-size: 15px; margin-bottom: 4px; }

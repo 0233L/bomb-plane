@@ -105,6 +105,17 @@ page {
 .dot-on { background: #22c55e; }
 .dot-off { background: #ef4444; }
 
+/* ---------- 玩法徽章（部署页/对战页顶部「道具版·规格·架数」，道具版才显示） ---------- */
+.mode-badge {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999rpx;
+  padding: 2rpx 16rpx;
+  font-size: 24rpx;
+  margin-left: 20rpx;
+}
+
 /* ---------- 棋盘 ---------- */
 .board-wrap { display: flex; justify-content: center; }
 .board {
@@ -197,6 +208,32 @@ page {
 .rules-h3 { font-size: 30rpx; font-weight: bold; margin: 20rpx 0 8rpx; }
 .rules-p { font-size: 26rpx; color: var(--text-2); line-height: 1.8; }
 .rules-list { font-size: 26rpx; color: var(--text-2); line-height: 2; padding-left: 28rpx; }
+/* 规则图例色块（白色空 / 绿色机身 / 红色机头） */
+.rules-chip {
+  display: inline-block;
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 8rpx;
+  margin-right: 12rpx;
+  vertical-align: -4rpx;
+  border: 1rpx solid var(--grid);
+}
+.rules-chip.chip-empty { background: var(--cell-empty); }
+.rules-chip.chip-body { background: #66bb6a; }
+.rules-chip.chip-head { background: #ef5350; }
+
+/* 金币图标：SVG 金色硬币（data-URI base64），替代 emoji 🪙——emoji 依赖系统字体渲染，
+   不同手机显示不一致、老机型可能缺字；SVG 跨平台渲染完全一致、永不失真。
+   宽高用 1em：跟随所在文字字号自动缩放 */
+.coin-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.08em;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIGZpbGw9IiNmNTllMGIiIHN0cm9rZT0iI2I0NTMwOSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI3IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmU5YjgiIHN0cm9rZS13aWR0aD0iMS41Ii8+PHRleHQgeD0iMTIiIHk9IjE2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjExIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM3YzRhMDMiPsKlPC90ZXh0Pjwvc3ZnPg==");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
 .rules-planes { display: flex; flex-wrap: wrap; justify-content: space-between; margin: 12rpx 0; }
 .rules-plane { width: 48%; margin-bottom: 16rpx; text-align: center; font-size: 24rpx; color: var(--muted); }
 .mini-board { display: flex; flex-wrap: wrap; border-radius: 6rpx; overflow: hidden; margin-bottom: 6rpx; }

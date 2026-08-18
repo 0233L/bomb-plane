@@ -53,6 +53,7 @@ Page({
     cellW: '10%',           // 格子宽度（按规格 10/12/14 自适应）
     cellH: '68rpx',         // 格子高度
     countText: '',
+    modeBadge: '',          // 玩法徽章（道具版才显示：「道具版 · 规格 · 架数」）
     roomId: '',
     dirs: [],               // [{key, label, active}]
     confirmed: false,
@@ -129,6 +130,7 @@ Page({
       cellW: (100 / spec().size).toFixed(2) + '%',
       cellH: Math.round(68 * 10 / spec().size) + 'rpx',
       countText: '已放置 ' + s.draft.length + ' / ' + spec().planeCount + ' 架',
+      modeBadge: s.mode === 'props' ? '🎁 道具版 · ' + spec().size + '×' + spec().size + ' · ' + spec().planeCount + ' 架' : '',
       roomId: s.roomId,
       dirs: dirKeys.map(function (d, i) { return { key: d, label: names[i], active: s.curDir === d }; }),
       confirmed: confirmed,
@@ -146,8 +148,9 @@ Page({
     if (state.deployConfirmed[state.seat]) {
       return toast('已确认部署，点「取消确认」才能修改');
     }
-    const r = e.currentTarget.dataset.r;
-    const c = e.currentTarget.dataset.c;
+    // dataset 取出来恒为字符串，必须转数字（服务器校验要求整数；canPlacePlane 数值比较也需要）
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
 
     // 找点击位置属于哪架飞机
     let planeIdx = -1, isHead = false;

@@ -5,7 +5,7 @@
     <text class="title">部署飞机</text>
     <text class="side link" bindtap="onCopyRoomTap">邀请</text>
   </view>
-  <view class="room-row">房间号 <text class="room-tag">{{roomId}}</text></view>
+  <view class="room-row">房间号 <text class="room-tag">{{roomId}}</text><text class="mode-badge" wx:if="{{modeBadge}}">{{modeBadge}}</text></view>
 
   <view class="count-row">{{countText}}</view>
 

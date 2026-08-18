@@ -635,7 +635,7 @@ function chooseSonarAnchor(probField, size, frozenCells) {
 // 找「机头已揭示但整架飞机还没被完整揭示」的机头格（无所遁形用）。
 // 判定：该机头 4 个朝向里，「合法朝向」≥2 且仍有未揭示格（信息不足，值得用无所遁形）。
 // 合法朝向 = 10 格全在棋盘内、且不含已揭示空格（空格会排除该朝向）。
-// 只剩 1 个合法朝向 → 飞机位置已确定，普通揭示即可，花 6 金币是浪费。
+// 只剩 1 个合法朝向 → 飞机位置已确定，普通揭示即可，花 5 金币是浪费。
 // 返回 {row, col}；没有则返回 null。
 function findExposeHead(shotsReceived, size) {
   const shotTable = buildShotTableAny(shotsReceived, size);

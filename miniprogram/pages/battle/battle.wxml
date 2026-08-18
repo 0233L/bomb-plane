@@ -7,6 +7,7 @@
   </view>
   <view class="room-row">
     <text>房间号 <text class="room-tag">{{roomId}}</text></text>
+    <text class="mode-badge" wx:if="{{modeBadge}}">{{modeBadge}}</text>
     <text wx:if="{{spectatorCount > 0}}" class="spec-badge">👁 {{spectatorCount}} 观战中</text>
   </view>
 
@@ -14,6 +15,7 @@
   <view wx:if="{{showWait}}" class="card wait-card">
     <view class="wait-title">⏳ 双方还在部署飞机…</view>
     <view class="wait-sub">开战后自动进入观战</view>
+    <view class="wait-sub" wx:if="{{spectatorCount > 0}}">👁 {{spectatorCount}} 人观战中</view>
     <view class="btn" bindtap="onBackTap">退出观战</view>
   </view>
 
@@ -34,12 +36,15 @@
       </view>
       <view class="panel-right">
         <text class="panel-stat">步数 {{mySteps}} · 击中机头 {{myHeads}}</text>
-        <text class="panel-coins" wx:if="{{coinsVisible}}">🪙 {{myCoins}}</text>
+        <text class="panel-coins" wx:if="{{coinsVisible}}"><text class="coin-icon"></text>{{myCoins}}</text>
         <text class="panel-turn">{{myTurn}}</text>
       </view>
     </view>
 
-    <view class="board-title">{{boardTitleMy}}</view>
+    <view class="board-title">
+      <text>{{boardTitleMy}}</text>
+      <text class="board-note">{{boardNoteMy}}</text>
+    </view>
     <view class="board-wrap">
       <view class="board">
         <view wx:for="{{myCells}}" wx:key="index" class="board-cell {{item.cls}}"
@@ -58,14 +63,14 @@
       </view>
       <view class="panel-right">
         <text class="panel-stat">步数 {{enemySteps}} · 击中机头 {{enemyHeads}}</text>
-        <text class="panel-coins" wx:if="{{coinsVisible}}">🪙 {{enemyCoins}}</text>
+        <text class="panel-coins" wx:if="{{coinsVisible}}"><text class="coin-icon"></text>{{enemyCoins}}</text>
         <text class="panel-turn">{{enemyTurn}}</text>
       </view>
     </view>
 
     <view class="board-title">
       <text>{{boardTitleEnemy}}</text>
-      <text class="board-note">{{boardNote}}</text>
+      <text class="board-note">{{boardNoteEnemy}}</text>
     </view>
     <view class="board-wrap">
       <view class="board">
@@ -85,7 +90,7 @@
               class="item-btn {{item.active ? 'active' : ''}} {{item.disabled ? 'disabled' : ''}}"
               data-id="{{item.id}}" bindtap="onItemTap">
           <text class="item-label">{{item.label}}</text>
-          <text class="item-price">{{item.price}}🪙</text>
+          <text class="item-price">{{item.price}}<text class="coin-icon"></text></text>
           <text class="item-desc">{{item.desc}}</text>
         </view>
       </view>

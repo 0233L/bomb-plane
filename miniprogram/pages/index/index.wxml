@@ -91,12 +91,17 @@
 
         <view class="rules-h3">抢步规则</view>
         <view class="rules-list">
-          <text>· 步数少（或相等）的一方可以随时行动</text>
-          <text>· 步数领先的一方只能等待对方</text>
+          <text>· 双方步数相同：谁先点谁先下（拼手速抢第一步）</text>
+          <text>· 步数相差 1 步：只有步数少的一方可以下——落后者可以连续下两步，反而抢到领先</text>
         </view>
 
         <view class="rules-h3">揭示</view>
-        <view class="rules-p">打中的格子会揭示「机头 / 机身 / 空」。空 = 纯运气；机头 = 赢关键。断线会自动重连，也可从「最近加入的房间」回到对局。</view>
+        <view class="rules-list">
+          <text><text class="rules-chip chip-empty"></text>白色 = 空：什么也没打中，下次换别处试试</text>
+          <text><text class="rules-chip chip-body"></text>绿色 = 机身：打中了飞机，但只有机头才算致命伤，顺着机身找机头吧</text>
+          <text><text class="rules-chip chip-head"></text>红色 = 机头：击中一架飞机的机头！注意只会亮起这一格，整架飞机不会自动暴露</text>
+        </view>
+        <view class="rules-p">断线会自动重连，也可从「最近加入的房间」回到对局。</view>
       </block>
 
       <block wx:if="{{rulesTab === 'props'}}">
@@ -106,12 +111,12 @@
 
         <view class="rules-h3">道具列表（按价格从低到高）</view>
         <view class="rules-list">
-          <text>🔍 探测者 <text class="gold">2🪙</text> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容</text>
-          <text>🔊 声呐脉冲 <text class="gold">3🪙</text> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量</text>
-          <text>👁 无所遁形 <text class="gold">5🪙</text> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）</text>
-          <text>💥 双发连射 <text class="gold">5🪙</text> — 点对方棋盘 2 个未知格，一次行动同时揭示</text>
-          <text>🧨 吞噬者 <text class="gold">5🪙</text> — 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机</text>
-          <text>🌋 毁灭菇 <text class="gold">10🪙</text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，相邻未揭示格冻结 2 回合</text>
+          <text>🔍 探测者 <text class="gold">2<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容</text>
+          <text>🔊 声呐脉冲 <text class="gold">3<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量</text>
+          <text>👁 无所遁形 <text class="gold">5<text class="coin-icon"></text></text> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）</text>
+          <text>💥 双发连射 <text class="gold">5<text class="coin-icon"></text></text> — 点对方棋盘 2 个未知格，一次行动同时揭示</text>
+          <text>🧨 吞噬者 <text class="gold">5<text class="coin-icon"></text></text> — 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机</text>
+          <text>🌋 毁灭菇 <text class="gold">10<text class="coin-icon"></text></text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，相邻未揭示格冻结 2 回合</text>
         </view>
       </block>
 

@@ -42,6 +42,13 @@ function rebuildBoards() {
   makeBoard($('#enemy-board'), onEnemyCellClick);
 }
 
+// ---------- localStorage 安全读写 ----------
+// 隐私模式 / 存储满 / 被禁用时 getItem/setItem/removeItem 会抛异常，
+// 整个页面不该因此崩掉：读不到按没有处理，写不进静默失败（功能退化为仅本页有效）
+function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function safeSet(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* 忽略 */ } }
+function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) { /* 忽略 */ } }
+
 // ---------- 主题切换（右上角按钮） ----------
 // 三种模式循环：跟随系统 → 浅色 → 深色。选择存在 localStorage 里，默认跟随系统
 const THEME_ORDER = ['auto', 'light', 'dark'];
@@ -49,7 +56,7 @@ const THEME_ICONS = { auto: '🌓', light: '☀️', dark: '🌙' };
 const THEME_TITLES = { auto: '主题：跟随系统', light: '主题：浅色', dark: '主题：深色' };
 
 function savedTheme() {
-  return localStorage.getItem('bp_theme') || 'auto';
+  return safeGet('bp_theme') || 'auto';
 }
 
 // 「跟随系统」模式下实际显示哪种颜色
@@ -71,7 +78,7 @@ function applyTheme() {
 // 点按钮：切到下一个模式
 function cycleTheme() {
   const next = THEME_ORDER[(THEME_ORDER.indexOf(savedTheme()) + 1) % THEME_ORDER.length];
-  localStorage.setItem('bp_theme', next);
+  safeSet('bp_theme', next);
   applyTheme();
 }
 
@@ -85,14 +92,14 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', fun
 // lastSeen = 我最后一次在这个房间里在线的时间（毫秒时间戳），列表按它从新到旧排序
 function loadRoomHistory() {
   try {
-    return JSON.parse(localStorage.getItem('bp_room_history') || '[]');
+    return JSON.parse(safeGet('bp_room_history') || '[]');
   } catch (e) { return []; }
 }
 
 // 按最后在线时间从新到旧排序后写回 localStorage（旧数据没有 lastSeen，按 0 处理排最后）
 function sortAndSaveHistory(list) {
   list.sort(function (a, b) { return (b.lastSeen || 0) - (a.lastSeen || 0); });
-  localStorage.setItem('bp_room_history', JSON.stringify(list.slice(0, 5)));
+  safeSet('bp_room_history', JSON.stringify(list.slice(0, 5)));
   return list;
 }
 
@@ -115,7 +122,7 @@ function updateRoomLastSeen(roomId) {
   renderRecentRooms();
 }
 function removeRoomFromHistory(roomId) {
-  localStorage.setItem('bp_room_history', JSON.stringify(
+  safeSet('bp_room_history', JSON.stringify(
     loadRoomHistory().filter(function (e) { return e.roomId !== roomId; })
   ));
   renderRecentRooms();
@@ -124,16 +131,16 @@ function removeRoomFromHistory(roomId) {
 // ---------- 我的头像（localStorage bp_avatar，首次访问随机分配） ----------
 // 有就返回；没有/坏了（不在池里）就随机一个存起来——坏数据自动修复
 function myAvatar() {
-  const saved = localStorage.getItem('bp_avatar');
+  const saved = safeGet('bp_avatar');
   if (saved && AVATAR_POOL.indexOf(saved) !== -1) return saved;
   const av = randomAvatar();
-  localStorage.setItem('bp_avatar', av);
+  safeSet('bp_avatar', av);
   return av;
 }
 
 // 换成新头像：存起来 + 更新 state + 刷新所有显示我的头像的位置
 function setMyAvatar(emoji) {
-  localStorage.setItem('bp_avatar', emoji);
+  safeSet('bp_avatar', emoji);
   state.avatar = emoji;
   renderMyAvatar();
   updateBattlePanels(); // 对战页自己的面板可能正在显示头像
@@ -176,12 +183,12 @@ function openAvatarModal() {
 // ---------- 匿名访客 ID（访客统计用，不存任何个人信息） ----------
 // 首次访问生成一次，之后一直复用；清掉浏览器存储 = 算一个新访客（可接受）
 function getVisitorId() {
-  const id = localStorage.getItem('bp_visitor_id');
+  const id = safeGet('bp_visitor_id');
   if (id) return id;
   const gen = (window.crypto && window.crypto.randomUUID)
     ? window.crypto.randomUUID()
     : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-  localStorage.setItem('bp_visitor_id', 'v' + gen);
+  safeSet('bp_visitor_id', 'v' + gen);
   return 'v' + gen;
 }
 
@@ -242,7 +249,7 @@ const state = {
   headsLeft: [3, 3],         // 双方还剩几个机头没被打中
   sonarResults: [],          // 声呐脉冲的历史结果 [{row, col, count, attacker}]（扫雷式推理用）
   frozenCells: [],           // 毁灭菇冻结的格子 [{row, col, owner, expiry}]（只约束施放者自己，渲染 ❄）
-  marks: {},                 // 注释标记 {'r,c': 'head'|'body'|'empty'}（右键循环标注，仅本机可见，按房间持久化）
+  marks: {},                 // 注释标记 {'r,c': 'body'}（右键/长按标注「机身」绿框，仅本机可见，按房间持久化）
   itemPick: null,            // 道具选区模式：null = 未选择 | {itemId}
   pickCells: [],             // 已固定的选区格子（'r,c' 字符串数组，金色高亮）
   pickAnchor: null,          // 3x3 道具的选区锚点（左上角，发给服务器）
@@ -253,14 +260,13 @@ const state = {
   myPlanes: [],              // 自己已确认的 3 架飞机（battle 阶段必有）
   myShotsReceived: [],       // 对方打我的记录 [{row, col, result}]
   enemyShotsReceived: [],    // 我打对方的记录
-  winner: null, winReason: null,
+  winner: null,
   rematchVotes: [false, false],
   curDir: 'up',              // 部署页当前选中的朝向
   draft: [],                 // 部署草稿 [{headRow, headCol, dir}]
   inviteRoomId: null,        // 从邀请链接读到的房间号（受邀加入页用）
   spectator: false,          // 我是不是观战者（房间满员时进入观战席）
   spectatorCount: 0,         // 本房间的观战人数（0 时不显示徽章）
-  ai: false,                 // 对手是不是电脑（人机对战房间）
   over: false,               // 本局是否已结束（结束后棋盘保留并公开飞机）
   revealedPlanes: null       // 对局结束后服务器公开的双方飞机 [A 的, B 的]
 };
@@ -342,6 +348,8 @@ function makeBoard(tableEl, onCellClick) {
           if (longPressed) {
             suppressNextClick = true; // 长按已触发：别让随后的 click 造成揭示
             longPressed = false;
+            // 保险：部分浏览器长按后不发 click，1 秒后自动恢复，免得吞掉后续所有点击
+            setTimeout(function () { suppressNextClick = false; }, 1000);
           }
         });
         td.addEventListener('touchmove', function () {
@@ -498,8 +506,17 @@ function renderBattleBoards() {
       if (cell === CELL_HEAD) td.classList.add('cell-head');
       else if (cell === CELL_BODY) td.classList.add('cell-body');
       if (!mk) {
-        // 没被打过的格子：蒙上深色遮罩调暗（被打过的保持原色高亮，不加额外标记）
-        td.classList.add('dimmed');
+        // 对方施放的毁灭菇冻结：❄ 显示在我的棋盘上（表示对方接下来 2 回合不能打这些格）
+        const frozenEnemy = state.frozenCells.some(function (f) {
+          return f.owner === 1 - state.seat && state.steps[f.owner] < f.expiry && f.row === r && f.col === c;
+        });
+        if (frozenEnemy) {
+          td.classList.add('cell-unknown', 'cell-frozen');
+          td.textContent = '❄';
+        } else {
+          // 没被打过的格子：蒙上深色遮罩调暗（被打过的保持原色高亮，不加额外标记）
+          td.classList.add('dimmed');
+        }
       }
     }
     // 对方放的声呐：数字 + 外框画在我的棋盘上（被探测方视角）
@@ -666,7 +683,7 @@ function goDeploy() {
   } else {
     // 恢复本地草稿（部署到一半刷新页面不丢）
     try {
-      state.draft = JSON.parse(localStorage.getItem('bp_draft') || '[]');
+      state.draft = JSON.parse(safeGet('bp_draft') || '[]');
     } catch (e) { state.draft = []; }
   }
   renderDeployBoard();
@@ -773,6 +790,13 @@ function updateItemButtons() {
     const id = btn.dataset.item;
     btn.classList.toggle('active', !!(state.itemPick && state.itemPick.itemId === id));
     btn.disabled = !canAct || state.coins[state.seat] < ITEM_PRICES[id];
+    // 置灰原因写进 title：鼠标悬停（手机长按）能看到为什么点不了
+    let why = '';
+    if (state.spectator) why = '观战模式不能使用道具';
+    else if (state.over) why = '对局已结束';
+    else if (state.steps[state.seat] > state.steps[1 - state.seat]) why = '步数领先，等待对方';
+    else if (state.coins[state.seat] < ITEM_PRICES[id]) why = '金币不够（需要 ' + ITEM_PRICES[id] + '）';
+    btn.title = why;
   });
   updateItemStatus();
 }
@@ -865,6 +889,10 @@ function pickItemCell(r, c) {
   if (state.pickReady) {
     if (id === 'burst') {
       if (state.pickCells.indexOf(key) !== -1) { confirmItem(); return; }
+      // 点新格重选第 1 格：已揭示的格同样要拒绝（ready 态容易漏掉这层校验）
+      if (state.enemyShotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
+        return toast('这格已经揭示过了，换一格');
+      }
       state.pickCells = [key]; // 点新格：重新从第 1 格选起
       state.pickReady = false;
       renderBattleBoards();
@@ -1018,7 +1046,7 @@ function goOver() {
   clearItemPick(); // 对局结束：清掉未执行的选区
   state.frozenCells = []; // 冻结随对局结束解除（服务器端 activeFrozenCells 也已置空）
   state.marks = {}; // 对局结束飞机全部公开，注释不再有意义；下一局从空注释开始
-  try { localStorage.removeItem('bp_marks_' + state.roomId); } catch (e) { /* 忽略 */ }
+  try { safeRemove('bp_marks_' + state.roomId); } catch (e) { /* 忽略 */ }
   const planeCount = curSpec().planeCount;
   if (state.spectator) {
     // 观战视角：标题显示获胜者昵称，不参与再来一局投票
@@ -1115,7 +1143,7 @@ function onDeployCellClick(r, c) {
 }
 
 function saveDraft() {
-  localStorage.setItem('bp_draft', JSON.stringify(state.draft));
+  safeSet('bp_draft', JSON.stringify(state.draft));
 }
 
 // ---------- 对战页交互 ----------
@@ -1153,14 +1181,14 @@ function onEnemyCellClick(r, c) {
 
 function saveMarks() {
   try {
-    localStorage.setItem('bp_marks_' + state.roomId, JSON.stringify(state.marks));
+    safeSet('bp_marks_' + state.roomId, JSON.stringify(state.marks));
   } catch (e) { /* 本地存储满 / 不可用时静默失败，标记只在本页有效 */ }
 }
 
 function loadMarks() {
   state.marks = {};
   try {
-    const raw = localStorage.getItem('bp_marks_' + state.roomId);
+    const raw = safeGet('bp_marks_' + state.roomId);
     if (raw) state.marks = JSON.parse(raw) || {};
   } catch (e) { state.marks = {}; }
 }
@@ -1184,6 +1212,12 @@ function bindSocketEvents() {
   // 等价于刷新页面后按网址恢复，顺便修复网络闪断后页面僵住的问题
   s.on('connect', function () {
     s.emit('visit', { visitorId: getVisitorId(), platform: 'web' }); // 访客统计：每次连上服务器上报一次
+    if (state.spectator && state.roomId) {
+      // 观战者没有 token：网络闪断后直接重新加入——房间仍满员时服务器自动转回观战席，
+      // 若恰好空出座位则自动成为玩家（可以下棋，更灵活）
+      s.emit('joinRoom', { roomId: state.roomId, name: (safeGet('bp_name') || '观众').trim(), avatar: myAvatar() });
+      return;
+    }
     if (state.roomId && state.token) {
       s.emit('rejoin', { token: state.token, roomId: state.roomId });
     }
@@ -1206,6 +1240,16 @@ function bindSocketEvents() {
     document.querySelectorAll('.cell-pending').forEach(function (td) {
       td.classList.remove('cell-pending');
     });
+    // 观战者重连失败（房间已回收等）：退出观战状态回首页，下次刷新不会再自动重试
+    if (state.spectator && state.roomId) {
+      state.spectator = false;
+      state.spectatorCount = 0;
+      state.roomId = null;
+      state.token = null;
+      clearRoomFromUrl();
+      showView('home');
+      return;
+    }
     // 自动加入房间失败（比如房间已满）：还没进入任何房间且网址带房间号时，
     // 清掉房间号参数，免得刷新页面反复重试
     if (!state.roomId && location.search.indexOf('room=') !== -1) clearRoomFromUrl();
@@ -1226,11 +1270,10 @@ function bindSocketEvents() {
     state.deployConfirmed = d.deployConfirmed || [false, false]; // 人机房间：AI 已经确认
     state.spectator = false;
     state.inviteRoomId = null;
-    state.ai = !!d.isAI;      // 人机对战房间标记
     state.mode = d.mode || 'classic';
     state.boardSize = d.boardSize || 'S';
     state.coins = [0, 0];
-    localStorage.removeItem('bp_draft');
+    safeRemove('bp_draft');
     goDeploy();
   });
   s.on('joinedRoom', function (d) {
@@ -1247,11 +1290,10 @@ function bindSocketEvents() {
     state.deployConfirmed = [false, false];
     state.spectator = false;
     state.inviteRoomId = null;
-    state.ai = false; // 人机房间满员，真人不可能走到这里
     state.mode = d.mode || 'classic';
     state.boardSize = d.boardSize || 'S';
     state.coins = [0, 0];
-    localStorage.removeItem('bp_draft');
+    safeRemove('bp_draft');
     goDeploy();
   });
 
@@ -1272,7 +1314,6 @@ function bindSocketEvents() {
     state.score = d.score;
     state.headsLeft = d.headsLeft;
     state.winner = d.winner;
-    state.winReason = d.winReason;
     state.rematchVotes = [false, false];
     state.myShotsReceived = d.shots[0] || [];   // 打在 1 号玩家棋盘上的记录
     state.enemyShotsReceived = d.shots[1] || []; // 打在 2 号玩家棋盘上的记录
@@ -1312,6 +1353,10 @@ function bindSocketEvents() {
       state.myPlanes = state.draft.map(function (p) {
         return { headRow: p.headRow, headCol: p.headCol, dir: p.dir };
       });
+    } else {
+      // 取消确认：服务器已清掉我的飞机，草稿重新生效
+      // （不清的话刷新/重连后 goDeploy 会用旧的 myPlanes，回滚变成摆设）
+      state.myPlanes = [];
     }
     updateDeployUI();
   });
@@ -1353,7 +1398,6 @@ function bindSocketEvents() {
   // 对局结束
   s.on('gameOver', function (d) {
     state.winner = d.winner;
-    state.winReason = d.winReason;
     state.headsLeft = d.headsLeft;
     state.score = d.score;
     state.rematchVotes = [false, false];
@@ -1385,14 +1429,13 @@ function bindSocketEvents() {
     state.myShotsReceived = [];
     state.enemyShotsReceived = [];
     state.winner = null;
-    state.winReason = null;
     state.over = false;
     state.revealedPlanes = null; // 新一局：上一局公开的飞机作废
     state.deployConfirmed = [false, false];
     if (state.spectator) {
       goWait(); // 观战者不参与部署，回等待页看双方重新部署
     } else {
-      localStorage.removeItem('bp_draft');
+      safeRemove('bp_draft');
       goDeploy();
     }
   });
@@ -1400,7 +1443,7 @@ function bindSocketEvents() {
   // 我自己离开了房间：清空草稿回首页（房间记录保留，随时可以回来继续）
   // 观战者离开观战席也走这里（不写历史，回首页后身份恢复成普通玩家）
   s.on('leftRoom', function () {
-    localStorage.removeItem('bp_draft');
+    safeRemove('bp_draft');
     state.spectator = false;
     state.spectatorCount = 0;
     clearRoomFromUrl(); // 地址栏回到干净的首页
@@ -1421,7 +1464,7 @@ function bindSocketEvents() {
     const list = loadRoomHistory();
     const kept = list.filter(function (e) { return alive.indexOf(e.roomId) !== -1; });
     if (kept.length !== list.length) {
-      localStorage.setItem('bp_room_history', JSON.stringify(kept));
+      safeSet('bp_room_history', JSON.stringify(kept));
       renderRecentRooms();
     }
   });
@@ -1447,9 +1490,7 @@ function bindSocketEvents() {
     state.sonarResults = d.sonarHistory || []; // 声呐数字历史（重连后还能看到）
     state.frozenCells = d.frozenCells || [];   // 毁灭菇冻结格（重连后还能看到 ❄）
     state.winner = d.winner;
-    state.winReason = d.winReason;
     state.rematchVotes = d.rematchVotes || [false, false];
-    state.ai = !!d.isAI;          // 人机房间断线重连后仍感知对手是电脑
     state.revealedPlanes = d.planes || null; // 对局结束后才有的双方飞机
 
     updateRoomLastSeen(d.roomId); // 重连成功 = 又在这个房间在线过，列表顺序同步刷新
@@ -1458,7 +1499,7 @@ function bindSocketEvents() {
     if (d.phase === 'deploy') goDeploy();
     else if (d.phase === 'battle') goBattle();
     else if (d.phase === 'over') goOver();
-    else showView('home'); // waiting 阶段不会发生（满 2 人才有对局）
+    else goDeploy(); // waiting 阶段（对手还没进来）：显示部署页等对手，而不是回首页
   });
 }
 
@@ -1514,7 +1555,7 @@ state.homeMode = 'classic'; // 当前选中的玩法栏：classic / props
 
 function savedSpecFor(mode) {
   const key = mode === 'props' ? 'bp_spec_props' : 'bp_spec_classic';
-  const s = localStorage.getItem(key);
+  const s = safeGet(key);
   return (s === 'S' || s === 'M' || s === 'L') ? s : (mode === 'props' ? 'M' : 'S');
 }
 
@@ -1554,7 +1595,7 @@ function bindUIEvents() {
   document.querySelectorAll('.spec-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
       // 规格保存到当前玩法栏自己的键（经典/道具互不影响）
-      localStorage.setItem(state.homeMode === 'props' ? 'bp_spec_props' : 'bp_spec_classic', btn.dataset.spec);
+      safeSet(state.homeMode === 'props' ? 'bp_spec_props' : 'bp_spec_classic', btn.dataset.spec);
       renderHomeMode();
     });
   });
@@ -1565,7 +1606,7 @@ function bindUIEvents() {
     btn.addEventListener('click', function () {
       if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
       const name = $('#name-input').value;
-      localStorage.setItem('bp_name', name.trim());
+      safeSet('bp_name', name.trim());
       state.socket.emit('createRoom', { name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
     });
   });
@@ -1573,13 +1614,13 @@ function bindUIEvents() {
     btn.addEventListener('click', function () {
       if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
       const name = $('#name-input').value;
-      localStorage.setItem('bp_name', name.trim());
+      safeSet('bp_name', name.trim());
       state.socket.emit('createRoomAI', { name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
     });
   });
   $('#btn-join').addEventListener('click', function () {
     const name = $('#name-input').value;
-    localStorage.setItem('bp_name', name.trim());
+    safeSet('bp_name', name.trim());
     state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
   });
   // 对局中的「返回菜单」按钮（部署页 + 对战页 + 观战等待页各一个）
@@ -1675,7 +1716,7 @@ function bindUIEvents() {
   // 受邀加入页：确认加入 / 返回菜单
   $('#btn-invite-join').addEventListener('click', function () {
     const name = $('#invite-name-input').value;
-    localStorage.setItem('bp_name', name.trim());
+    safeSet('bp_name', name.trim());
     // 房间号存在 state 里（而不是网址里），即使加入失败清掉了网址也能重试
     state.socket.emit('joinRoom', { roomId: state.inviteRoomId, name: name, avatar: myAvatar() });
   });
@@ -1711,7 +1752,12 @@ function bindUIEvents() {
   // 头像选择面板：点自己的头像（首页/邀请页/对战页面板）打开；🎲 随机 / 点背景关闭
   ['#home-avatar', '#invite-avatar', '#panel-my-avatar'].forEach(function (sel) {
     const el = $(sel);
-    if (el) el.addEventListener('click', openAvatarModal);
+    if (!el) return;
+    el.addEventListener('click', function () {
+      // 对战面板的「我的头像」在观战时显示的是别人的头像：不弹自己的头像选择
+      if (sel === '#panel-my-avatar' && state.spectator) return;
+      openAvatarModal();
+    });
   });
   $('#btn-avatar-random').addEventListener('click', function () {
     setMyAvatar(randomAvatar());
@@ -1819,7 +1865,7 @@ function init() {
   renderRulesDiagram();
 
   // 记住上次用的昵称
-  const savedName = (localStorage.getItem('bp_name') || '').trim();
+  const savedName = (safeGet('bp_name') || '').trim();
   if (savedName) $('#name-input').value = savedName;
 
   // 我的头像：首次访问自动随机分配，并在首页/邀请页显示

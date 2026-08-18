@@ -259,23 +259,36 @@ function myBoardCells() {
   const revealed = state.over ? state.revealedPlanes : null;
   const myPlanesSrc = (state.spectator && revealed) ? (revealed[0] || []) : state.myPlanes;
   const myBoard = shared.buildBoard(myPlanesSrc, state.boardSize);
+  // 注意：记录存整个对象（destroyed: true 的机头也是 head 结果，要区分渲染）
   const myMarks = {};
-  state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s.result; });
+  state.myShotsReceived.forEach(function (s) { myMarks[s.row + ',' + s.col] = s; });
   // 对方放的声呐：数字 + 外框画在我的棋盘上（被探测方视角）
   const sd = sonarDataFor(state.spectator ? 0 : state.seat);
   const cells = [];
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
       let cls = '';
+      let text = '';
       const cell = myBoard[r][c];
-      if (cell === shared.CELL_HEAD) cls = 'cell-head';
-      else if (cell === shared.CELL_BODY) cls = 'cell-body';
-      if (!myMarks[r + ',' + c]) cls += ' dimmed';
+      const s = myMarks[r + ',' + c];
+      if (s && s.result === 'destroyed') {
+        cls = 'cell-destroyed'; // 对方吞噬者摧毁我的格：深灰 + ✕（内容保密，和对方棋盘同款）
+        text = '✕';
+      } else if (s && s.result === 'head' && s.destroyed) {
+        cls = 'cell-head-destroyed'; // 机头被摧毁：灰色机头（视为已发现）
+        text = '✕';
+      } else {
+        if (cell === shared.CELL_HEAD) cls = 'cell-head';
+        else if (cell === shared.CELL_BODY) cls = 'cell-body';
+        if (!s) cls += ' dimmed'; // 没被打过的格子：蒙上深色遮罩调暗
+      }
       const sonarCount = sd.map[r + ',' + c];
-      if (sonarCount !== undefined) cls += ' cell-sonar';
+      if (sonarCount !== undefined) {
+        cls += ' cell-sonar';
+        text = String(sonarCount); // 声呐数字优先于 ✕ 显示（和对方棋盘同款）
+      }
       cells.push({
-        r: r, c: c, cls: cls,
-        text: sonarCount !== undefined ? String(sonarCount) : '',
+        r: r, c: c, cls: cls, text: text,
         style: sd.shadows[r + ',' + c] ? 'box-shadow:' + sd.shadows[r + ',' + c] : ''
       });
     }
@@ -404,6 +417,8 @@ socket.on('roomCreated', function (d) {
   state.deployConfirmed = d.deployConfirmed || [false, false];
   state.spectator = false;
   state.ai = !!d.isAI;
+  state.mode = d.mode || 'classic';
+  state.boardSize = d.boardSize || 'S';
   state.phase = 'deploy';
   saveStorage('bp_draft', []);
   emitLocal('roomCreated', d);
@@ -423,6 +438,8 @@ socket.on('joinedRoom', function (d) {
   state.deployConfirmed = [false, false];
   state.spectator = false;
   state.ai = false;
+  state.mode = d.mode || 'classic';
+  state.boardSize = d.boardSize || 'S';
   state.phase = 'deploy';
   saveStorage('bp_draft', []);
   emitLocal('joinedRoom', d);
@@ -498,7 +515,9 @@ socket.on('battleStart', function (d) {
   state.mode = d.mode || 'classic';
   state.boardSize = d.boardSize || 'S';
   state.coins = d.coins || [0, 0];
-  state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
+  // 机头数按规格显示（S=3 / M=4 / L=6），不能硬编码 3
+  const planeCount = shared.getBoardSpec(state.boardSize).planeCount;
+  state.headsLeft = [planeCount, planeCount];
   state.myShotsReceived = [];
   state.enemyShotsReceived = [];
   state.sonarResults = [];
@@ -548,28 +567,36 @@ socket.on('itemResult', function (d) {
     // 声呐数字：记入历史（attacker = 施放者座位，渲染时决定画在谁的棋盘上）
     state.sonarResults.push({ row: d.row, col: d.col, count: d.count, attacker: d.attacker });
   } else if (d.itemId === 'devour') {
-    // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）
+    // 吞噬者：被摧毁的格子记入「已揭示」记录（灰色渲染；机头格单独记为灰色机头）。
+    // ⚠️ 按施放者分流：自己用的 → 对方棋盘（enemy）；对方用的 → 我的棋盘（my）。
+    // 之前无条件进 enemy，对方用道具会把我的格子画到对方棋盘上（渲染 bug）
+    const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
     (d.destroyed || []).forEach(function (cell) {
       if (d.headHit && cell[0] === d.headHit[0] && cell[1] === d.headHit[1]) return; // 机头格单独处理
-      if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
-      state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'destroyed' });
+      if (target.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+      target.push({ row: cell[0], col: cell[1], result: 'destroyed' });
     });
-    if (d.headHit && !state.enemyShotsReceived.some(function (s) { return s.row === d.headHit[0] && s.col === d.headHit[1]; })) {
-      state.enemyShotsReceived.push({ row: d.headHit[0], col: d.headHit[1], result: 'head', destroyed: true });
+    if (d.headHit && !target.some(function (s) { return s.row === d.headHit[0] && s.col === d.headHit[1]; })) {
+      target.push({ row: d.headHit[0], col: d.headHit[1], result: 'head', destroyed: true });
     }
   } else if (d.itemId === 'expose') {
-    // 无所遁形：整架飞机的 10 格补全揭示（都是机身，机头已揭示过）
+    // 无所遁形：整架飞机的 10 格补全揭示（都是机身，机头已揭示过）。分流同吞噬者
+    const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
     (d.cells || []).forEach(function (cell) {
-      if (state.enemyShotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
-      state.enemyShotsReceived.push({ row: cell[0], col: cell[1], result: 'body' });
+      if (target.some(function (s) { return s.row === cell[0] && s.col === cell[1]; })) return;
+      target.push({ row: cell[0], col: cell[1], result: 'body' });
     });
   } else if (d.itemId === 'doom') {
-    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（记录完整冻结信息，过期由 isFrozen 判断）
+    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结。揭示分流同吞噬者；
+    // 冻结只记自己施放的（冻结只约束施放者自己，别把对方的也收进数组）
+    const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
     (d.cells || []).forEach(function (cell) {
-      if (state.enemyShotsReceived.some(function (s) { return s.row === cell.row && s.col === cell.col; })) return;
-      state.enemyShotsReceived.push({ row: cell.row, col: cell.col, result: cell.result });
+      if (target.some(function (s) { return s.row === cell.row && s.col === cell.col; })) return;
+      target.push({ row: cell.row, col: cell.col, result: cell.result });
     });
-    state.frozenCells = state.frozenCells.concat(d.frozen || []);
+    if (d.attacker === state.seat) {
+      state.frozenCells = state.frozenCells.concat(d.frozen || []);
+    }
   }
   state.headsLeft = d.headsLeft;
   state.steps = d.steps;
@@ -608,7 +635,7 @@ socket.on('rematchStart', function (d) {
   state.coins = [0, 0]; // 金币在下一局 battleStart 时由服务器下发
   state.sonarResults = [];
   state.frozenCells = [];
-  state.headsLeft = [PLANE_COUNT, PLANE_COUNT];
+  state.headsLeft = [shared.getBoardSpec(state.boardSize).planeCount, shared.getBoardSpec(state.boardSize).planeCount];
   state.myPlanes = [];
   state.myShotsReceived = [];
   state.enemyShotsReceived = [];

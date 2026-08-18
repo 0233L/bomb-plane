@@ -101,10 +101,11 @@ function createRoom() {
 }
 
 // 解析前端传来的玩法 + 规格（非法值一律回落经典默认，防篡改）
+// hasOwnProperty：防止 data.boardSize 传 'constructor' / 'toString' 等原型链属性绕过校验
 function parseMode(data) {
   return {
     mode: data.mode === 'props' ? 'props' : 'classic',
-    boardSize: shared.BOARD_SPECS[data.boardSize] ? data.boardSize : 'S'
+    boardSize: Object.prototype.hasOwnProperty.call(shared.BOARD_SPECS, data.boardSize) ? data.boardSize : 'S'
   };
 }
 
@@ -283,10 +284,35 @@ function onLeave(room, seat, socket) {
   socket.emit('leftRoom', {}); // 客户端收到后清空草稿、回首页
 }
 
+// 同一条连接可能还绑着旧房间（网页端全局复用一条 WS 连接，退出后再建房/加入时，
+// 旧房间的注册表里仍挂着这条连接 → 旧房间永不回收，还会收到它的广播）。
+// 进新房间前先解绑旧绑定：旧对局按「暂停」处理（玩家标记离线，交给回收计时器），
+// 不广播 leftRoom——否则刚发起的建房流程会被打断；想回去可凭凭证 rejoin。
+function unbindRoom(socket) {
+  const old = socket.data.roomId;
+  const oldSeat = socket.data.seat;
+  socket.data.roomId = null;
+  socket.data.seat = null;
+  socket.data.token = null;
+  if (!old) return;
+  socket.leave(old); // 从 roomConns 注册表移除，旧房间广播不再打扰
+  const room = rooms.get(old);
+  if (!room) return;
+  const player = room.players[oldSeat];
+  if (!player || player.socketId !== socket.id) return; // 旧座位已换人/观战者，不用管
+  if (room.phase === 'waiting') {
+    // 还没开局就离开：直接销毁房间（与 onLeave 同规则）
+    rooms.delete(room.id);
+  } else {
+    onDisconnect(room, oldSeat); // 标记离线：对局暂停，可凭凭证回来，或超时回收
+  }
+}
+
 // ---------- Socket 事件处理 ----------
 
 // 创建房间（坐 0 号位）
 function handleCreateRoom(socket, data) {
+  unbindRoom(socket); // 防同连接残留旧房间绑定（详见 unbindRoom）
   const name = (typeof data.name === 'string' ? data.name : '').trim();
   const err = checkName(null, name);
   if (err) return sendError(socket, err);
@@ -298,7 +324,7 @@ function handleCreateRoom(socket, data) {
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
     name: name, token: token,
-    avatar: String(data.avatar || '').slice(0, 8), // 头像 emoji（纯转发，不校验；限长防超大消息）
+    avatar: Array.from(String(data.avatar || '')).slice(0, 4).join(''), // 头像纯转发不校验；按码点截 4 个防超大消息（slice 会截出半个 emoji）
     socketId: socket.id, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -325,6 +351,7 @@ function handleCreateRoom(socket, data) {
 
 // 创建人机对战房间：真人坐 0 号位，AI 立刻坐 1 号位并自动部署
 function handleCreateRoomAI(socket, data) {
+  unbindRoom(socket); // 防同连接残留旧房间绑定（详见 unbindRoom）
   const name = (typeof data.name === 'string' ? data.name : '').trim();
   const err = checkName(null, name);
   if (err) return sendError(socket, err);
@@ -340,7 +367,7 @@ function handleCreateRoomAI(socket, data) {
   const token = crypto.randomBytes(8).toString('hex'); // 身份凭证，重连用
   room.players[0] = {
     name: name, token: token,
-    avatar: String(data.avatar || '').slice(0, 8), // 头像 emoji（纯转发，不校验；限长防超大消息）
+    avatar: Array.from(String(data.avatar || '')).slice(0, 4).join(''), // 头像纯转发不校验；按码点截 4 个防超大消息（slice 会截出半个 emoji）
     socketId: socket.id, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -426,7 +453,11 @@ function scheduleAITurn(room) {
     } else if (process.env.AI_PROB_FIELD === '0') {
       target1 = ai.chooseTargetSimple(shots, size, myFrozen);
     } else {
-      pf = ai.buildProbField(shots, size, { samples: aiSamples });
+      // AI 的声呐数字一并传入：数字对候选约束有信息价值（计数 0 = 区域全空、非零 = 精确计数）
+      pf = ai.buildProbField(shots, size, {
+        samples: aiSamples,
+        sonarCounts: r.sonarHistory.filter(function (s) { return s.attacker === 1; })
+      });
       target1 = (pf.head ? ai.chooseTargetProbField(shots, size, myFrozen, { probField: pf }) : null)
         || ai.chooseTargetSimple(shots, size, myFrozen); // 概率场失败兜底，别停摆
     }
@@ -515,6 +546,7 @@ function aiDecideItem(room, shots, size, myFrozen, pf) {
 
 // 加入房间：不满 2 人坐 1 号位；满员则进入观战席
 function handleJoinRoom(socket, data) {
+  unbindRoom(socket); // 防同连接残留旧房间绑定（详见 unbindRoom）
   const roomId = String(data.roomId || '').toUpperCase();
   const room = rooms.get(roomId);
   if (!room) return sendError(socket, '房间不存在，请检查房间号');
@@ -532,7 +564,7 @@ function handleJoinRoom(socket, data) {
   const token = crypto.randomBytes(8).toString('hex');
   room.players[1] = {
     name: name, token: token,
-    avatar: String(data.avatar || '').slice(0, 8), // 头像 emoji（纯转发，不校验；限长防超大消息）
+    avatar: Array.from(String(data.avatar || '')).slice(0, 4).join(''), // 头像纯转发不校验；按码点截 4 个防超大消息（slice 会截出半个 emoji）
     socketId: socket.id, connected: true, left: false,
     planes: null, board: null, shotsReceived: [],
     deployConfirmed: false
@@ -600,7 +632,10 @@ function removeSpectator(socket) {
   emitToRoom(room, 'spectatorCount', { count: room.spectators.length });
 }
 
-// 断线重连：凭 token + 房间号恢复现场
+// 断线重连：凭 token + 房间号恢复现场。
+// 注意：这里绝不能调用 unbindRoom——重连总是用新连接（data.roomId 本来就是 null，
+// 旧连接由下方 oldConn.disconnect() 顶掉）；若对无效 rejoin（坏 token / 假房间号）
+// 也解绑当前连接，会把玩家当前所在房间按「离开」处理，waiting 房间甚至直接销毁。
 function handleRejoin(socket, data) {
   const roomId = String(data.roomId || '').toUpperCase();
   const token = String(data.token || '');
@@ -779,7 +814,7 @@ function tryReveal(room, seat, row, col, noStep) {
   defender.shotsReceived.push({ row: row, col: col, result: result });
   if (!noStep) room.steps[seat] += 1; // noStep：双发连射第 2 格不再计步（双发总共只占一步）
 
-  // 道具版：揭示赚金币（空格 0 / 机身 1 / 机头 5）；经典版不结算
+  // 道具版：揭示赚金币（空格 0 / 机身 1 / 机头 3）；经典版不结算
   let coinGain = 0;
   if (room.mode === 'props') {
     coinGain = result === 'head' ? COIN_HEAD : result === 'body' ? COIN_BODY : COIN_EMPTY;
@@ -857,6 +892,10 @@ function neighbor8(row, col, size) {
 // 施放后 steps[seat] = S+1，expiry = S+3；steps[seat] < expiry 时行动仍受限制
 // （接下来 2 次行动），到第 3 次行动（steps = S+3）解除。非施放方永远 false。
 function isFrozenCell(room, seat, row, col) {
+  // 防御性：已经揭示过的格子不再冻结（玩家已看到内容，冻结无意义；
+  // 正常流程冻结格在被揭示前就过期，这里是防未来逻辑变化）
+  const defender = room.players[1 - seat];
+  if (defender.shotsReceived.some(function (s) { return s.row === row && s.col === col; })) return false;
   return room.frozenCells.some(function (f) {
     return f.owner === seat && room.steps[seat] < f.expiry && f.row === row && f.col === col;
   });
@@ -996,6 +1035,11 @@ function doUseItem(room, seat, itemId, data) {
     });
     if (!plane) return '找不到对应的飞机'; // 防御性校验
     const cells = getPlaneCells(row, col, plane.dir);
+    // 整架都已揭示就不用再花金币（十格全部打过，无所遁形没有信息价值）
+    const allShown = cells.every(function (cell) {
+      return defender.shotsReceived.some(function (s) { return s.row === cell[0] && s.col === cell[1]; });
+    });
+    if (allShown) return '这架飞机已经完整揭示了，不用浪费金币';
     cells.forEach(function (cell) {
       const r = cell[0], c = cell[1];
       if (!defender.shotsReceived.some(function (s) { return s.row === r && s.col === c; })) {
@@ -1180,6 +1224,16 @@ function cleanupConns(conn) {
 
 // 收到一条消息：JSON -> {type, data} -> 分发到对应 handler；坏 JSON 关连接
 function handleWsMessage(conn, raw) {
+  // 限频：1 秒内超过 20 条消息视为异常刷接口，断开（正常操作点一下才 1 条）
+  const now = Date.now();
+  const times = conn._ws.msgTimes;
+  times.push(now);
+  while (times.length && now - times[0] > 1000) times.shift();
+  if (times.length > 20) {
+    conn._ws.close(1008, 'too many messages');
+    return;
+  }
+
   let msg;
   try { msg = JSON.parse(raw); } catch (e) {
     conn._ws.close(1003, 'invalid json');
@@ -1202,7 +1256,13 @@ function handleWsMessage(conn, raw) {
     visit: handleVisit
   };
   const handler = handlers[msg.type];
-  if (handler) handler(conn, data);
+  if (handler) {
+    // 单个消息处理出错不能拖垮整个服务器（其他对局还在进行）
+    try { handler(conn, data); } catch (e) {
+      console.error(`处理消息 ${msg.type} 出错:`, e);
+      conn.emit('errorMessage', { message: '操作出错，请重试' });
+    }
+  }
   // 未知事件名：忽略不崩
 }
 
@@ -1407,7 +1467,8 @@ app.get('/stats.json', function (req, res) {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+// maxPayload：单条消息限 16KB（正常消息最大不过几 KB，超限的是攻击/异常客户端）
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 
 // 升级握手：只接管 /ws 路径（其它路径的升级请求直接断开）
 server.on('upgrade', function (request, socket, head) {
@@ -1423,6 +1484,7 @@ server.on('upgrade', function (request, socket, head) {
 // 心跳：每 5 秒 ping 一次，15 秒没等到 pong 就判死关闭（断网后能较快察觉）
 wss.on('connection', function (ws) {
   ws.isAlive = true;
+  ws.msgTimes = []; // 限频滑动窗口（见 handleWsMessage）
   ws.on('pong', function () { ws.isAlive = true; });
 
   const conn = wrapWs(ws);
@@ -1457,3 +1519,8 @@ server.listen(PORT, function () {
 // 关服前把还没落盘的访客统计写掉（Render 重启发 SIGTERM，本地 Ctrl+C 发 SIGINT）
 process.on('SIGTERM', function () { flushSaveStats(); process.exit(0); });
 process.on('SIGINT', function () { flushSaveStats(); process.exit(0); });
+
+// 兜底：任何未捕获异常 / 未处理的 Promise 拒绝都不能让服务器进程退出
+// （对局中途挂掉比个别操作出错更糟；错误已记日志，服务器继续服务）
+process.on('uncaughtException', function (e) { console.error('未捕获异常（服务器继续运行）:', e); });
+process.on('unhandledRejection', function (reason) { console.error('未处理的 Promise 拒绝（服务器继续运行）:', reason); });

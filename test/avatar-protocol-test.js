@@ -3,7 +3,7 @@
 // 验证服务器对 avatar 字段的转发/限长/缺省处理：
 //   建房带头像 → roomCreated 回显；加入带头像 → joinedRoom/opponentJoined 同步；
 //   部署后 battleStart 带头像；断线重连 reconnected 保留原头像；
-//   不传 avatar → ''（而不是 undefined）；怪异内容原样透传；超长内容被 slice(0,8) 截断；
+//   不传 avatar → ''（而不是 undefined）；怪异内容原样透传；超长内容按码点截 4 个（每 emoji 1 码点）；
 //   AI 房间 2 号位固定 '🤖'
 // 用法（先起服务器）：
 //   RECYCLE_SECONDS=3 node server.js
@@ -97,7 +97,7 @@ async function main() {
   const created3 = await waitFor(d, 'roomCreated');
   check('怪异 emoji 串原样透传', created3.avatars[0] === '👾🎃👽');
 
-  console.log('— 房间 4：超长内容截断（slice(0,8)，每 emoji 2 码元 → 最多 4 个） —');
+  console.log('— 房间 4：超长内容截断（按码点截 4 个） —');
   const e = new WSClient('http://localhost:3000');
   await waitFor(e, 'connect');
   e.emit('createRoom', { name: '超长头像', avatar: '😀'.repeat(9), mode: 'classic', boardSize: SPEC });
