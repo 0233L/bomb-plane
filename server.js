@@ -30,7 +30,7 @@ const COIN_HEAD = 3;    // 揭示到机头（找到机头离胜利最近，奖�
 // 价格初版，标注待实测调整；道具使用 = 一次标准行动（steps +1，双发连射 +2）。
 const ITEM_PRICES = {
   sonar: 3,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
-  pro: 2,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格）
+  pro: 2,     // 探测者：3x3 区域内随机揭示 1 格真实内容（机身→机头→空格；区域全空则揭示整个区域）
   burst: 5,   // 双发连射：一次行动揭示 2 格（只占一步）
   expose: 5,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
   devour: 5,  // 吞噬者：3x3 区域内所有未揭示格变为「摧毁」（机头被摧毁 = 发现飞机）
@@ -971,7 +971,8 @@ function doUseItem(room, seat, itemId, data) {
   }
 
   if (itemId === 'pro') {
-    // 探测者：3x3 内按 机身→机头→空格 的优先级随机揭示 1 格真实内容
+    // 探测者：3x3 内按 机身→机头→空格 的优先级随机揭示 1 格真实内容；
+    // 若区域内没有任何飞机（未揭示格全空）：一次性揭示整个 3x3 区域
     const row = data.row, col = data.col;
     if (!checkRegion(row, col, size)) return '区域越界（3x3 必须完整落在棋盘内）';
     if (hasFrozenCell(room, seat, regionCells(row, col))) return '选区里包含冻结的格子，还不能选中';
@@ -983,6 +984,23 @@ function doUseItem(room, seat, itemId, data) {
     if (!open.length) return '这个区域已经全部揭示过了';
     const tiers = [[], [], []]; // 按格子类型分桶：0=空 1=机身 2=机头
     open.forEach(function (cell) { tiers[defender.board[cell[0]][cell[1]]].push(cell); });
+    if (!tiers[CELL_BODY].length && !tiers[CELL_HEAD].length) {
+      // 整片全空：一次行动把整个区域逐格揭示为空（空格 0 金币，不需要额外结算）。
+      // 发 9 条 revealResult（与逐格揭示同协议），客户端逐条渲染即得整片空区
+      room.coins[seat] -= price; // 先扣费（空格揭示不赚金币）
+      room.steps[seat] += 1;     // 一次行动只占一步
+      const headsLeft = headsLeftOf(room); // 全是空格，机头剩余数不变
+      open.forEach(function (cell) {
+        defender.shotsReceived.push({ row: cell[0], col: cell[1], result: 'empty' });
+        emitToRoom(room, 'revealResult', {
+          attacker: seat, row: cell[0], col: cell[1], result: 'empty',
+          headsLeft: headsLeft, steps: room.steps, coinGain: 0, coins: room.coins
+        });
+      });
+      console.log(`[${room.id}] ${room.players[seat].name} 探测者 (${row},${col}) 全空 → 揭示整个 3x3`);
+      if (room.isAI) scheduleAITurn(room); // 人机房间：用道具占一步，之后可能轮到 AI
+      return;
+    }
     const pool = tiers[CELL_BODY].length ? tiers[CELL_BODY]
       : tiers[CELL_HEAD].length ? tiers[CELL_HEAD] : tiers[CELL_EMPTY];
     const pick = pool[Math.floor(Math.random() * pool.length)];

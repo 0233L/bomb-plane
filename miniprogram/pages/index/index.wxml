@@ -111,7 +111,7 @@
 
         <view class="rules-h3">道具列表（按价格从低到高）</view>
         <view class="rules-list">
-          <text>🔍 探测者 <text class="gold">2<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容</text>
+          <text>🔍 探测者 <text class="gold">2<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容；若区域内没有飞机（全空）则直接揭示整个区域</text>
           <text>🔊 声呐脉冲 <text class="gold">3<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量</text>
           <text>👁 无所遁形 <text class="gold">5<text class="coin-icon"></text></text> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）</text>
           <text>💥 双发连射 <text class="gold">5<text class="coin-icon"></text></text> — 点对方棋盘 2 个未知格，一次行动同时揭示</text>

@@ -166,7 +166,7 @@ Page({
     // 道具版 + 非观战 + 非结束 + 步数不领先才可点；金币不够的单个置灰
     const canAct = !s.spectator && !s.over && s.steps[s.seat] <= s.steps[1 - s.seat];
     const ITEM_ORDER = [
-      { id: 'pro', label: '🔍 探测者', price: 2, desc: '身→头→空优先揭 1 格' },
+      { id: 'pro', label: '🔍 探测者', price: 2, desc: '身→头→空优先揭 1 格 · 全空揭全区' },
       { id: 'sonar', label: '🔊 声呐', price: 3, desc: '区域内飞机数量' },
       { id: 'expose', label: '👁 无所遁形', price: 5, desc: '整架飞机全揭示' },
       { id: 'burst', label: '💥 双发', price: 5, desc: '一次行动揭 2 格' },

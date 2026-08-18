@@ -2,8 +2,8 @@
 // test/props-items-test.js —— 道具版 5 个道具测试（阶段B）
 // 用法：先启动服务器（RECYCLE_SECONDS=3 node server.js）再运行本测试
 // 每个道具用独立房间 + 已知布局（测试脚本掌握 B 的飞机坐标），精准断言：
-//   声呐数字 / Pro 机身优先 / 双发 2 格占一步 / 吞噬摧毁+机头命中 /
-//   无所遁形整机揭示 / 金币不足拒绝 / 步数门控 / 经典房间无道具
+//   声呐数字 / Pro 机身优先 / Pro 全空区域整片揭示 / 双发 2 格占一步 /
+//   吞噬摧毁+机头命中 / 无所遁形整机揭示 / 金币不足拒绝 / 步数门控 / 经典房间无道具
 // ============================================
 'use strict';
 
@@ -141,6 +141,53 @@ async function main() {
     check('Pro 揭示结果必为机身', res.result === 'body');
     check('Pro 后金币 = 8 - 2 + 1 = 7（探测者已降价为 2）', res.coins[0] === 7);
     check('Pro 后步数 +1', res.steps[0] === 1);
+  }
+
+  // ========== 2.5 探测者：区域全空 → 揭示整个 3×3 ==========
+  console.log('2.5 探测者（全空区域）');
+  {
+    const { a, knownB } = await makePropsRoom();
+    // 找一块完全没有飞机格子的 3×3 区域（左上角 0..9 遍历）
+    const planeCells = [];
+    knownB.forEach(function (p) {
+      shared.getPlaneCells(p.headRow, p.headCol, p.dir).forEach(function (c) { planeCells.push(c[0] + ',' + c[1]); });
+    });
+    let reg = null;
+    for (let r = 0; r <= 9 && !reg; r++) {
+      for (let c = 0; c <= 9; c++) {
+        let hit = false;
+        for (let dr = 0; dr < 3 && !hit; dr++) {
+          for (let dc = 0; dc < 3; dc++) {
+            if (planeCells.indexOf((r + dr) + ',' + (c + dc)) !== -1) { hit = true; break; }
+          }
+        }
+        if (!hit) { reg = { row: r, col: c }; break; }
+      }
+    }
+    check('找到全空区域（4 架飞机盖不满所有 3×3）', !!reg);
+    if (reg) {
+      // 注册监听收集 9 条 revealResult，全部到达后统一断言
+      const results = [];
+      const pAll = new Promise(function (resolve, reject) {
+        const t = setTimeout(function () { reject(new Error('等待 9 条揭示超时')); }, 4000);
+        a.on('revealResult', function (d) {
+          if (d.attacker !== 0) return;
+          results.push(d);
+          if (results.length === 9) { clearTimeout(t); resolve(); }
+        });
+      });
+      a.emit('useItem', { itemId: 'pro', row: reg.row, col: reg.col });
+      await pAll;
+      const got = results.map(function (d) { return d.row + ',' + d.col; }).sort().join('|');
+      const expect = [];
+      for (let r = reg.row; r < reg.row + 3; r++) {
+        for (let c = reg.col; c < reg.col + 3; c++) expect.push(r + ',' + c);
+      }
+      check('全空区域揭示整个 3×3（9 条覆盖全部格子）', got === expect.sort().join('|'));
+      check('9 格结果全部为 empty', results.every(function (d) { return d.result === 'empty'; }));
+      check('整片揭示步数只 +1', results[8].steps[0] === 1);
+      check('整片揭示金币 = 8 - 2 = 6（空格无奖励）', results[8].coins[0] === 6);
+    }
   }
 
   // ========== 3. 双发连射：2 格 + 只占一步 ==========

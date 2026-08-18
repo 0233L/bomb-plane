@@ -172,7 +172,7 @@
     <div id="items-panel" class="items-panel hidden">
       <!-- 道具栏最左：本玩家金币数（道具版显示；敌方金币仍在对方信息面板） -->
       <div class="panel-coins" id="panel-my-coins-row"><i class="coin-icon"></i> <b id="panel-my-coins">0</b></div>
-      <button class="item-btn" data-item="pro"><span>🔍 探测者<b>2<i class="coin-icon"></i></b></span><span class="item-desc">身→头→空优先揭 1 格</span></button>
+      <button class="item-btn" data-item="pro"><span>🔍 探测者<b>2<i class="coin-icon"></i></b></span><span class="item-desc">身→头→空优先揭 1 格 · 全空揭全区</span></button>
       <button class="item-btn" data-item="sonar"><span>🔊 声呐脉冲<b>3<i class="coin-icon"></i></b></span><span class="item-desc">区域内飞机数量</span></button>
       <button class="item-btn" data-item="expose"><span>👁 无所遁形<b>5<i class="coin-icon"></i></b></span><span class="item-desc">整架飞机全揭示</span></button>
       <button class="item-btn" data-item="burst"><span>💥 双发连射<b>5<i class="coin-icon"></i></b></span><span class="item-desc">一次行动揭 2 格</span></button>
@@ -248,7 +248,7 @@
 
         <h3 class="rules-h3">🧰 道具列表（按价格从低到高）</h3>
         <ul class="rules-list">
-          <li><b>🔍 探测者 <span class="gold">2<i class="coin-icon"></i></span></b> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容</li>
+          <li><b>🔍 探测者 <span class="gold">2<i class="coin-icon"></i></span></b> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容；若区域内没有飞机（全空）则直接揭示整个区域</li>
           <li><b>🔊 声呐脉冲 <span class="gold">3<i class="coin-icon"></i></span></b> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量</li>
           <li><b>👁 无所遁形 <span class="gold">5<i class="coin-icon"></i></span></b> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）</li>
           <li><b>💥 双发连射 <span class="gold">5<i class="coin-icon"></i></span></b> — 点对方棋盘 2 个未知格，一次行动同时揭示</li>
