@@ -560,11 +560,13 @@ function buildProbField(shotsReceived, size, opts) {
 
 // 概率场选格（M/L 经典 + 全部道具模式；AI 加强第 2 步）：
 //   候选 = 未揭示且未冻结的格子
-//   打分 = 5×P(机头) + P(机身) + INFO_WEIGHT×信息量（1−Σp²，越大越有区分度）
+//   打分 = 5×P(机头) + P(机身) + w×信息量（1−Σp²，越大越有区分度），w 默认 INFO_WEIGHT
 //   返回 {row, col}；概率场采样失败（alive=0）返回 null 由调用方兜底
-//   opts.probField 可复用已建好的概率场（服务器道具决策与选格共用一次采样）
+//   opts.probField 可复用已建好的概率场（服务器道具决策与选格共用一次采样）；
+//   opts.infoWeight 覆盖 INFO_WEIGHT（自对弈调参：两个 AI 同进程用不同权重）
 function chooseTargetProbField(shotsReceived, size, frozenCells, opts) {
   const o = opts || {};
+  const w = typeof o.infoWeight === 'number' ? o.infoWeight : INFO_WEIGHT;
   const pf = o.probField || buildProbField(shotsReceived, size, o);
   if (!pf.head) return null;
   const shotTable = buildShotTableAny(shotsReceived, size);
@@ -580,7 +582,7 @@ function chooseTargetProbField(shotsReceived, size, frozenCells, opts) {
       const pBody = pf.body[key];
       const pEmpty = 1 - pHead - pBody;
       const score = pHead * 5 + pBody
-        + INFO_WEIGHT * (1 - pHead * pHead - pBody * pBody - pEmpty * pEmpty);
+        + w * (1 - pHead * pHead - pBody * pBody - pEmpty * pEmpty);
       if (score > bestScore) { bestScore = score; best = { row: r, col: c }; }
     }
   }
@@ -716,6 +718,96 @@ function bestDoomCenter(probField, size, frozenCells) {
     }
   }
   return best;
+}
+
+// ---------- 道具决策（2026-08：从 server.js 抽出，自对弈与服务器 AI 共用） ----------
+
+// 道具决策默认阈值（与道具价格联动——价格第 4 版 sonar 4、pro 3、burst/expose 4、devour 3、
+// doom 6；opts 可覆盖每一项做调参实验）：
+//   exposeCoins / doomCoins / devourCoins / burstCoins / sonarCoins / proCoins —— 买得起的金币门槛
+//   doomRatio   —— 毁灭菇残局线（未揭示格占比 ≤ 该值才收割）
+//   devourRatio —— 吞噬者残局线；devourSum —— 区域内 P头总和门槛
+//   burstV      —— 双发 top2 概率门槛；sonarEntropy —— 声呐锚点熵门槛
+//   proV        —— 探测者概率峰值门槛
+// 2026-08 第 4 版价格自对弈三轮迭代采纳：exposeCoins 4→5、devourRatio 0.4→0.45
+//（均 88% 胜出；exposeCoins=5 还把双发使用率从 3.25 拉回 1.5/局；infoWeight 1.15↔1.3
+// 震荡等价，保持 1.3）
+const DECIDE_DEFAULTS = {
+  exposeCoins: 5, doomCoins: 6, doomRatio: 0.35,
+  devourCoins: 3, devourRatio: 0.45, devourSum: 0.6,
+  burstCoins: 4, burstV: 0.30,
+  sonarCoins: 4, sonarEntropy: 0.4,
+  proCoins: 4, proV: 0.5
+};
+
+// 道具决策：返回 {itemId, data} 或 null。与 server.js 的 aiDecideItem 同逻辑
+//（优先级：无所遁形 > 毁灭菇 > 吞噬者 > 双发 > 声呐 > 探测者）；
+// 被服务器拒绝时调用方自动退回普通揭示。
+// coins = 决策者金币；shots = 对方棋盘揭示记录；myFrozen = 自己施放的未过期冻结格
+//（{row,col}[]，等价于服务器 isFrozenCell 的决策视角）；pf = 概率场。
+// opts 覆盖 DECIDE_DEFAULTS 中的任意阈值。
+function decideItem(coins, shots, size, myFrozen, pf, opts) {
+  const o = Object.assign({}, DECIDE_DEFAULTS, opts || {});
+  // 1) 无所遁形：机头已找到且整机未完整揭示 → 4 金币换整机 10 格信息，非常值
+  if (coins >= o.exposeCoins) {
+    const head = findExposeHead(shots, size);
+    if (head) return { itemId: 'expose', data: { row: head.row, col: head.col } };
+  }
+  // 2) 毁灭菇（残局收割；6 金币，残局线略放宽）
+  if (coins >= o.doomCoins && pf && pf.head) {
+    const unknown = size * size - shots.length; // 每枪揭示 1 格
+    if (unknown <= size * size * o.doomRatio) {
+      const center = bestDoomCenter(pf, size, myFrozen);
+      if (center) return { itemId: 'doom', data: { row: center.row, col: center.col } };
+    }
+  }
+  // 概率场还没建出来（概率场失败兜底路径）→ 不再考虑价值道具
+  if (!pf || !pf.head) return null;
+  // 3) 吞噬者：残局搏机头——摧毁机头 = 发现飞机直接推进胜利。
+  //    3 金币后不再「永不用」；但只在机头高度集中的区域赌（P头总和 ≥0.6），
+  //    避免拿 3 金币清出一片对自己也未知的废墟
+  {
+    const unknown = size * size - shots.length;
+    if (unknown <= size * size * o.devourRatio) {
+      const region = bestDevourRegion(pf, size, myFrozen);
+      if (region && region.sum >= o.devourSum) return { itemId: 'devour', data: { row: region.row, col: region.col } };
+    }
+  }
+  // 4) 双发：未揭示未冻结格按 (P头+P身) 排序，top2 都够高才用
+  const frozenSet = new Set();
+  (myFrozen || []).forEach(function (f) { frozenSet.add(f.row * size + f.col); });
+  const revealed = new Set();
+  shots.forEach(function (s) { revealed.add(s.row * size + s.col); });
+  const scored = [];
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (revealed.has(r * size + c)) continue;
+      if (frozenSet.has(r * size + c)) continue;
+      scored.push({
+        row: r, col: c,
+        v: pf.head[r * size + c] + pf.body[r * size + c]
+      });
+    }
+  }
+  scored.sort(function (a, b) { return b.v - a.v; });
+  if (coins >= o.burstCoins && scored.length >= 2 && scored[0].v >= o.burstV && scored[1].v >= o.burstV) {
+    return {
+      itemId: 'burst',
+      data: { row: scored[0].row, col: scored[0].col, row2: scored[1].row, col2: scored[1].col }
+    };
+  }
+  // 5) 声呐：锚点分布熵 ≥0.4 才有信息价值
+  if (coins >= o.sonarCoins) {
+    const anchor = chooseSonarAnchor(pf, size, myFrozen);
+    if (anchor && anchor.entropy >= o.sonarEntropy) {
+      return { itemId: 'sonar', data: { row: anchor.row, col: anchor.col } };
+    }
+  }
+  // 6) 探测者：3 金币定向揭示（机身优先），金币 ≥4 且概率峰值高就值得
+  if (coins >= o.proCoins && scored.length && scored[0].v >= o.proV) {
+    return { itemId: 'pro', data: { row: scored[0].row, col: scored[0].col } };
+  }
+  return null;
 }
 
 // ---------- 决策 ----------
@@ -1508,6 +1600,8 @@ module.exports = {
   findExposeHead: findExposeHead,      // 无所遁形目标（AI 加强第 3 步）
   bestDoomCenter: bestDoomCenter,      // 毁灭菇中心（AI 加强第 3 步）
   bestDevourRegion: bestDevourRegion,  // 吞噬者区域（AI 加强第 4 步：残局搏机头）
+  decideItem: decideItem,              // 道具决策（服务器 AI 与自对弈共用；opts 可调阈值）
+  DECIDE_DEFAULTS: DECIDE_DEFAULTS,    // 道具决策默认阈值（调参实验的基准）
   chooseTargetSimple: chooseTargetSimple,
   chooseTarget: chooseTarget,
   chooseTargetGreedy: chooseTargetGreedy,

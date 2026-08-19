@@ -279,7 +279,7 @@ function curSpec() {
 }
 
 // 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { pro: 4, sonar: 4, expose: 4, burst: 3, devour: 3, doom: 8 };
+const ITEM_PRICES = { pro: 3, sonar: 4, expose: 4, burst: 4, devour: 3, doom: 6 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
   sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者', doom: '毁灭菇'

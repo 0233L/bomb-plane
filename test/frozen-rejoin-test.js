@@ -81,17 +81,17 @@ async function main() {
   await pB;
   console.log('— 已开战 —');
 
-  // A 揭示直到金币 >= 10（毁灭菇价格），边攒边打；步数规则要求双方交替，B 也配合下棋
+  // A 揭示直到金币 >= 8（偏保守：毁灭菇现价 6，攒到 8 确保买得起），边攒边打；步数规则要求双方交替，B 也配合下棋
   const usedA = new Set();
   const usedB = new Set();
   let coin = 0;
-  while (coin < 10) {
+  while (coin < 8) {
     const cell = pickUnknown(usedA);
     const p = waitForMatch(a, 'revealResult', function (d2) { return d2.attacker === 0; });
     a.emit('reveal', { row: cell[0], col: cell[1] });
     const d = await p;
     coin = d.coins[0];
-    if (coin >= 10) break;
+    if (coin >= 8) break;
     const bCell = pickUnknown(usedB);
     b.emit('reveal', { row: bCell[0], col: bCell[1] });
     await waitForMatch(a, 'revealResult', function (d2) { return d2.attacker === 1; });

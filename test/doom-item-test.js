@@ -172,7 +172,7 @@ async function main() {
   {
     const { a, b, knownA, knownB } = await makePropsRoom();
     roomA = { a: a, b: b, knownA: knownA, knownB: knownB };
-    // 攒金币：揭示 1 个机身（+1）+ 1 个机头（+3）= 6 + 4 = 10 ≥ 毁灭菇现价 8（每轮 B 拉平步数）
+    // 攒金币：揭示 1 个机身（+1）+ 1 个机头（+3）= 6 + 4 = 10 ≥ 毁灭菇现价 6（每轮 B 拉平步数）
     const bodies = planeCells(knownB).filter(function (c) { return contentOf(knownB, c[0], c[1]) === 'body'; });
     const b1 = bodies[0];
     const heads = planeCells(knownB).filter(function (c) { return contentOf(knownB, c[0], c[1]) === 'head'; });
@@ -181,7 +181,7 @@ async function main() {
     check('第一个机身揭示 +1 金币', r.coins[0] === 7);
     await bReveal(b, 1, 1); // 1:1
     r = await aReveal(a, h1[0], h1[1]); // 2:1，coins 7 + 3 = 10
-    check('机头揭示 +3 金币，攒够 8 买毁灭菇', r.coins[0] === 10);
+    check('机头揭示 +3 金币，攒够 6 买毁灭菇', r.coins[0] === 10);
     await bReveal(b, 2, 2); // 2:2
     // 找中心：5 格全未揭示（不含 b1/h1），且至少打中一架飞机（机身/机头都行）
     const center = findCenter(knownB, [b1, h1], null, null);
@@ -196,11 +196,11 @@ async function main() {
       return contentOf(knownB, c.row, c.col) === c.result;
     });
     check('5 格揭示结果与真实布局一致', allRight);
-    // 金币：10 - 8 + 十字内的收益（身 +1 / 头 +3 / 空 0）
+    // 金币：10 - 6 + 十字内的收益（身 +1 / 头 +3 / 空 0）
     const gain = res.cells.reduce(function (n, c) {
       return n + (c.result === 'head' ? 3 : c.result === 'body' ? 1 : 0);
     }, 0);
-    check('金币 = 10 - 8 + 十字收益（' + gain + '）', res.coins[0] === 2 + gain);
+    check('金币 = 10 - 6 + 十字收益（' + gain + '）', res.coins[0] === 4 + gain);
     check('毁灭菇步数 +1', res.steps[0] === 3 && res.steps[1] === 2);
     // 冻结集：与服务器同规则计算
     const revealedSet = {};
@@ -274,7 +274,7 @@ async function main() {
   {
     const { a, b, knownB } = await makePropsRoom();
     // 攒钱策略（金币检查先于选区校验，十字收益 0~15 随机——任何收益都必须买得起毁灭菇）：
-    // body1 + 3 机头 = 18 → 再补 5 机身 = 23 → doom(-8) = 15+收益 → 双发 burst(-3+2) = 14+收益 ≥ 3 ✓
+    // body1 + 3 机头 = 18 → 再补 5 机身 = 23 → doom(-6) = 17+收益 → 双发 burst(-4+2) = 15+收益 ≥ 4 ✓
     // 补金币必须赶在 doom 之前：doom 施放后 A 每走一步都逼近冻结 expiry（=doom 时 steps+2），
     // 后面 e4/e5 还要依赖冻结生效（steps 11 < expiry 12）。
     const heads = knownB.map(function (p) { return [p.headRow, p.headCol]; });
@@ -305,7 +305,7 @@ async function main() {
     // 中心避开全部已揭示格 + 第 4 个机头（十字若揭示它 → A 直接获胜，后续道具测试全废）
     const center = findCenter(knownB, heads.concat([body1], extraBodies, [heads[3]]));
     const res = await aUse(a, 'doom', { row: center.row, col: center.col },
-      function (d) { return d.itemId === 'doom' && d.attacker === 0; }); // 10:9, coins 15+收益
+      function (d) { return d.itemId === 'doom' && d.attacker === 0; }); // 10:9, coins 17+收益
     await bReveal(b, 10, 10); // 10:10（doom 施放时 steps=10 → 冻结 expiry=12）
     // 双发：一次行动揭示 2 个机身格（只占 1 步）。注意双发没有 itemResult 广播
     // （它只是两次普通揭示），要等两条 revealResult
@@ -327,7 +327,7 @@ async function main() {
     });
     a.emit('useItem', { itemId: 'burst', row: freshBodies[0][0], col: freshBodies[0][1], row2: freshBodies[1][0], col2: freshBodies[1][1] });
     await bp1;
-    await bp2; // 11:10, coins 14+收益
+    await bp2; // 11:10, coins 15+收益
     await bReveal(b, 11, 11); // 11:11（steps 11 < expiry 12，下面 e1~e5 的冻结断言仍生效）
     // 找一个 1..size-2 的冻结格（做选区拒绝和中心含冻结测试）
     const f = res.frozen.filter(function (x) { return x.row >= 1 && x.row <= SIZE - 2 && x.col >= 1 && x.col <= SIZE - 2; })[0];

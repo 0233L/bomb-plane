@@ -123,7 +123,7 @@ async function main() {
     }, 0);
     const res = await aUse(a, 'sonar', { row: reg.row, col: reg.col }, function (d) { return d.itemId === 'sonar' && d.attacker === 0; });
     check('声呐数字正确（期望 ' + expect + ' 个非空格）', res.count === expect);
-    check('声呐后 A 金币 = 6 - 4', res.coins[0] === 2);
+    check('声呐后 A 金币 = 6 - 4（声呐现价 4）', res.coins[0] === 2);
     check('声呐后步数 +1', res.steps[0] === 1);
   }
 
@@ -139,7 +139,7 @@ async function main() {
     a.emit('useItem', { itemId: 'pro', row: reg.row, col: reg.col });
     const res = await p;
     check('Pro 揭示结果必为机身', res.result === 'body');
-    check('Pro 后金币 = 6 - 4 + 1 = 3（探测者现价 4）', res.coins[0] === 3);
+    check('Pro 后金币 = 6 - 3 + 1 = 4（探测者现价 3）', res.coins[0] === 4);
     check('Pro 后步数 +1', res.steps[0] === 1);
   }
 
@@ -186,7 +186,7 @@ async function main() {
       check('全空区域揭示整个 3×3（9 条覆盖全部格子）', got === expect.sort().join('|'));
       check('9 格结果全部为 empty', results.every(function (d) { return d.result === 'empty'; }));
       check('整片揭示步数只 +1', results[8].steps[0] === 1);
-      check('整片揭示金币 = 6 - 4 = 2（空格无奖励）', results[8].coins[0] === 2);
+      check('整片揭示金币 = 6 - 3 = 3（探测者现价 3，空格无奖励）', results[8].coins[0] === 3);
     }
   }
 
@@ -212,7 +212,7 @@ async function main() {
     const r2 = await p2;
     check('双发两次揭示结果都是机身', r1.result === 'body' && r2.result === 'body');
     check('双发后步数只 +1', r2.steps[0] === 1);
-    check('双发后金币 = 6 - 3 + 2', r2.coins[0] === 5);
+    check('双发后金币 = 6 - 4 + 2（双发现价 4）', r2.coins[0] === 4);
     check('双发是两条独立 revealResult（格子不同）', r1.row !== r2.row || r1.col !== r2.col);
   }
 
@@ -263,13 +263,13 @@ async function main() {
   // ========== 6. 规则边界 ==========
   console.log('6. 规则边界');
   {
-    // 金币不足：吞噬者 3 用一次 → 剩 3，声呐 4 买不起。B 走一步拉平步数，买声呐被金币不足拒绝
+    // 金币不足：吞噬者 3 用一次 → 剩 3，毁灭菇 6 买不起。B 走一步拉平步数，买毁灭菇被金币不足拒绝
     const { a, b } = await makePropsRoom();
     const reg = { row: 0, col: 0 };
     await aUse(a, 'devour', { row: reg.row, col: reg.col }, function (d) { return d.itemId === 'devour' && d.attacker === 0; }); // 剩 3 金币，steps 1:0
     await bReveal(b, 0, 0); // steps 1:1
     const e1p = waitForMatch(a, 'error', function (d) { return true; });
-    a.emit('useItem', { itemId: 'sonar', row: reg.row, col: reg.col }); // 声呐 4 > 剩 3
+    a.emit('useItem', { itemId: 'doom', row: reg.row, col: reg.col }); // 毁灭菇 6 > 剩 3
     const err1 = await e1p;
     check('金币不足被拒', err1.message.indexOf('金币') !== -1);
 
