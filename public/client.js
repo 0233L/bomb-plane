@@ -278,19 +278,19 @@ function curSpec() {
   return (BOARD_SPECS[state.boardSize] || BOARD_SPECS.S);
 }
 
-// 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { pro: 3, sonar: 4, expose: 4, burst: 4, devour: 3, doom: 6 };
+// 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用；键序即道具栏显示顺序，按价格从低到高）
+const ITEM_PRICES = { pro: 3, devour: 3, sonar: 4, expose: 4, burst: 4, doom: 6 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
-  sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者', doom: '毁灭菇'
+  pro: '探测者', devour: '吞噬者', sonar: '声呐脉冲', expose: '无所遁形', burst: '双发连射', doom: '毁灭菇'
 };
 // 选中道具后状态条的介绍：一句话自然描述（范围 + 作用）
 const ITEM_TIPS = {
-  sonar: '· 在对方棋盘选 3×3 区域，显示其中飞机格的数量',
   pro: '· 在对方棋盘选 3×3 区域，按「机身→机头→空」优先揭示 1 格真实内容',
-  burst: '· 点对方棋盘 2 个未知格，一次行动同时揭示',
-  expose: '· 点已揭示的机头格，完整揭示整架飞机（10 格全显示）',
   devour: '· 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机',
+  sonar: '· 在对方棋盘选 3×3 区域，显示其中飞机格的数量',
+  expose: '· 点已揭示的机头格，完整揭示整架飞机（10 格全显示）',
+  burst: '· 点对方棋盘 2 个未知格，一次行动同时揭示',
   doom: '· 点对方棋盘任意格作十字中心：十字 5 格揭示，周围一圈未揭示格被封锁（❄）——接下来 2 次行动你不能点它们'
 };
 

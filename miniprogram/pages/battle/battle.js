@@ -11,18 +11,18 @@ const state = app.globalData.state;
 const shared = app.shared;
 
 // 道具价格表（与服务器 server.js 的 ITEM_PRICES 保持一致，按钮置灰用）
-const ITEM_PRICES = { pro: 3, sonar: 4, expose: 4, burst: 4, devour: 3, doom: 6 };
+const ITEM_PRICES = { pro: 3, devour: 3, sonar: 4, expose: 4, burst: 4, doom: 6 };
 // 道具的中文名 + 效果 + 操作指引（选区状态条显示：先讲效果，再讲怎么选）
 const ITEM_NAMES = {
-  sonar: '声呐脉冲', pro: '探测者', burst: '双发连射', expose: '无所遁形', devour: '吞噬者',
+  pro: '探测者', devour: '吞噬者', sonar: '声呐脉冲', expose: '无所遁形', burst: '双发连射',
   doom: '毁灭菇'
 };
 const ITEM_TIPS = {
-  sonar: '· 在对方棋盘选 3×3 区域，显示其中飞机格的数量',
   pro: '· 在对方棋盘选 3×3 区域，按「机身→机头→空」优先揭示 1 格真实内容',
-  burst: '· 点对方棋盘 2 个未知格，一次行动同时揭示',
-  expose: '· 点已揭示的机头格，完整揭示整架飞机（10 格全显示）',
   devour: '· 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机',
+  sonar: '· 在对方棋盘选 3×3 区域，显示其中飞机格的数量',
+  expose: '· 点已揭示的机头格，完整揭示整架飞机（10 格全显示）',
+  burst: '· 点对方棋盘 2 个未知格，一次行动同时揭示',
   doom: '· 点对方棋盘任意格作十字中心：十字 5 格揭示，相邻未揭示格冻结 2 回合'
 };
 
@@ -170,12 +170,13 @@ Page({
     // 道具版 + 非观战 + 非结束 + 步数不领先才可点；金币不够的单个置灰
     const canAct = !s.spectator && !s.over && s.steps[s.seat] <= s.steps[1 - s.seat];
     // 价格统一从 ITEM_PRICES 取（曾经写死 2/3/5/5/5/10 旧价导致按钮显示与真实价格不一致）
+    // 道具栏显示顺序：按价格从低到高（与 web 端 index.html 的道具按钮保持一致）
     const ITEM_ORDER = [
       { id: 'pro', label: '🔍 探测者', desc: '身→头→空优先揭 1 格 · 全空揭全区' },
+      { id: 'devour', label: '🧨 吞噬者', desc: '3×3 区域摧毁' },
       { id: 'sonar', label: '🔊 声呐', desc: '区域内飞机数量' },
       { id: 'expose', label: '👁 无所遁形', desc: '整架飞机全揭示' },
       { id: 'burst', label: '💥 双发', desc: '一次行动揭 2 格' },
-      { id: 'devour', label: '🧨 吞噬者', desc: '3×3 区域摧毁' },
       { id: 'doom', label: '🌋 毁灭菇', desc: '十字揭示+冻结' }
     ];
     const items = ITEM_ORDER.map(function (it) {
