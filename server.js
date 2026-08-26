@@ -1426,16 +1426,16 @@ function renderStatsHtml(key) {
   list.forEach(function (entry) {
     const id = entry[0], v = entry[1];
     const online = onlineVisitors.has(id);
-    const idJs = JSON.stringify(id); // JS 字符串字面量（防引号注入 onclick）
-    rows += '<tr data-id="' + idJs.slice(1, -1) + '">' +
+    rows += '<tr data-id="' + escapeHtml(id) + '">' +
       '<td>' + (v.platform === 'mini' ? '小程序' : '网页') + '</td>' +
       '<td class="status-cell">' + (online ? '🟢 在线' : '⚪ 离线') + '</td>' +
-      '<td>' + (v.nickname ? escapeHtml(v.nickname) : '<span class="faint">（无昵称）</span>') + '</td>' +
+      '<td class="name-cell" data-name="' + escapeHtml(v.nickname || '') + '">' +
+      (v.nickname ? escapeHtml(v.nickname) : '<span class="faint">（无昵称）</span>') + '</td>' +
       '<td>' + escapeHtml(id) + '</td>' +
       '<td>' + new Date(v.firstVisit).toLocaleString('zh-CN', { hour12: false }) + '</td>' +
       '<td>' + new Date(v.lastVisit).toLocaleString('zh-CN', { hour12: false }) + '</td>' +
       '<td>' + v.visits + '</td>' +
-      '<td><button onclick="rename(' + idJs + ')">改昵称</button></td></tr>';
+      '<td><button onclick="rename(this)">改昵称</button></td></tr>';
   });
   let webCount = 0, miniCount = 0, totalVisits = 0;
   visitors.forEach(function (v) {
@@ -1447,7 +1447,9 @@ function renderStatsHtml(key) {
     '<style>body{font-family:system-ui;max-width:820px;margin:40px auto;padding:0 16px;color:#333}' +
     'table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}' +
     '.note{color:#888;font-size:13px}.faint{color:#999}button{font-size:12px;padding:3px 8px}' +
-    '.online-pill{background:#e8f5e9;border-radius:999px;padding:1px 10px}</style></head><body>' +
+    '.online-pill{background:#e8f5e9;border-radius:999px;padding:1px 10px}' +
+    '.name-input{font-size:12px;padding:3px 5px;width:120px;box-sizing:border-box}' +
+    '.name-cell button{margin-left:4px}</style></head><body>' +
     '<h1>访客统计</h1>' +
     '<p><span class="online-pill"><b id="online-count">' + onlineCount + '</b> 人在线</span>，' +
     '共 ' + visitors.size + ' 位访客（网页 ' + webCount + ' / 小程序 ' + miniCount + '），累计访问 ' + totalVisits + ' 次。</p>' +
@@ -1455,14 +1457,30 @@ function renderStatsHtml(key) {
     '<p class="note">时间显示为服务器本地时间。数据只含平台与时间戳，无任何个人信息。' +
     'Render 免费版磁盘是临时的：休眠/重启/重新部署后统计会从零开始。</p>' +
     '<script>var KEY = ' + JSON.stringify(key) + ';' +
-    'function rename(id) {' +
-    '  var nickname = prompt("给这位访客备注昵称（留空并确定 = 清除昵称）：", "");' +
-    '  if (nickname === null) return;' +
+    'function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}' +
+    'function renderNameCell(tr){' +
+    '  var cell = tr.querySelector(".name-cell");' +
+    '  var name = cell.dataset.name || "";' +
+    '  cell.innerHTML = name ? esc(name) : \'<span class="faint">（无昵称）</span>\';' +
+    '}' +
+    'function rename(btn){' + // 点「改昵称」：该行昵称格变输入框 + 保存/取消（页面内编辑，不用浏览器弹窗）
+    '  var tr = btn.closest("tr");' +
+    '  var cell = tr.querySelector(".name-cell");' +
+    '  cell.innerHTML = \'<input class="name-input" maxlength="12" value="\' + esc(cell.dataset.name || "") + \'">\' +' +
+    '    \' <button onclick="saveRename(this)">保存</button>\' +' +
+    '    \' <button onclick="cancelRename(this)">取消</button>\';' +
+    '  cell.querySelector("input").focus();' +
+    '}' +
+    'function saveRename(btn){' +
+    '  var tr = btn.closest("tr");' +
+    '  var cell = tr.querySelector(".name-cell");' +
+    '  var nickname = cell.querySelector(".name-input").value.trim();' + // 留空 = 清除昵称
     '  fetch("/stats/rename", { method: "POST", headers: { "Content-Type": "application/json" },' +
-    '    body: JSON.stringify({ key: KEY, id: id, nickname: nickname }) })' +
-    '    .then(function (r) { if (r.ok) location.reload(); else return r.text(); })' +
+    '    body: JSON.stringify({ key: KEY, id: tr.dataset.id, nickname: nickname }) })' +
+    '    .then(function (r) { if (r.ok) { cell.dataset.name = nickname; renderNameCell(tr); } else { return r.text(); } })' +
     '    .then(function (err) { if (err) alert("改名失败：" + err); });' +
     '}' +
+    'function cancelRename(btn){ renderNameCell(btn.closest("tr")); }' +
     'setInterval(function () {' +
     '  fetch("/stats.json?key=" + encodeURIComponent(KEY)).then(function (r) { return r.ok ? r.json() : null; })' +
     '    .then(function (data) {' +

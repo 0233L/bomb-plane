@@ -109,6 +109,10 @@ async function main() {
   check('/stats.json 返回昵称', data.visitors.some(function (v) { return v.id === vidA && v.nickname === '我的手机'; }));
   let pageHtml = await (await fetch(URL + '/stats?key=' + KEY)).text();
   check('/stats 页面显示昵称', pageHtml.indexOf('我的手机') !== -1);
+  check('页面带内联编辑 UI（name-cell + 保存/取消）',
+    pageHtml.indexOf('name-cell') !== -1 && pageHtml.indexOf('saveRename') !== -1 &&
+    pageHtml.indexOf('cancelRename') !== -1 && pageHtml.indexOf('rename(this)') !== -1);
+  check('不再用浏览器 prompt 弹窗', pageHtml.indexOf('prompt(') === -1);
 
   // 昵称转义：防 HTML 注入
   await fetch(URL + '/stats/rename', {
