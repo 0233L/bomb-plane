@@ -124,6 +124,7 @@
       <span class="room-tag">房间 <b id="battle-room-id"></b></span>
       <span class="mode-badge hidden"></span>
       <button class="btn-copy-link small-btn">📋 复制邀请链接</button>
+      <button id="btn-battle-rules" class="battle-rules-btn" title="查看游戏规则（优先显示当前模式的规则）">📖 规则</button>
       <button class="btn-back-menu small-btn">← 返回菜单</button>
     </div>
     <!-- 结束横幅：对局结束后出现（棋盘保留、对方飞机公开），不遮挡棋盘 -->
@@ -138,7 +139,6 @@
     <!-- 棋盘上方的信息条：观战人数 | 我的信息 | 比分 | 对手信息（比分居中） -->
     <div class="battle-info-row">
       <div id="spectator-badge" class="spectator-badge hidden">👁 <span id="spectator-count">0</span></div>
-      <button id="btn-battle-rules" class="battle-rules-btn" title="查看游戏规则（优先显示当前模式的规则）">📖 规则</button>
       <div class="player-panel">
         <h3><span id="panel-my-avatar" class="avatar avatar-click" title="点我换头像"></span><span id="panel-my-name"></span> <span id="panel-my-dot" class="dot"></span></h3>
         <p>步数：<b id="panel-my-steps">0</b></p>
@@ -209,7 +209,10 @@
   <!-- 游戏规则弹窗：两栏 tab（经典模式基础规则 / 道具模式只讲道具特有规则，不重复基础规则） -->
   <div id="rules-modal" class="modal hidden">
     <div class="modal-box">
-      <h2>📖 游戏规则</h2>
+      <div class="rules-modal-head">
+        <h2>📖 游戏规则</h2>
+        <button id="btn-rules-x" class="modal-x" aria-label="关闭">✕</button>
+      </div>
 
       <div class="rules-tabs">
         <button class="rules-tab active" data-tab="classic">🎯 经典模式</button>

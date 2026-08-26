@@ -1809,6 +1809,9 @@ function bindUIEvents() {
   $('#btn-rules-close').addEventListener('click', function () {
     $('#rules-modal').classList.add('hidden');
   });
+  $('#btn-rules-x').addEventListener('click', function () {
+    $('#rules-modal').classList.add('hidden');
+  });
   $('#rules-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.add('hidden');
   });

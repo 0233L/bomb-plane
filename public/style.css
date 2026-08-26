@@ -366,6 +366,24 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   overflow-y: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }
+/* 规则弹窗头部：标题 + ✕ 关闭按钮（✕ 不随内容滚动，始终可见） */
+.rules-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.modal-x {
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.modal-x:hover { background: transparent; color: var(--text); }
 /* 经典模式飞机朝向配图：2×2 网格（每行 2 张）、图改小 */
 .rules-diagram { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; justify-items: center; margin: 16px 0; }
 .rules-plane { text-align: center; }
@@ -759,16 +777,14 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
     top: 0;
     z-index: 5;
   }
-  /* 只有「按钮」半透明置顶：玩家卡片、比分胶囊、规则按钮、观战徽章 */
+  /* 只有「按钮」半透明置顶：玩家卡片、比分胶囊、观战徽章（规则按钮已移入顶部菜单栏） */
   .battle-info-row .player-panel,
-  .battle-info-row .battle-rules-btn,
   .battle-info-row .battle-score,
   .battle-info-row .spectator-badge {
     background: rgba(255, 255, 255, .72);
     box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
   }
   :root[data-theme="dark"] .battle-info-row .player-panel,
-  :root[data-theme="dark"] .battle-info-row .battle-rules-btn,
   :root[data-theme="dark"] .battle-info-row .battle-score,
   :root[data-theme="dark"] .battle-info-row .spectator-badge {
     background: rgba(15, 23, 42, .72);
@@ -789,4 +805,13 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   .panel-coins { font-size: 15px; }
   .panel-coins b { font-size: 17px; }
   .coins-row { font-size: 13px; }
+  /* 规则弹窗手机端改底部抽屉：内容长时露出上方大片可点遮罩区（点外部退出），
+     顶部 ✕ 兜底。只限定 #rules-modal，头像弹窗 #avatar-modal 保持居中不受影响 */
+  #rules-modal { align-items: flex-end; }
+  #rules-modal .modal-box {
+    width: 100%;
+    max-width: none;
+    max-height: 78vh;
+    border-radius: 12px 12px 0 0;
+  }
 }

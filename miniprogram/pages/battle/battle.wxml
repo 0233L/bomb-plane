@@ -3,13 +3,15 @@
   <view class="topbar">
     <text class="side link" bindtap="onBackTap">← 菜单</text>
     <text class="title">{{spectator ? '观战' : '对战'}}</text>
-    <text class="side link" bindtap="onCopyRoomTap">邀请</text>
+    <view class="topbar-right">
+      <text class="side link" bindtap="onCopyRoomTap">邀请</text>
+      <text class="rules-entry" bindtap="onRulesTap">📖 规则</text>
+    </view>
   </view>
   <view class="room-row">
     <text>房间号 <text class="room-tag">{{roomId}}</text></text>
     <text class="mode-badge" wx:if="{{modeBadge}}">{{modeBadge}}</text>
     <text wx:if="{{spectatorCount > 0}}" class="spec-badge">👁 {{spectatorCount}} 观战中</text>
-    <text class="rules-entry" bindtap="onRulesTap">📖 规则</text>
   </view>
 
   <!-- 观战等待页：双方还在部署（或等待对手），开战后自动进入对战 -->
@@ -116,8 +118,12 @@
 
   <!-- 规则弹窗：默认显示当前模式的规则栏（道具版→道具栏、经典版→经典栏），可手动切换。
        内容与首页规则弹窗一致（首页那份不动，这里是对战页自己的副本） -->
-  <view class="modal-mask" wx:if="{{showRules}}" bindtap="onRulesClose">
+  <view class="modal-mask modal-mask-bottom" wx:if="{{showRules}}" bindtap="onRulesClose">
     <view class="modal" catchtap="noop">
+      <view class="modal-head">
+        <text class="modal-title">📖 游戏规则</text>
+        <text class="modal-x" bindtap="onRulesClose">✕</text>
+      </view>
       <view class="rules-tabs">
         <view class="rules-tab {{rulesTab === 'classic' ? 'active' : ''}}" data-tab="classic" bindtap="onRulesTabTap">🎯 经典模式</view>
         <view class="rules-tab {{rulesTab === 'props' ? 'active' : ''}}" data-tab="props" bindtap="onRulesTabTap">🎁 道具模式</view>

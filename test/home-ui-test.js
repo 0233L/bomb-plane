@@ -296,6 +296,11 @@ const testSrc = [
   '  document.getElementById("btn-battle-rules").click();',
   '  check("经典版点开默认经典栏", document.querySelector(".rules-tab[data-tab=\\"classic\\"]").classList.contains("active"));',
   '  document.getElementById("btn-rules-close").click();',
+  '  check("规则按钮已移入顶栏", document.querySelector("#view-battle .topbar #btn-battle-rules") !== null);',
+  '  check("规则按钮已移出信息条", document.querySelector("#view-battle .battle-info-row #btn-battle-rules") === null);',
+  '  document.getElementById("btn-battle-rules").click();',
+  '  document.getElementById("btn-rules-x").click();',
+  '  check("点 ✕ 关闭规则弹窗", document.getElementById("rules-modal").classList.contains("hidden"));',
   '',
   '  return { passed: passed, failed: failed, lines: lines };',
   '};'

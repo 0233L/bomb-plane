@@ -16,12 +16,33 @@
   padding: 2rpx 16rpx;
   font-size: 24rpx;
 }
-/* 「📖 规则」入口：打开规则弹窗（默认显示当前模式的规则栏） */
+/* 顶栏右侧：邀请 + 规则 并排 */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+/* 「📖 规则」入口（在顶栏里）：打开规则弹窗（默认显示当前模式的规则栏） */
 .rules-entry {
-  margin-left: 24rpx;
   font-size: 26rpx;
   color: var(--primary);
 }
+/* 规则弹窗手机端底部抽屉：内容长时露出上方大片可点遮罩区（点外部退出），顶部 ✕ 兜底。
+   只对 battle 页的规则弹窗生效（modal-mask-bottom 是页面级类），首页弹窗不受影响 */
+.modal-mask-bottom { align-items: flex-end; }
+.modal-mask-bottom .modal {
+  width: 100%;
+  max-height: 78vh;
+  border-radius: 24rpx 24rpx 0 0;
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+.modal-title { font-size: 34rpx; font-weight: bold; }
+.modal-x { font-size: 36rpx; color: var(--text-3); padding: 8rpx; }
 /* 规则弹窗两栏 tab（与首页同款样式，页面级样式各页自带） */
 .rules-tabs { display: flex; gap: 16rpx; margin-bottom: 16rpx; }
 .rules-tab {
