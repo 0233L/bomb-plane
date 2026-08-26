@@ -354,7 +354,7 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 95; /* 高于悬浮主题按钮(90)：弹窗打开时右上角 ✕ 不被 🌓 遮挡；低于 toast(100) */
 }
 .modal-box {
   background: var(--surface);
