@@ -604,7 +604,7 @@ socket.on('itemResult', function (d) {
       target.push({ row: cell[0], col: cell[1], result: 'body' });
     });
   } else if (d.itemId === 'doom') {
-    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结。揭示分流同吞噬者；
+    // 毁灭菇：十字 5 格揭示 + 对角线 4 格冻结。揭示分流同吞噬者；
     // 冻结只记自己施放的（冻结只约束施放者自己，别把对方的也收进数组）
     const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
     (d.cells || []).forEach(function (cell) {

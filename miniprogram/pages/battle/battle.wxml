@@ -229,14 +229,14 @@
           </view>
           <view class="props-item">
             <view class="props-fold-head" data-prop="doom" bindtap="onPropDetailTap">
-              <text class="fold-text">🌋 毁灭菇 <text class="gold">6<text class="coin-icon"></text></text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，周围一圈未揭示格被<b>封锁</b>（❄ 标记）——接下来 2 次行动你不能点击它们，对手不受影响。</text>
+              <text class="fold-text">🌋 毁灭菇 <text class="gold">6<text class="coin-icon"></text></text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，对角线 4 个角格被<b>封锁</b>（❄ 标记）——接下来 2 次行动你不能点击它们，对手不受影响。</text>
               <text class="fold-arrow {{propDetailOpen === 'doom' ? 'open' : ''}}">▸</text>
             </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'doom'}}">
               <text class="prop-d-p"><b>使用：</b>选中「🌋 毁灭菇」，在对方棋盘点任意一个格子作十字中心。</text>
-              <text class="prop-d-p"><b>效果：</b>十字 5 格（中心 + 上下左右）立即揭示；周围一圈未揭示格被封锁（❄ 标记）——接下来 2 次行动你不能点击这些冻结格，对手自己不受影响。</text>
+              <text class="prop-d-p"><b>效果：</b>十字 5 格（中心 + 上下左右）立即揭示；中心的对角线 4 个角格被封锁（❄ 标记）——接下来 2 次行动你不能点击这些冻结格，对手自己不受影响。</text>
               <view class="illus-board illus-5"><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell froz">❄</view><view class="illus-cell body"></view><view class="illus-cell froz">❄</view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell body"></view><view class="illus-cell head"></view><view class="illus-cell body"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell froz">❄</view><view class="illus-cell body"></view><view class="illus-cell froz">❄</view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view></view>
-              <text class="prop-illus-caption">十字 5 格揭示 + 周围一圈 ❄ 冻结</text>
+              <text class="prop-illus-caption">十字 5 格揭示 + 对角线 4 个角格 ❄ 冻结</text>
               <text class="prop-d-p"><b>图标含义：</b>❄ 格 = 被毁灭菇冻结：施放者接下来 2 次行动不能点击它（被施放方不受影响，可以正常打）。冻结到期后 ❄ 消失、格子恢复正常。</text>
             </view>
           </view>

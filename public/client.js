@@ -291,7 +291,7 @@ const ITEM_TIPS = {
   sonar: '· 在对方棋盘选 3×3 区域，显示其中飞机格的数量',
   expose: '· 点已揭示的机头格，完整揭示整架飞机（10 格全显示）',
   burst: '· 点对方棋盘 2 个未知格，一次行动同时揭示',
-  doom: '· 点对方棋盘任意格作十字中心：十字 5 格揭示，周围一圈未揭示格被封锁（❄）——接下来 2 次行动你不能点它们'
+  doom: '· 点对方棋盘任意格作十字中心：十字 5 格揭示，对角线 4 个角格被封锁（❄）——接下来 2 次行动你不能点它们'
 };
 
 // ---------- 棋盘渲染 ----------
@@ -1904,7 +1904,7 @@ function handleItemResult(d) {
       target.push({ row: cell[0], col: cell[1], result: 'body' });
     });
   } else if (d.itemId === 'doom') {
-    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结。揭示分流同吞噬者；
+    // 毁灭菇：十字 5 格揭示 + 对角线 4 格冻结。揭示分流同吞噬者；
     // 冻结只记自己施放的（冻结只约束施放者自己，别把对方的也收进数组）
     const target = d.attacker === state.seat ? state.enemyShotsReceived : state.myShotsReceived;
     (d.cells || []).forEach(function (cell) {

@@ -40,7 +40,7 @@ const ITEM_PRICES = {
   sonar: 4,   // 声呐脉冲：3x3 区域显示非空格数量（0~9）
   expose: 4,  // 无所遁形：对已揭示的机头使用，完整揭示整架飞机（10 格）
   burst: 4,   // 双发连射：一次行动揭示 2 格（只占一步）
-  doom: 6     // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结（施放者接下来 2 次行动不能碰）
+  doom: 6     // 毁灭菇：十字 5 格揭示 + 对角线 4 格冻结（施放者接下来 2 次行动不能碰）
 };
 
 // 人机对战的 AI 决策模块（精确枚举 + 机头概率图）
@@ -833,16 +833,6 @@ function crossCells(row, col) {
   return [[row, col], [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]];
 }
 
-// 8 邻域坐标（边界裁剪，不含自身）——毁灭菇冻结范围
-function neighbor8(row, col, size) {
-  const cells = [];
-  for (let r = row - 1; r <= row + 1; r++) {
-    for (let c = col - 1; c <= col + 1; c++) {
-      if (r >= 0 && r < size && c >= 0 && c < size && !(r === row && c === col)) cells.push([r, c]);
-    }
-  }
-  return cells;
-}
 
 // ---------- 毁灭菇冻结（只约束施放者自己，对手不受任何影响） ----------
 
@@ -1061,7 +1051,7 @@ function doUseItem(room, seat, itemId, data) {
   }
 
   if (itemId === 'doom') {
-    // 毁灭菇：十字 5 格揭示 + 相邻未揭示格冻结。
+    // 毁灭菇：十字 5 格揭示 + 对角线 4 格冻结。
     // 冻结只约束施放者自己（接下来 2 次行动不能揭示/选中这些格），对手不受影响。
     const row = data.row, col = data.col;
     // 十字中心必须完整落盘（离边至少 1 格，上下左右才不会出界）
@@ -1083,16 +1073,12 @@ function doUseItem(room, seat, itemId, data) {
     });
     if (!revealed.length) return '十字的 5 格都已经揭示过了';
 
-    // 生成冻结：与十字 5 格相邻（8 邻域）且未揭示的格子（去重，十字本身不冻结）
+    // 生成冻结：十字中心的对角线 4 格（已揭示的跳过；中心离边至少 1 格，对角不会出界）
     const frozen = [];
-    cells.forEach(function (cell) {
-      neighbor8(cell[0], cell[1], size).forEach(function (n) {
-        const nr = n[0], nc = n[1];
-        if (cells.some(function (c2) { return c2[0] === nr && c2[1] === nc; })) return;
-        if (defender.shotsReceived.some(function (s) { return s.row === nr && s.col === nc; })) return;
-        if (frozen.some(function (f) { return f[0] === nr && f[1] === nc; })) return;
-        frozen.push([nr, nc]);
-      });
+    [[row - 1, col - 1], [row - 1, col + 1], [row + 1, col - 1], [row + 1, col + 1]].forEach(function (n) {
+      const nr = n[0], nc = n[1];
+      if (defender.shotsReceived.some(function (s) { return s.row === nr && s.col === nc; })) return;
+      frozen.push([nr, nc]);
     });
 
     room.coins[seat] -= price;

@@ -32,6 +32,7 @@
   --cell-pending: #3b5bdb;      /* 棋盘：已点击、等待服务器回复的格子 */
   --edge: #64748b;             /* 飞机轮廓线 */
   --board-border: #94a3b8;     /* 棋盘格线 */
+  --grid: #94a3b8;             /* 规则渲染图格线（道具示意网格用） */
   --dim-overlay: rgba(15, 23, 42, .28); /* 没被打过的格子的遮罩（亮色模式调浅：能区分但不暗） */
 }
 :root[data-theme="dark"] {
@@ -57,6 +58,7 @@
   --cell-pending: #3b82f6;
   --edge: #94a3b8;
   --board-border: #475569;
+  --grid: #334155;             /* 规则渲染图格线（道具示意网格用） */
   --dim-overlay: rgba(0, 0, 0, .5);
 }
 

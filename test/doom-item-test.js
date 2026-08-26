@@ -2,7 +2,7 @@
 // test/doom-item-test.js —— 毁灭菇道具测试
 // 用法：先启动服务器（RECYCLE_SECONDS=3 node server.js）再运行本测试
 // 已知布局（测试脚本掌握 B 的飞机坐标）+ 多房间分工，精准断言：
-//   十字 5 格揭示 / 冻结 8 邻域生成 / 金币 10 / 冻结拒绝与对手不受限 /
+//   十字 5 格揭示 / 冻结对角线 4 格生成 / 金币 10 / 冻结拒绝与对手不受限 /
 //   选区整体拒绝（声呐/双发/毁灭菇）/ 2 回合解除 / 越界拒绝 / 全揭示拒绝 / headsLeft
 // ============================================
 'use strict';
@@ -144,23 +144,14 @@ function findCenter(knownB, exclude, wantContent, avoidContent) {
   return null;
 }
 
-// 毁灭菇冻结范围的期望值：十字 5 格 8 邻域并集 - 十字 - 已揭示格（和服务器同规则）
+// 毁灭菇冻结范围的期望值：十字中心的对角线 4 格 - 已揭示格（和服务器同规则；cross[0] = 中心）
 function frozenExpect(cross, revealedSet) {
-  const seen = {};
-  cross.forEach(function (c) { seen[c[0] + ',' + c[1]] = true; });
+  const center = cross[0];
   const out = [];
-  cross.forEach(function (c) {
-    for (let r = c[0] - 1; r <= c[0] + 1; r++) {
-      for (let cc = c[1] - 1; cc <= c[1] + 1; cc++) {
-        if (r < 0 || r >= SIZE || cc < 0 || cc >= SIZE) continue;
-        if (r === c[0] && cc === c[1]) continue;
-        const key = r + ',' + cc;
-        if (seen[key]) continue;
-        if (revealedSet[key]) continue;
-        seen[key] = true;
-        out.push([r, cc]);
-      }
-    }
+  [[center[0] - 1, center[1] - 1], [center[0] - 1, center[1] + 1],
+   [center[0] + 1, center[1] - 1], [center[0] + 1, center[1] + 1]].forEach(function (n) {
+    if (revealedSet[n[0] + ',' + n[1]]) return;
+    out.push(n);
   });
   return out;
 }
@@ -206,7 +197,7 @@ async function main() {
     const revealedSet = {};
     [b1, h1].forEach(function (c) { revealedSet[c[0] + ',' + c[1]] = true; });
     const expectFrozen = frozenExpect(center2.cross, revealedSet);
-    check('冻结格数量与 8 邻域期望一致（' + expectFrozen.length + '）',
+    check('冻结格数量与对角线期望一致（' + expectFrozen.length + '）',
       Array.isArray(res.frozen) && res.frozen.length === expectFrozen.length);
     // 冻结记录带 owner/expiry（客户端判断过期需要）
     const recOk = res.frozen.every(function (f) {
@@ -218,7 +209,7 @@ async function main() {
     const frozenKeys = {};
     expectFrozen.forEach(function (f) { frozenKeys[f[0] + ',' + f[1]] = true; });
     const allIn = res.frozen.every(function (f) { return !!frozenKeys[f.row + ',' + f.col]; });
-    check('冻结格全部来自十字的 8 邻域', allIn);
+    check('冻结格全部来自中心的对角线 4 格', allIn);
     roomA.center = center2;
     roomA.frozen = res.frozen;
     roomA.b1 = b1; roomA.h1 = h1;
