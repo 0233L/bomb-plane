@@ -1812,15 +1812,15 @@ function bindUIEvents() {
   $('#rules-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.add('hidden');
   });
-  // 道具「查看详情」：点按钮展开/收起对应详情面板（按钮文字同步切换）
+  // 道具折叠块：点头部展开/收起对应详情面板（箭头同步旋转）
   $('#rules-pane-props').addEventListener('click', function (e) {
-    const btn = e.target.closest('.prop-detail-btn');
-    if (!btn) return;
-    const panel = document.getElementById('prop-detail-' + btn.dataset.prop);
+    const head = e.target.closest('.props-fold-head');
+    if (!head) return;
+    const panel = document.getElementById('prop-detail-' + head.dataset.prop);
     if (!panel) return;
     const willShow = panel.classList.contains('hidden');
     panel.classList.toggle('hidden', !willShow);
-    btn.textContent = willShow ? '收起' : '查看详情';
+    head.classList.toggle('open', willShow);
   });
 
   // 头像选择面板：点自己的头像（首页/邀请页/对战页面板）打开；🎲 随机 / 点背景关闭

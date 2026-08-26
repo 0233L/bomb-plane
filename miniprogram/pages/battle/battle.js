@@ -493,7 +493,7 @@ Page({
   onRulesTabTap(e) {
     this.setData({ rulesTab: e.currentTarget.dataset.tab, propDetailOpen: '' }); // 切栏时收起道具详情
   },
-  // 道具「查看详情」：点按钮展开/收起对应详情面板（手风琴，同时只展开一个）
+  // 道具折叠块：点头部展开/收起对应详情面板（手风琴，同时只展开一个）
   onPropDetailTap(e) {
     const prop = (e && e.currentTarget && e.currentTarget.dataset.prop) || '';
     this.setData({ propDetailOpen: this.data.propDetailOpen === prop ? '' : prop });

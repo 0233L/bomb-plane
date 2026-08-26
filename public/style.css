@@ -27,12 +27,12 @@
   --banner-border: #ffd54f;
   --banner-text: #b45309;
   --cell-empty: #f5f5f5;       /* 棋盘：空格 */
-  --cell-unknown: #1e293b;     /* 棋盘：未知格（深蓝灰） */
-  --cell-unknown-hover: #334155;
+  --cell-unknown: #cbd5e1;     /* 棋盘：未知格（浅灰蓝，亮色模式提亮） */
+  --cell-unknown-hover: #dbe4f0;
   --cell-pending: #3b5bdb;      /* 棋盘：已点击、等待服务器回复的格子 */
   --edge: #64748b;             /* 飞机轮廓线 */
   --board-border: #94a3b8;     /* 棋盘格线 */
-  --dim-overlay: rgba(15, 23, 42, .65); /* 没被打过的格子的遮罩 */
+  --dim-overlay: rgba(15, 23, 42, .28); /* 没被打过的格子的遮罩（亮色模式调浅：能区分但不暗） */
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -390,19 +390,32 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 /* 规则弹窗里的飞机小配图：借用棋盘配色，格子缩小到 12px（5×5 图整体 60px 宽） */
 .mini-board td { width: 12px; height: 12px; }
 
-/* 道具「查看详情」按钮：条目下方的小文字按钮 */
-.prop-detail-btn {
-  display: block;
-  margin: 6px 0 2px;
-  padding: 2px 12px;
-  font-size: 12px;
-  color: var(--primary);
-  background: none;
-  border: 1px solid var(--primary);
-  border-radius: 10px;
+/* 道具折叠块：每个道具条目本身可点击（有边框轮廓 + 箭头暗示可展开），点头部展开/收起详情面板 */
+.props-fold-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-sizing: border-box;
   cursor: pointer;
+  line-height: 1.6;
 }
-/* 道具详情面板：点「查看详情」展开显示 */
+.props-fold-head:hover { background: var(--hover); }
+.fold-arrow {
+  flex-shrink: 0;
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--text-2);
+  transition: transform .2s;
+}
+.props-fold-head.open .fold-arrow { transform: rotate(90deg); color: var(--primary); }
+/* 道具详情面板：点头部展开显示 */
 .prop-detail { margin: 8px 0 4px; padding: 10px 12px; background: var(--surface); border-radius: 8px; }
 .prop-detail p { font-size: 13px; color: var(--text-2); line-height: 1.8; margin: 0 0 8px; }
 .prop-detail p:last-child { margin-bottom: 0; }
@@ -429,11 +442,11 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   margin-right: 6px;
   vertical-align: -2px;
 }
-.illus-dot.x-dot { color: var(--faint); }
+.illus-dot.x-dot { color: var(--text-3); }
 .illus-dot.num-dot { color: #fbbf24; font-weight: bold; }
 .illus-dot.froz-dot { color: #a78bfa; }
 .illus-dot.gold-edge { box-shadow: inset 0 0 0 2px #f6c945; }
-.illus-dot.dim-dot { background: rgba(0, 0, 0, .35); }
+.illus-dot.dim-dot { background: var(--cell-unknown); }
 
 /* ---------- 观战人数徽章（信息条最左侧，无人观战时不显示） ---------- */
 .spectator-badge {
@@ -640,14 +653,14 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .board td.last-reveal { box-shadow: inset 0 0 0 3px var(--primary); z-index: 1; }
 
 /* 吞噬者摧毁的格子：深灰 + ✕（内容保密；对局结束后公开真实内容） */
-.board td.cell-destroyed { background: var(--cell-unknown); color: var(--faint); }
-.board td.cell-destroyed::after { content: '✕'; font-size: 20px; color: var(--faint); }
+.board td.cell-destroyed { background: var(--cell-unknown); color: var(--text-3); }
+.board td.cell-destroyed::after { content: '✕'; font-size: 20px; color: var(--text-3); }
 /* 机头被摧毁（视为已发现飞机）：灰底红边 + 红色 ✕ */
 .board td.cell-head-destroyed { background: var(--cell-unknown); border: 2px solid #ef5350; }
 .board td.cell-head-destroyed::after { content: '✕'; font-size: 20px; color: #ef5350; }
 /* 己方棋盘被吞噬者摧毁的格子：保留原底色（绿=机身/红=机头/空色）+ ✕，
    己方飞机布局永远可见；对方棋盘仍用上面 cell-destroyed 深灰保密 */
-.board td.cell-destroyed-mine::after { content: '✕'; font-size: 20px; color: var(--faint); }
+.board td.cell-destroyed-mine::after { content: '✕'; font-size: 20px; color: var(--text-3); }
 
 /* 毁灭菇冻结的格子：紫色 ❄（渲染层用 td.textContent 写 ❄，这里只管颜色字号；
    注意不要再加 ::after content——会和文本重复画两个 ❄） */
@@ -734,13 +747,25 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   /* 信息条压缩：面板变窄，比分胶囊变小，保持一行放得下 */
   .battle-info-row {
     gap: 8px;
-    /* 手机端吸顶（冻结行）：滚动时状态栏固定在屏幕顶部，方便随时看轮到谁；
-       背景必须不透明（棋盘从下面滚过不可透视），z-index 高于棋盘、低于右上角主题按钮(90) */
+    /* 手机端吸顶（冻结行）：整行固定在顶部但背景透明——只有各按钮/卡片有半透明底，
+       空白间距透出棋盘（不遮挡），z-index 高于棋盘、低于右上角主题按钮(90) */
     position: sticky;
     top: 0;
     z-index: 5;
-    background: var(--bg);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
+  }
+  /* 只有「按钮」半透明置顶：玩家卡片、比分胶囊、规则按钮、观战徽章 */
+  .battle-info-row .player-panel,
+  .battle-info-row .battle-rules-btn,
+  .battle-info-row .battle-score,
+  .battle-info-row .spectator-badge {
+    background: rgba(255, 255, 255, .72);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+  }
+  :root[data-theme="dark"] .battle-info-row .player-panel,
+  :root[data-theme="dark"] .battle-info-row .battle-rules-btn,
+  :root[data-theme="dark"] .battle-info-row .battle-score,
+  :root[data-theme="dark"] .battle-info-row .spectator-badge {
+    background: rgba(15, 23, 42, .72);
   }
   .player-panel { min-width: 0; padding: 8px 10px; }
   .player-panel h3 { font-size: 14px; }

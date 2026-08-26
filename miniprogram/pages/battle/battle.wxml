@@ -163,8 +163,10 @@
         <view class="rules-h3">道具列表（按价格从低到高）</view>
         <view class="rules-list props-list">
           <view class="props-item">
-            <text>🔍 探测者 <text class="gold">3<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容；若区域内没有飞机（全空）则直接揭示整个区域。</text>
-            <view class="prop-detail-btn" data-prop="pro" bindtap="onPropDetailTap">查看详情</view>
+            <view class="props-fold-head" data-prop="pro" bindtap="onPropDetailTap">
+              <text class="fold-text">🔍 探测者 <text class="gold">3<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容；若区域内没有飞机（全空）则直接揭示整个区域。</text>
+              <text class="fold-arrow {{propDetailOpen === 'pro' ? 'open' : ''}}">▸</text>
+            </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'pro'}}">
               <text class="prop-d-p"><b>使用：</b>先点工具栏的「🔍 探测者」选中道具，再在对方棋盘点一个格子作 3×3 区域的左上角。</text>
               <text class="prop-d-p"><b>效果：</b>从区域内按「机身 → 机头 → 空格」的优先级随机揭示 1 格真实内容；如果区域内一架飞机都没有（全空），则整个 3×3 区域直接全部揭示。</text>
@@ -174,19 +176,23 @@
             </view>
           </view>
           <view class="props-item">
-            <text>🧨 吞噬者 <text class="gold">3<text class="coin-icon"></text></text> — 摧毁对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机。</text>
-            <view class="prop-detail-btn" data-prop="devour" bindtap="onPropDetailTap">查看详情</view>
+            <view class="props-fold-head" data-prop="devour" bindtap="onPropDetailTap">
+              <text class="fold-text">🧨 吞噬者 <text class="gold">3<text class="coin-icon"></text></text> — <b>摧毁</b>对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机。</text>
+              <text class="fold-arrow {{propDetailOpen === 'devour' ? 'open' : ''}}">▸</text>
+            </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'devour'}}">
               <text class="prop-d-p"><b>使用：</b>选中「🧨 吞噬者」，在对方棋盘点一个格子作 3×3 区域的左上角。</text>
-              <text class="prop-d-p"><b>效果：</b>摧毁区域内所有未揭示的格子（空格也会被摧毁）；如果摧毁到机头，整架飞机的位置直接暴露。</text>
+              <text class="prop-d-p"><b>效果：</b><b>摧毁</b>区域内所有未揭示的格子（空格也会被<b>摧毁</b>）；如果<b>摧毁</b>到机头，显示机头位置。</text>
               <view class="illus-board illus-3"><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view><view class="illus-cell x">✕</view></view>
               <text class="prop-illus-caption">3×3 区域内全部被摧毁（✕ 标记）</text>
-              <text class="prop-d-p"><b>图标含义：</b>✕ 格表示该格已被摧毁，以后不可揭示。你自己的棋盘被吞噬时，格子会<b>保留原来的颜色</b>（绿=机身、红=机头）再叠上 ✕，你的飞机布局永远可见。</text>
+              <text class="prop-d-p"><b>图标含义：</b>✕ 格表示该格已被<b>摧毁</b>，<b>以后不可揭示</b>。你自己的棋盘被吞噬时，格子会保留原来的颜色（绿=机身、红=机头）再叠上 ✕，你的飞机布局永远可见。</text>
             </view>
           </view>
           <view class="props-item">
-            <text>🔊 声呐脉冲 <text class="gold">4<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量。</text>
-            <view class="prop-detail-btn" data-prop="sonar" bindtap="onPropDetailTap">查看详情</view>
+            <view class="props-fold-head" data-prop="sonar" bindtap="onPropDetailTap">
+              <text class="fold-text">🔊 声呐脉冲 <text class="gold">4<text class="coin-icon"></text></text> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量。</text>
+              <text class="fold-arrow {{propDetailOpen === 'sonar' ? 'open' : ''}}">▸</text>
+            </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'sonar'}}">
               <text class="prop-d-p"><b>使用：</b>选中「🔊 声呐脉冲」，在对方棋盘点一个格子作 3×3 区域的左上角。</text>
               <text class="prop-d-p"><b>效果：</b>区域边缘闪金色外框，中心格显示一个金色数字——数字 = 区域内飞机格（机身 + 机头）的数量，0 表示全空。</text>
@@ -196,8 +202,10 @@
             </view>
           </view>
           <view class="props-item">
-            <text>👁 无所遁形 <text class="gold">4<text class="coin-icon"></text></text> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）。</text>
-            <view class="prop-detail-btn" data-prop="expose" bindtap="onPropDetailTap">查看详情</view>
+            <view class="props-fold-head" data-prop="expose" bindtap="onPropDetailTap">
+              <text class="fold-text">👁 无所遁形 <text class="gold">4<text class="coin-icon"></text></text> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）。</text>
+              <text class="fold-arrow {{propDetailOpen === 'expose' ? 'open' : ''}}">▸</text>
+            </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'expose'}}">
               <text class="prop-d-p"><b>使用：</b>先打中对方一个机头（红色格），再选中「👁 无所遁形」，点击那个已经揭示的机头格。</text>
               <text class="prop-d-p"><b>效果：</b>整架飞机完整暴露：机头 + 9 个机身共 10 格全部显示，飞机的朝向和位置一目了然。</text>
@@ -207,8 +215,10 @@
             </view>
           </view>
           <view class="props-item">
-            <text>💥 双发连射 <text class="gold">4<text class="coin-icon"></text></text> — 点对方棋盘 2 个未知格，一次行动同时揭示。</text>
-            <view class="prop-detail-btn" data-prop="burst" bindtap="onPropDetailTap">查看详情</view>
+            <view class="props-fold-head" data-prop="burst" bindtap="onPropDetailTap">
+              <text class="fold-text">💥 双发连射 <text class="gold">4<text class="coin-icon"></text></text> — 点对方棋盘 2 个未知格，一次行动同时揭示。</text>
+              <text class="fold-arrow {{propDetailOpen === 'burst' ? 'open' : ''}}">▸</text>
+            </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'burst'}}">
               <text class="prop-d-p"><b>使用：</b>选中「💥 双发连射」，在对方棋盘点 2 个未知格（不能点已经揭示过的格）。</text>
               <text class="prop-d-p"><b>效果：</b>一次行动同时揭示两格，等于连打两发但只算一次行动。</text>
@@ -218,8 +228,10 @@
             </view>
           </view>
           <view class="props-item">
-            <text>🌋 毁灭菇 <text class="gold">6<text class="coin-icon"></text></text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，周围一圈未揭示格被<b>封锁</b>（❄ 标记）——接下来 2 次行动你不能点击它们，对手不受影响。</text>
-            <view class="prop-detail-btn" data-prop="doom" bindtap="onPropDetailTap">查看详情</view>
+            <view class="props-fold-head" data-prop="doom" bindtap="onPropDetailTap">
+              <text class="fold-text">🌋 毁灭菇 <text class="gold">6<text class="coin-icon"></text></text> — 点对方棋盘任意格作十字中心：十字 5 格揭示，周围一圈未揭示格被<b>封锁</b>（❄ 标记）——接下来 2 次行动你不能点击它们，对手不受影响。</text>
+              <text class="fold-arrow {{propDetailOpen === 'doom' ? 'open' : ''}}">▸</text>
+            </view>
             <view class="prop-detail" wx:if="{{propDetailOpen === 'doom'}}">
               <text class="prop-d-p"><b>使用：</b>选中「🌋 毁灭菇」，在对方棋盘点任意一个格子作十字中心。</text>
               <text class="prop-d-p"><b>效果：</b>十字 5 格（中心 + 上下左右）立即揭示；周围一圈未揭示格被封锁（❄ 标记）——接下来 2 次行动你不能点击这些冻结格，对手自己不受影响。</text>
@@ -232,7 +244,7 @@
 
         <view class="rules-h3">棋盘图标含义</view>
         <view class="rules-list">
-          <view class="prop-legend"><view class="illus-dot x-dot">✕</view><text><b>✕ 格</b>：被吞噬者摧毁的格子，以后不可揭示。</text></view>
+          <view class="prop-legend"><view class="illus-dot x-dot">✕</view><text><b>✕ 格</b>：被吞噬者<b>摧毁</b>的格子，<b>以后不可揭示</b>。</text></view>
           <view class="prop-legend"><view class="illus-dot num-dot">2</view><text><b>金色数字</b>：声呐探测结果，数字 = 区域内飞机格数量（0 = 全空）。</text></view>
           <view class="prop-legend"><view class="illus-dot gold-edge"></view><text><b>金色外框</b>：声呐探测的 3×3 区域。</text></view>
           <view class="prop-legend"><view class="illus-dot froz-dot">❄</view><text><b>❄ 格</b>：被毁灭菇冻结，施放者接下来 2 次行动不能点击。</text></view>
