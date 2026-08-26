@@ -196,7 +196,7 @@
             <view class="prop-detail" wx:if="{{propDetailOpen === 'sonar'}}">
               <text class="prop-d-p"><b>使用：</b>选中「🔊 声呐脉冲」，在对方棋盘点一个格子作 3×3 区域的左上角。</text>
               <text class="prop-d-p"><b>效果：</b>区域边缘闪金色外框，中心格显示一个金色数字——数字 = 区域内飞机格（机身 + 机头）的数量，0 表示全空。</text>
-              <view class="illus-board illus-3"><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell num">2</view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view></view>
+              <view class="illus-board illus-3 gold-box"><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell num">2</view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view><view class="illus-cell"></view></view>
               <text class="prop-illus-caption">3×3 区域内共 2 格是飞机</text>
               <text class="prop-d-p"><b>图标含义：</b>金色数字 = 区域内飞机格数量（0 = 全空）；金色外框 = 声呐探测的区域。数字只告诉你数量，不告诉你飞机具体在哪格。</text>
             </view>
