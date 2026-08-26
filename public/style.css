@@ -448,8 +448,10 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .illus-dot.num-dot { color: #fbbf24; font-weight: bold; }
 .illus-dot.froz-dot { color: #a78bfa; }
 .illus-dot.gold-edge { box-shadow: inset 0 0 0 2px #f6c945; }
-/* 声呐插图的金色外框：描在整张 3×3 表格外缘，对应「区域边缘闪金色外框」 */
-.prop-illus.gold-box { outline: 2px solid #f6c945; outline-offset: 2px; }
+/* 声呐插图的金色外框：描在整张 3×3 表格外缘，对应「区域边缘闪金色外框」。
+   注意不能用 outline：border-collapse: collapse 的表格在 Chrome 下不渲染 outline（已知渲染 bug），
+   所以用 box-shadow 画外框（和 mini 端 .illus-board.gold-box 同一方案，视觉一致） */
+.prop-illus.gold-box { box-shadow: 0 0 0 3px #f6c945; }
 .illus-dot.dim-dot { background: var(--cell-unknown); }
 
 /* ---------- 观战人数徽章（信息条最左侧，无人观战时不显示） ---------- */
