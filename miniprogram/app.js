@@ -274,15 +274,30 @@ function myBoardCells() {
       const cell = myBoard[r][c];
       const s = myMarks[r + ',' + c];
       if (s && s.result === 'destroyed') {
-        cls = 'cell-destroyed'; // 对方吞噬者摧毁我的格：深灰 + ✕（内容保密，和对方棋盘同款）
+        // 对方吞噬者摧毁我的格：保留原底色（绿=机身/红=机头/空色）+ ✕，己方飞机布局永远可见
+        if (cell === shared.CELL_HEAD) cls = 'cell-head';
+        else if (cell === shared.CELL_BODY) cls = 'cell-body';
+        cls += ' cell-destroyed-mine';
         text = '✕';
       } else if (s && s.result === 'head' && s.destroyed) {
-        cls = 'cell-head-destroyed'; // 机头被摧毁：灰色机头（视为已发现）
+        cls = 'cell-head';
+        cls += ' cell-destroyed-mine'; // 机头被摧毁：红底 + ✕
         text = '✕';
       } else {
         if (cell === shared.CELL_HEAD) cls = 'cell-head';
         else if (cell === shared.CELL_BODY) cls = 'cell-body';
-        if (!s) cls += ' dimmed'; // 没被打过的格子：蒙上深色遮罩调暗
+        if (!s) {
+          // 对方施放的毁灭菇冻结：❄ 显示在我的棋盘上（对方接下来 2 回合不能打这些格，对齐 web 端）
+          const frozenByEnemy = state.frozenCells.some(function (f) {
+            return f.owner === 1 - state.seat && state.steps[f.owner] < f.expiry && f.row === r && f.col === c;
+          });
+          if (frozenByEnemy) {
+            cls += ' cell-unknown cell-frozen';
+            text = '❄';
+          } else {
+            cls += ' dimmed'; // 没被打过的格子：蒙上深色遮罩调暗
+          }
+        }
       }
       const sonarCount = sd.map[r + ',' + c];
       if (sonarCount !== undefined) {
@@ -629,6 +644,12 @@ socket.on('playerStatus', function (d) {
 socket.on('avatarUpdated', function (d) {
   state.avatars[d.seat] = d.avatar;
   emitLocal('avatarUpdated', d);
+});
+
+// 房内有人改昵称（可能是自己）：更新双方昵称数组
+socket.on('nicknameUpdated', function (d) {
+  state.names[d.seat] = d.name;
+  emitLocal('nicknameUpdated', d);
 });
 
 socket.on('rematchVote', function (d) {

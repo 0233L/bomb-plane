@@ -130,7 +130,7 @@ async function main() {
     await waitServerUp();
     await sleep(2500); // 等启动时从 GitHub 拉回 + 合并回写
 
-    const res = await fetch('http://localhost:' + SRV_PORT + '/stats.json?key=bombplane-stats-2026');
+    const res = await fetch('http://localhost:' + SRV_PORT + '/stats.json?key=' + encodeURIComponent(process.env.ADMIN_KEY || process.env.STATS_KEY || '1233'));
     const data = await res.json();
     check('本地文件丢失后，重启从 GitHub 恢复了访客',
       data.total >= 1 && data.visitors.some(function (v) { return v.id === 'gh-test-1'; }));
@@ -139,7 +139,7 @@ async function main() {
     await visitAndWait('gh-test-2', 'mini');
     await sleep(1800);
     check('恢复后新访客也上传到 GitHub', store !== null && store.indexOf('gh-test-2') !== -1);
-    const res2 = await fetch('http://localhost:' + SRV_PORT + '/stats.json?key=bombplane-stats-2026');
+    const res2 = await fetch('http://localhost:' + SRV_PORT + '/stats.json?key=' + encodeURIComponent(process.env.ADMIN_KEY || process.env.STATS_KEY || '1233'));
     const data2 = await res2.json();
     check('恢复后两位访客都在且平台正确',
       data2.visitors.some(function (v) { return v.id === 'gh-test-1' && v.platform === 'web'; }) &&

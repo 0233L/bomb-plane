@@ -17,6 +17,7 @@ const WSClient = require('../public/ws.js');
 const shared = require('../public/shared.js');
 
 const SPEC = 'S';
+const TEST_URL = process.env.TEST_URL || 'http://localhost:3000'; // 默认连本机 3000；回归测试可注入 TEST_URL 换端口
 
 let passed = 0, failed = 0;
 function check(name, cond) {
@@ -51,14 +52,14 @@ function randomDeployment(spec) {
 
 async function main() {
   console.log('— 房间 1：正常头像全流程 —');
-  const a = new WSClient('http://localhost:3000');
+  const a = new WSClient(TEST_URL);
   await waitFor(a, 'connect');
   a.emit('createRoom', { name: '头像A', avatar: '🐱', mode: 'classic', boardSize: SPEC });
   const created = await waitFor(a, 'roomCreated');
   check('roomCreated 回显我的头像', created.avatars[0] === '🐱');
   check('roomCreated 对方位是空串（非 undefined）', created.avatars[1] === '' && created.avatars.length === 2);
 
-  const b = new WSClient('http://localhost:3000');
+  const b = new WSClient(TEST_URL);
   await waitFor(b, 'connect');
   const oppJoinedP = waitFor(a, 'opponentJoined'); // 先注册再发，防漏
   b.emit('joinRoom', { roomId: created.roomId, name: '头像B', avatar: '🦊' });
@@ -77,7 +78,7 @@ async function main() {
 
   // 断线重连：先注册监听再发 rejoin（事件发得很快，先发后听会漏）
   a.disconnect();
-  const a2 = new WSClient('http://localhost:3000');
+  const a2 = new WSClient(TEST_URL);
   await waitFor(a2, 'connect');
   const recP = waitFor(a2, 'reconnected');
   a2.emit('rejoin', { token: created.token, roomId: created.roomId });
@@ -92,7 +93,7 @@ async function main() {
   check('对方收到 avatarUpdated（座位 + 新头像）', avUpd.seat === 0 && avUpd.avatar === '🐼');
   // 再断线重连：服务器存的是新头像
   a2.disconnect();
-  const a3 = new WSClient('http://localhost:3000');
+  const a3 = new WSClient(TEST_URL);
   await waitFor(a3, 'connect');
   const rec2P = waitFor(a3, 'reconnected');
   a3.emit('rejoin', { token: created.token, roomId: created.roomId });
@@ -105,28 +106,28 @@ async function main() {
   check('setAvatar 超长按码点截 4 个', avUpd2.avatar === '😀'.repeat(4));
 
   console.log('— 房间 2：不传 avatar（缺省） —');
-  const c = new WSClient('http://localhost:3000');
+  const c = new WSClient(TEST_URL);
   await waitFor(c, 'connect');
   c.emit('createRoom', { name: '无头像', mode: 'classic', boardSize: SPEC });
   const created2 = await waitFor(c, 'roomCreated');
   check('缺省 avatar → 空串而非 undefined', created2.avatars[0] === '' && created2.avatars[0] !== undefined);
 
   console.log('— 房间 3：怪异内容原样透传 —');
-  const d = new WSClient('http://localhost:3000');
+  const d = new WSClient(TEST_URL);
   await waitFor(d, 'connect');
   d.emit('createRoom', { name: '怪头像', avatar: '👾🎃👽', mode: 'classic', boardSize: SPEC });
   const created3 = await waitFor(d, 'roomCreated');
   check('怪异 emoji 串原样透传', created3.avatars[0] === '👾🎃👽');
 
   console.log('— 房间 4：超长内容截断（按码点截 4 个） —');
-  const e = new WSClient('http://localhost:3000');
+  const e = new WSClient(TEST_URL);
   await waitFor(e, 'connect');
   e.emit('createRoom', { name: '超长头像', avatar: '😀'.repeat(9), mode: 'classic', boardSize: SPEC });
   const created4 = await waitFor(e, 'roomCreated');
   check('9 个 emoji 被截断为 4 个', created4.avatars[0] === '😀'.repeat(4));
 
   console.log('— 人机房间：AI 不用头像（昵称自带 🤖） —');
-  const f = new WSClient('http://localhost:3000');
+  const f = new WSClient(TEST_URL);
   await waitFor(f, 'connect');
   f.emit('createRoomAI', { name: '打AI', avatar: '🐻', mode: 'classic', boardSize: SPEC });
   const aiRoom = await waitFor(f, 'roomCreated');

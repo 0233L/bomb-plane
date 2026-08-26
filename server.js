@@ -57,7 +57,9 @@ const AI_THINK_MAX_MS = Number(process.env.AI_THINK_MAX_MS) || 1500;
 const ROOM_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 房间号字符表（去掉易混淆的 I/O/0/1）
 
 // ---------- 访客统计常量 ----------
-const STATS_KEY = process.env.STATS_KEY || 'bombplane-stats-2026'; // /stats 明细页的钥匙（数据无个人信息，默认值见 README；可在 Render 后台改）
+// 后台口令：打开 /stats 先输入口令才能看（默认 1233，日后改口令 = 在服务器环境变量设 ADMIN_KEY）。
+// 兼容旧配置：设过 STATS_KEY 的服务器不用动，自动沿用。
+const ADMIN_KEY = process.env.ADMIN_KEY || process.env.STATS_KEY || '1233';
 const STATS_FILE = path.join(__dirname, 'stats.json');
 const STATS_TMP_FILE = STATS_FILE + '.tmp'; // 先写临时文件再改名，保证不会写坏原文件
 const STATS_SAVE_DELAY_MS = 1000; // 防抖：1 秒内的多次访问合并成一次写盘
@@ -66,7 +68,8 @@ const MAX_VISITORS = 20000; // 上限：防止恶意刷大量假 ID 撑爆内存
 
 // ---------- 数据 ----------
 const rooms = new Map(); // 房间号 -> 房间对象（内存存储，服务器重启后清空，当前规模够用）
-const visitors = new Map(); // visitorId -> { platform, firstVisit, lastVisit, visits }（匿名，无任何个人信息）
+const visitors = new Map(); // visitorId -> { platform, firstVisit, lastVisit, visits, nickname }（匿名，无任何个人信息；nickname 是后台手动填的备注）
+const onlineVisitors = new Map(); // visitorId -> 活跃连接数（只存内存：当前开着页面的人，断开即移除；同 ID 多标签页计 1 人）
 
 // ---------- 工具函数 ----------
 
@@ -146,12 +149,13 @@ function sendError(socket, message) {
 }
 
 // 校验昵称：去空格后 1~12 字，且同房间内不重复
-function checkName(room, name) {
+// ignoreSeat：改昵称时传自己的座位号，重名检查跳过自己（不然自己改回原昵称都会被拒）
+function checkName(room, name, ignoreSeat) {
   if (typeof name !== 'string') return '请输入昵称';
   const trimmed = name.trim();
   if (trimmed.length === 0) return '昵称不能为空';
   if (trimmed.length > 12) return '昵称最长 12 个字符';
-  if (room && room.players.some(function (p) { return p.name === trimmed; })) {
+  if (room && room.players.some(function (p, i) { return i !== ignoreSeat && p && p.name === trimmed; })) {
     return '该昵称已被对方使用，换一个吧';
   }
   return null;
@@ -319,7 +323,8 @@ function unbindRoom(socket) {
 // 创建房间（坐 0 号位）
 function handleCreateRoom(socket, data) {
   unbindRoom(socket); // 防同连接残留旧房间绑定（详见 unbindRoom）
-  const name = (typeof data.name === 'string' ? data.name : '').trim();
+  // 没填昵称 → 服务器随机分配一个英文名（新用户不用强制起名）
+  const name = (typeof data.name === 'string' ? data.name : '').trim() || shared.randomName();
   const err = checkName(null, name);
   if (err) return sendError(socket, err);
 
@@ -358,7 +363,8 @@ function handleCreateRoom(socket, data) {
 // 创建人机对战房间：真人坐 0 号位，AI 立刻坐 1 号位并自动部署
 function handleCreateRoomAI(socket, data) {
   unbindRoom(socket); // 防同连接残留旧房间绑定（详见 unbindRoom）
-  const name = (typeof data.name === 'string' ? data.name : '').trim();
+  // 没填昵称 → 服务器随机分配一个英文名（新用户不用强制起名）
+  const name = (typeof data.name === 'string' ? data.name : '').trim() || shared.randomName();
   const err = checkName(null, name);
   if (err) return sendError(socket, err);
 
@@ -503,8 +509,8 @@ function handleJoinRoom(socket, data) {
   const room = rooms.get(roomId);
   if (!room) return sendError(socket, '房间不存在，请检查房间号');
 
-  const name = (typeof data.name === 'string' ? data.name : '').trim();
-  if (!name) return sendError(socket, '昵称不能为空');
+  // 没填昵称 → 服务器随机分配一个英文名（新用户不用强制起名）
+  const name = (typeof data.name === 'string' ? data.name : '').trim() || shared.randomName();
   if (name.length > 12) return sendError(socket, '昵称最长 12 个字符');
 
   // 满员 → 观战席（观战者昵称不和玩家查重，可以随便起）
@@ -1139,6 +1145,17 @@ function handleSetAvatar(socket, data) {
   emitToRoom(loc.room, 'avatarUpdated', { seat: loc.seat, avatar: avatar });
 }
 
+// 对局中改昵称：存进玩家记录（重连时随 names 下发），并广播给房间所有人（含观战者）
+function handleSetNickname(socket, data) {
+  const loc = locate(socket);
+  if (!loc) return; // 不在房间（比如首页改昵称）：只存本地，无需同步
+  const err = checkName(loc.room, data.name, loc.seat); // 同房重名检查排除自己（改回原昵称也允许）
+  if (err) return sendError(socket, err);
+  const name = data.name.trim();
+  loc.player.name = name;
+  emitToRoom(loc.room, 'nicknameUpdated', { seat: loc.seat, name: name });
+}
+
 // ---------- 连接层：原生 WebSocket（替代 socket.io，2026-08 全站迁移） ----------
 // 协议：客户端发 { type: 事件名, data: 数据 }，服务器按 type 分发到
 // 同一个 handleXxx 处理函数；服务器广播同样发 { type, data }。
@@ -1232,6 +1249,7 @@ function handleWsMessage(conn, raw) {
     useItem: handleUseItem,
     rematch: handleRematch,
     setAvatar: handleSetAvatar,
+    setNickname: handleSetNickname,
     leaveRoom: handleLeaveRoom,
     visit: handleVisit
   };
@@ -1364,6 +1382,14 @@ function handleVisit(conn, data) {
   const platform = data.platform === 'mini' ? 'mini' : 'web'; // 只认两种端，其它一律按 web
   const now = Date.now();
 
+  // 在线追踪：记下这个连接对应的访客 ID，断开时移除（同 ID 多标签页各 +1，全关才算离线）。
+  // 同一连接重复上报 visit（如 5 分钟内重复访问的频次测试）只计一次，避免计数泄漏
+  if (!conn.visitCounted) {
+    conn.visitCounted = true;
+    onlineVisitors.set(vid, (onlineVisitors.get(vid) || 0) + 1);
+  }
+  conn.visitorId = vid;
+
   const rec = visitors.get(vid);
   if (!rec) {
     if (visitors.size >= MAX_VISITORS) return conn.emit('visitResult', { total: visitors.size });
@@ -1377,38 +1403,95 @@ function handleVisit(conn, data) {
   conn.emit('visitResult', { total: visitors.size }); // 首页显示「已有 X 位玩家访问过」
 }
 
+// 连接断开：在线访客计数 -1，归 0 移除（没发过 visit 的连接直接忽略）
+function removeOnlineVisitor(conn) {
+  const vid = conn.visitorId;
+  if (!vid || !onlineVisitors.has(vid)) return;
+  const n = onlineVisitors.get(vid) - 1;
+  if (n <= 0) onlineVisitors.delete(vid);
+  else onlineVisitors.set(vid, n);
+}
+
 // HTML 转义（/stats 页面里显示的 visitorId 是客户端传的字符串，必须转义防注入）
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// 渲染口令输入页（进入后台前先输口令；口令错不显示任何数据）
+function renderLoginHtml(showError) {
+  return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>访客统计</title>' +
+    '<style>body{font-family:system-ui;max-width:360px;margin:80px auto;padding:0 16px;color:#333}' +
+    'input,button{font-size:16px;padding:9px 12px;width:100%;box-sizing:border-box;margin-top:10px}' +
+    '.err{color:#d32f2f;margin-top:10px}</style></head><body>' +
+    '<h1>🔒 访客统计后台</h1>' +
+    '<p>请输入后台口令：</p>' +
+    '<form method="post" action="/stats"><input type="password" name="key" autofocus>' +
+    '<button type="submit">进入</button></form>' +
+    (showError ? '<p class="err">口令错误，无法进入。</p>' : '') +
+    '</body></html>';
+}
+
 // 渲染 /stats 明细页（纯字符串拼 HTML，不用任何前端框架/JS）
-function renderStatsHtml() {
+function renderStatsHtml(key) {
+  const onlineCount = onlineVisitors.size;
   const list = Array.from(visitors.entries()).sort(function (a, b) { return b[1].firstVisit - a[1].firstVisit; });
   let rows = '';
   list.forEach(function (entry) {
     const id = entry[0], v = entry[1];
-    rows += '<tr><td>' + (v.platform === 'mini' ? '小程序' : '网页') + '</td>' +
+    const online = onlineVisitors.has(id);
+    const idJs = JSON.stringify(id); // JS 字符串字面量（防引号注入 onclick）
+    rows += '<tr data-id="' + idJs.slice(1, -1) + '">' +
+      '<td>' + (v.platform === 'mini' ? '小程序' : '网页') + '</td>' +
+      '<td class="status-cell">' + (online ? '🟢 在线' : '⚪ 离线') + '</td>' +
+      '<td>' + (v.nickname ? escapeHtml(v.nickname) : '<span class="faint">（无昵称）</span>') + '</td>' +
       '<td>' + escapeHtml(id) + '</td>' +
       '<td>' + new Date(v.firstVisit).toLocaleString('zh-CN', { hour12: false }) + '</td>' +
       '<td>' + new Date(v.lastVisit).toLocaleString('zh-CN', { hour12: false }) + '</td>' +
-      '<td>' + v.visits + '</td></tr>';
+      '<td>' + v.visits + '</td>' +
+      '<td><button onclick="rename(' + idJs + ')">改昵称</button></td></tr>';
   });
   let webCount = 0, miniCount = 0, totalVisits = 0;
   visitors.forEach(function (v) {
     if (v.platform === 'mini') miniCount++; else webCount++;
     totalVisits += v.visits;
   });
+  // 页面内小脚本：10 秒轮询一次 /stats.json 刷新「在线人数/在线标记」（后台页自己不开 WebSocket）
   return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>访客统计</title>' +
-    '<style>body{font-family:system-ui;max-width:760px;margin:40px auto;padding:0 16px;color:#333}' +
+    '<style>body{font-family:system-ui;max-width:820px;margin:40px auto;padding:0 16px;color:#333}' +
     'table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}' +
-    '.note{color:#888;font-size:13px}</style></head><body>' +
+    '.note{color:#888;font-size:13px}.faint{color:#999}button{font-size:12px;padding:3px 8px}' +
+    '.online-pill{background:#e8f5e9;border-radius:999px;padding:1px 10px}</style></head><body>' +
     '<h1>访客统计</h1>' +
-    '<p>共 ' + visitors.size + ' 位访客（网页 ' + webCount + ' / 小程序 ' + miniCount + '），累计访问 ' + totalVisits + ' 次。</p>' +
-    '<table><tr><th>平台</th><th>访客 ID</th><th>首次访问</th><th>最后访问</th><th>访问次数</th></tr>' + rows + '</table>' +
+    '<p><span class="online-pill"><b id="online-count">' + onlineCount + '</b> 人在线</span>，' +
+    '共 ' + visitors.size + ' 位访客（网页 ' + webCount + ' / 小程序 ' + miniCount + '），累计访问 ' + totalVisits + ' 次。</p>' +
+    '<table><tr><th>平台</th><th>状态</th><th>昵称</th><th>访客 ID</th><th>首次访问</th><th>最后访问</th><th>访问次数</th><th>操作</th></tr>' + rows + '</table>' +
     '<p class="note">时间显示为服务器本地时间。数据只含平台与时间戳，无任何个人信息。' +
     'Render 免费版磁盘是临时的：休眠/重启/重新部署后统计会从零开始。</p>' +
+    '<script>var KEY = ' + JSON.stringify(key) + ';' +
+    'function rename(id) {' +
+    '  var nickname = prompt("给这位访客备注昵称（留空并确定 = 清除昵称）：", "");' +
+    '  if (nickname === null) return;' +
+    '  fetch("/stats/rename", { method: "POST", headers: { "Content-Type": "application/json" },' +
+    '    body: JSON.stringify({ key: KEY, id: id, nickname: nickname }) })' +
+    '    .then(function (r) { if (r.ok) location.reload(); else return r.text(); })' +
+    '    .then(function (err) { if (err) alert("改名失败：" + err); });' +
+    '}' +
+    'setInterval(function () {' +
+    '  fetch("/stats.json?key=" + encodeURIComponent(KEY)).then(function (r) { return r.ok ? r.json() : null; })' +
+    '    .then(function (data) {' +
+    '      if (!data) return;' +
+    '      var el = document.getElementById("online-count");' +
+    '      if (el) el.textContent = data.onlineCount;' +
+    '      var status = {};' +
+    '      data.visitors.forEach(function (v) { status[v.id] = v.online; });' +
+    '      document.querySelectorAll("tr[data-id]").forEach(function (tr) {' +
+    '        var cell = tr.querySelector(".status-cell");' +
+    '        if (cell) cell.textContent = status[tr.dataset.id] ? "🟢 在线" : "⚪ 离线";' +
+    '      });' +
+    '    })' +
+    '    .catch(function () { /* 刷新失败忽略 */ });' +
+    '}, 10000);</script>' +
     '</body></html>';
 }
 
@@ -1416,26 +1499,55 @@ function renderStatsHtml() {
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: false })); // 口令表单
+app.use(express.json());                          // 改名接口
 
-// 访客统计明细页（私有：必须带正确的 ?key= 才看得到，数据只含平台与时间）
+// 访客统计明细页（私有：进入前必须先输入口令；口令错误不显示任何数据）
 app.get('/stats', function (req, res) {
-  if (req.query.key !== STATS_KEY) {
-    res.status(403).send('<h1>403 禁止访问</h1><p>需要正确的 ?key= 参数</p>');
+  if (req.query.key !== ADMIN_KEY) {
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderLoginHtml(req.query.key !== undefined)); // 输错过才提示「口令错误」
     return;
   }
   res.set('Content-Type', 'text/html; charset=utf-8');
-  res.send(renderStatsHtml());
+  res.send(renderStatsHtml(req.query.key));
 });
 
-// 访客统计 JSON 接口（本地备份脚本 backup-stats.js 用；同样要 ?key= 才能看）
+// 口令表单提交：对 → 跳到带钥匙的明细页（刷新不再重复提交）；错 → 重显口令页
+app.post('/stats', function (req, res) {
+  if (req.body.key !== ADMIN_KEY) {
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderLoginHtml(true));
+    return;
+  }
+  res.redirect('/stats?key=' + encodeURIComponent(ADMIN_KEY));
+});
+
+// 编辑访客昵称（后台备注，只影响后台展示；空昵称 = 清除）
+app.post('/stats/rename', function (req, res) {
+  if (req.body.key !== ADMIN_KEY) return res.status(403).send('口令错误');
+  const id = typeof req.body.id === 'string' ? req.body.id : '';
+  const rec = visitors.get(id);
+  if (!rec) return res.status(404).send('访客不存在');
+  let nickname = typeof req.body.nickname === 'string' ? req.body.nickname.trim() : '';
+  if (nickname.length > 12) return res.status(400).send('昵称最长 12 个字符');
+  rec.nickname = nickname;
+  scheduleSaveStats();
+  res.json({ ok: true });
+});
+
+// 访客统计 JSON 接口（本地备份脚本 backup-stats.js 用；同样要口令才能看）
 app.get('/stats.json', function (req, res) {
-  if (req.query.key !== STATS_KEY) {
+  if (req.query.key !== ADMIN_KEY) {
     res.status(403).json({ error: '需要正确的 ?key= 参数' });
     return;
   }
   const list = [];
   visitors.forEach(function (v, id) {
-    list.push({ id: id, platform: v.platform, firstVisit: v.firstVisit, lastVisit: v.lastVisit, visits: v.visits });
+    list.push({
+      id: id, platform: v.platform, firstVisit: v.firstVisit, lastVisit: v.lastVisit, visits: v.visits,
+      nickname: v.nickname || '', online: onlineVisitors.has(id)
+    });
   });
   list.sort(function (a, b) { return b.firstVisit - a.firstVisit; });
   let webCount = 0, miniCount = 0, totalVisits = 0;
@@ -1443,7 +1555,10 @@ app.get('/stats.json', function (req, res) {
     if (v.platform === 'mini') miniCount++; else webCount++;
     totalVisits += v.visits;
   });
-  res.json({ total: visitors.size, web: webCount, mini: miniCount, totalVisits: totalVisits, visitors: list });
+  res.json({
+    total: visitors.size, onlineCount: onlineVisitors.size, web: webCount, mini: miniCount,
+    totalVisits: totalVisits, visitors: list
+  });
 });
 
 const server = http.createServer(app);
@@ -1474,6 +1589,7 @@ wss.on('connection', function (ws) {
   ws.on('message', function (raw) { handleWsMessage(conn, raw); });
   ws.on('close', function () {
     cleanupConns(conn);      // 先从注册表移除，广播不再碰到它
+    removeOnlineVisitor(conn); // 在线访客计数 -1（发过 visit 的连接才记）
     handleDisconnect(conn);  // 再走断线流程（观战者移除 / 玩家标记离线）
   });
   ws.on('error', function () { /* 出错后 close 一定会跟着来，由 close 统一处理 */ });
@@ -1493,7 +1609,7 @@ server.listen(PORT, function () {
   syncFromGitHub(); // 再从 GitHub 保险柜拉回合并（未配置时自动跳过）
   console.log('炸飞机服务器已启动：http://localhost:' + PORT);
   console.log('提示：开两个浏览器窗口（一个普通 + 一个无痕）即可自己和自己对战测试');
-  console.log('访客统计明细页：http://localhost:' + PORT + '/stats?key=' + STATS_KEY);
+  console.log('访客统计明细页：http://localhost:' + PORT + '/stats（口令 ' + ADMIN_KEY + '）');
 });
 
 // 关服前把还没落盘的访客统计写掉（Render 重启发 SIGTERM，本地 Ctrl+C 发 SIGINT）

@@ -15,9 +15,9 @@
 // ============================================
 'use strict';
 
-// 钥匙：和服务器上的 STATS_KEY 一致（见 README「访客统计」一节；
-// 如果你在 Render 后台改过 STATS_KEY，请把它写进这里或设成环境变量 STATS_KEY）
-const STATS_KEY = process.env.STATS_KEY || 'bombplane-stats-2026';
+// 口令：和服务器上的后台口令一致（默认 1233，见 README「访客统计」一节；
+// 如果你在服务器环境变量改过 ADMIN_KEY（或旧的 STATS_KEY），请设置对应环境变量再运行）
+const STATS_KEY = process.env.ADMIN_KEY || process.env.STATS_KEY || '1233';
 
 // 要备份的服务器地址：第二个命令行参数可覆盖（默认线上）
 const URL = (process.argv[2] || 'https://bomb-plane.onrender.com').replace(/\/$/, '');

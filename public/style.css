@@ -364,7 +364,8 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   overflow-y: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }
-.rules-diagram { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+/* 经典模式飞机朝向配图：2×2 网格（每行 2 张）、图改小 */
+.rules-diagram { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; justify-items: center; margin: 16px 0; }
 .rules-plane { text-align: center; }
 .rules-plane p { font-size: 12px; color: var(--muted); margin-top: 6px; }
 .rules-h3 { font-size: 15px; margin: 16px 0 6px; color: var(--text); }
@@ -386,8 +387,53 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 .chip-body  { background: #66bb6a; }
 .chip-head  { background: #ef5350; }
 
-/* 规则弹窗里的飞机小配图：借用棋盘配色，格子缩小到 15px */
-.mini-board td { width: 15px; height: 15px; }
+/* 规则弹窗里的飞机小配图：借用棋盘配色，格子缩小到 12px（5×5 图整体 60px 宽） */
+.mini-board td { width: 12px; height: 12px; }
+
+/* 道具「查看详情」按钮：条目下方的小文字按钮 */
+.prop-detail-btn {
+  display: block;
+  margin: 6px 0 2px;
+  padding: 2px 12px;
+  font-size: 12px;
+  color: var(--primary);
+  background: none;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  cursor: pointer;
+}
+/* 道具详情面板：点「查看详情」展开显示 */
+.prop-detail { margin: 8px 0 4px; padding: 10px 12px; background: var(--surface); border-radius: 8px; }
+.prop-detail p { font-size: 13px; color: var(--text-2); line-height: 1.8; margin: 0 0 8px; }
+.prop-detail p:last-child { margin-bottom: 0; }
+/* 道具详情里的示意网格：复用棋盘配色，格子 22px */
+.prop-illus { border-collapse: collapse; margin: 4px auto 8px; }
+.prop-illus td { width: 22px; height: 22px; border: 1px solid var(--grid); background: var(--cell-unknown); text-align: center; font-size: 12px; line-height: 22px; }
+.prop-illus td.body { background: #66bb6a; }
+.prop-illus td.head { background: #ef5350; }
+.prop-illus td.x { color: var(--faint); }
+.prop-illus td.num { color: #fbbf24; font-weight: bold; }
+.prop-illus td.froz { color: #a78bfa; }
+.prop-illus caption { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+/* 「棋盘图标含义」图例小方块 */
+.illus-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--faint);
+  background: var(--cell-unknown);
+  text-align: center;
+  font-size: 10px;
+  line-height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.illus-dot.x-dot { color: var(--faint); }
+.illus-dot.num-dot { color: #fbbf24; font-weight: bold; }
+.illus-dot.froz-dot { color: #a78bfa; }
+.illus-dot.gold-edge { box-shadow: inset 0 0 0 2px #f6c945; }
+.illus-dot.dim-dot { background: rgba(0, 0, 0, .35); }
 
 /* ---------- 观战人数徽章（信息条最左侧，无人观战时不显示） ---------- */
 .spectator-badge {
@@ -599,6 +645,9 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 /* 机头被摧毁（视为已发现飞机）：灰底红边 + 红色 ✕ */
 .board td.cell-head-destroyed { background: var(--cell-unknown); border: 2px solid #ef5350; }
 .board td.cell-head-destroyed::after { content: '✕'; font-size: 20px; color: #ef5350; }
+/* 己方棋盘被吞噬者摧毁的格子：保留原底色（绿=机身/红=机头/空色）+ ✕，
+   己方飞机布局永远可见；对方棋盘仍用上面 cell-destroyed 深灰保密 */
+.board td.cell-destroyed-mine::after { content: '✕'; font-size: 20px; color: var(--faint); }
 
 /* 毁灭菇冻结的格子：紫色 ❄（渲染层用 td.textContent 写 ❄，这里只管颜色字号；
    注意不要再加 ::after content——会和文本重复画两个 ❄） */
@@ -683,7 +732,16 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   .board td { width: 28px; height: 28px; font-size: 14px; }
   h1 { font-size: 30px; }
   /* 信息条压缩：面板变窄，比分胶囊变小，保持一行放得下 */
-  .battle-info-row { gap: 8px; }
+  .battle-info-row {
+    gap: 8px;
+    /* 手机端吸顶（冻结行）：滚动时状态栏固定在屏幕顶部，方便随时看轮到谁；
+       背景必须不透明（棋盘从下面滚过不可透视），z-index 高于棋盘、低于右上角主题按钮(90) */
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
+  }
   .player-panel { min-width: 0; padding: 8px 10px; }
   .player-panel h3 { font-size: 14px; }
   .avatar { font-size: 16px; } /* 手机端头像跟着面板一起缩小 */

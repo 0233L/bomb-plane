@@ -153,6 +153,9 @@ page {
 .board-cell.cell-destroyed { background: var(--cell-unknown); color: var(--faint); }
 /* 机头被摧毁（视为已发现飞机）：灰底红边，✕ 由 text 渲染 */
 .board-cell.cell-head-destroyed { background: var(--cell-unknown); border: 4rpx solid #ef5350; }
+/* 己方棋盘被吞噬者摧毁的格子：保留原底色（绿=机身/红=机头/空色）+ ✕，
+   己方飞机布局永远可见；对方棋盘仍用上面 cell-destroyed 深灰保密 */
+.board-cell.cell-destroyed-mine { color: var(--faint); }
 /* 毁灭菇冻结的格子：紫色 ❄ + 紫边（冻结期间不可揭示、不可被技能选中） */
 .board-cell.cell-frozen { color: #a78bfa; border: 4rpx solid #a78bfa; }
 /* 格子里的文字（声呐数字 / 摧毁 ✕）：居中金色小字 */
@@ -167,7 +170,8 @@ page {
   color: #fbbf24;
 }
 .board-cell.cell-destroyed .cell-sonar-text,
-.board-cell.cell-head-destroyed .cell-sonar-text { color: inherit; font-size: 34rpx; }
+.board-cell.cell-head-destroyed .cell-sonar-text,
+.board-cell.cell-destroyed-mine .cell-sonar-text { color: inherit; font-size: 34rpx; }
 /* 注释标记：长按在未揭示格上标的「机身」（绿框）。
    用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
 .board-cell.cell-mark-body { box-shadow: inset 0 0 0 5rpx #66bb6a; }
@@ -237,9 +241,61 @@ page {
 .rules-planes { display: flex; flex-wrap: wrap; justify-content: space-between; margin: 12rpx 0; }
 .rules-plane { width: 48%; margin-bottom: 16rpx; text-align: center; font-size: 24rpx; color: var(--muted); }
 .mini-board { display: flex; flex-wrap: wrap; border-radius: 6rpx; overflow: hidden; margin-bottom: 6rpx; }
-.mini-cell { width: 20%; height: 56rpx; box-sizing: border-box; border: 1rpx solid var(--grid); background: var(--surface); }
+.mini-cell { width: 20%; height: 40rpx; box-sizing: border-box; border: 1rpx solid var(--grid); background: var(--surface); } /* 图改小：5×5 整图 200rpx 宽 */
 .mini-cell.cell-head { background: #ef5350; }
 .mini-cell.cell-body { background: #66bb6a; }
+
+/* ---------- 道具详情（规则弹窗）：查看详情按钮 + 展开面板 + 示意网格 + 图标图例 ---------- */
+.props-list .props-item { display: flex; flex-direction: column; align-items: flex-start; }
+.prop-detail-btn {
+  margin-top: 8rpx;
+  padding: 4rpx 24rpx;
+  font-size: 24rpx;
+  color: var(--primary);
+  border: 2rpx solid var(--primary);
+  border-radius: 20rpx;
+}
+.prop-detail { margin-top: 12rpx; padding: 16rpx 20rpx; background: var(--surface); border-radius: 12rpx; width: 100%; box-sizing: border-box; }
+.prop-d-p { display: block; font-size: 24rpx; line-height: 1.8; color: var(--text-2); margin-bottom: 8rpx; }
+.prop-d-p:last-child { margin-bottom: 0; }
+.prop-illus-caption { display: block; font-size: 20rpx; color: var(--muted); text-align: center; margin: 4rpx 0 8rpx; }
+.illus-board { display: flex; flex-wrap: wrap; width: 240rpx; margin: 8rpx auto; }
+.illus-3 .illus-cell { width: 33.33%; }
+.illus-5 .illus-cell { width: 20%; }
+.illus-cell {
+  height: 64rpx;
+  box-sizing: border-box;
+  border: 1rpx solid var(--grid);
+  background: var(--cell-unknown);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+}
+.illus-cell.body { background: #66bb6a; }
+.illus-cell.head { background: #ef5350; }
+.illus-cell.x { color: var(--faint); }
+.illus-cell.num { color: #fbbf24; font-weight: bold; }
+.illus-cell.froz { color: #a78bfa; font-size: 24rpx; }
+.prop-legend { display: flex; align-items: center; margin-bottom: 4rpx; }
+.illus-dot {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 6rpx;
+  border: 1rpx solid var(--faint);
+  background: var(--cell-unknown);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20rpx;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+.illus-dot.x-dot { color: var(--faint); }
+.illus-dot.num-dot { color: #fbbf24; font-weight: bold; }
+.illus-dot.froz-dot { color: #a78bfa; }
+.illus-dot.gold-edge { box-shadow: inset 0 0 0 4rpx #f6c945; }
+.illus-dot.dim-dot { background: rgba(0, 0, 0, .35); }
 
 /* ---------- 头像 emoji（全局：各页都用） ---------- */
 .avatar {

@@ -11,7 +11,7 @@ global.WebSocket = require('ws').WebSocket;
 const WSClient = require('../public/ws.js');
 const shared = require('../public/shared.js');
 
-const WS_URL = 'ws://localhost:3000/ws';
+const WS_URL = (process.env.TEST_URL || 'http://localhost:3000').replace(/^http/, 'ws') + '/ws';
 const SPEC = 'M'; // 道具版默认 12×12 / 4 架
 
 let passed = 0, failed = 0;

@@ -17,6 +17,7 @@ Page({
     rooms: [],               // 最近加入的房间列表
     showRules: false,        // 规则弹窗
     rulesTab: 'classic',     // 规则弹窗当前栏：classic（基础规则）/ props（道具特有规则）
+    propDetailOpen: '',      // 道具规则详情展开的项：pro/devour/sonar/expose/burst/doom（'' = 全收起）
     diagrams: [],            // 规则弹窗里的 4 张飞机朝向图
     visitorCount: 0,         // 底部「已有 X 位玩家访问过」
     homeMode: 'classic',     // 当前选中的玩法栏：classic / props
@@ -118,12 +119,19 @@ Page({
     this.setData({ roomInput: e.detail.value });
   },
 
+  // 取昵称：输入框留空 → 随机生成一个英文名（新用户不用强制起名），并记住用过的名字
+  currentName() {
+    const name = this.data.name.trim() || shared.randomName();
+    app.saveStorage('bp_name', name);
+    return name;
+  },
+
   // 创建房间（双人）：按钮自带 data-mode，直接以该栏玩法+该栏规格开局（即使刚才点的是另一栏）
   onCreateTap(e) {
     const mode = (e && e.currentTarget && e.currentTarget.dataset.mode) || this.data.homeMode;
     this.setData({ homeMode: mode });
     app.globalData.socket.emit('createRoom', {
-      name: this.data.name,
+      name: this.currentName(),
       avatar: app.myAvatar(),
       mode: mode,
       boardSize: this.specFor(mode)
@@ -134,7 +142,7 @@ Page({
     const mode = (e && e.currentTarget && e.currentTarget.dataset.mode) || this.data.homeMode;
     this.setData({ homeMode: mode });
     app.globalData.socket.emit('createRoomAI', {
-      name: this.data.name,
+      name: this.currentName(),
       avatar: app.myAvatar(),
       mode: mode,
       boardSize: this.specFor(mode)
@@ -144,7 +152,7 @@ Page({
   onJoinTap() {
     app.globalData.socket.emit('joinRoom', {
       roomId: this.data.roomInput,
-      name: this.data.name,
+      name: this.currentName(),
       avatar: app.myAvatar(),
       mode: this.data.homeMode,
       boardSize: this.specFor(this.data.homeMode)
@@ -183,7 +191,12 @@ Page({
   onRulesClose() { this.setData({ showRules: false }); },
   onRulesTabTap(e) {
     const tab = (e && e.currentTarget && e.currentTarget.dataset.tab) || 'classic';
-    this.setData({ rulesTab: tab });
+    this.setData({ rulesTab: tab, propDetailOpen: '' }); // 切栏时收起道具详情
+  },
+  // 道具「查看详情」：点按钮展开/收起对应详情面板（手风琴，同时只展开一个）
+  onPropDetailTap(e) {
+    const prop = (e && e.currentTarget && e.currentTarget.dataset.prop) || '';
+    this.setData({ propDetailOpen: this.data.propDetailOpen === prop ? '' : prop });
   },
   noop() { /* 拦截点击穿透 */ }
 });

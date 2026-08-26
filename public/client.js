@@ -500,10 +500,13 @@ function renderBattleBoards() {
     const cell = myBoard[r][c];
     const mk = myMarks[r + ',' + c]; // 对方打过/道具作用过的记录（对象）
     if (mk && mk.result === 'destroyed') {
-      // 对方吞噬者摧毁我的格：深灰 + ✕（内容保密，和对方棋盘同款）
-      td.classList.add('cell-destroyed');
+      // 对方吞噬者摧毁我的格：保留原底色（绿=机身/红=机头/空色）+ ✕，己方飞机布局永远可见
+      if (cell === CELL_HEAD) td.classList.add('cell-head');
+      else if (cell === CELL_BODY) td.classList.add('cell-body');
+      td.classList.add('cell-destroyed-mine');
     } else if (mk && mk.result === 'head' && mk.destroyed) {
-      td.classList.add('cell-head-destroyed'); // 机头被摧毁：灰色机头（视为已发现）
+      td.classList.add('cell-head');
+      td.classList.add('cell-destroyed-mine'); // 机头被摧毁：红底 + ✕
     } else {
       if (cell === CELL_HEAD) td.classList.add('cell-head');
       else if (cell === CELL_BODY) td.classList.add('cell-body');
@@ -1439,6 +1442,18 @@ function bindSocketEvents() {
     updateDeployUI();
   });
 
+  // 房内有人改昵称（可能是自己）：更新面板；自己改的顺便同步本地记忆和首页输入框
+  s.on('nicknameUpdated', function (d) {
+    state.names[d.seat] = d.name;
+    if (state.seat === d.seat && !state.spectator) {
+      safeSet('bp_name', d.name);
+      const input = $('#name-input');
+      if (input) input.value = d.name;
+    }
+    updateBattlePanels();
+    updateDeployUI();
+  });
+
   // 再来一局投票
   s.on('rematchVote', function (d) {
     state.rematchVotes = d.votes;
@@ -1629,26 +1644,27 @@ function bindUIEvents() {
 
   // 首页「创建房间」/「人机对战」按钮（在地图选择下方，不在卡片框里）：
   // 按当前选中的玩法栏（state.homeMode）+ 该栏记住的规格开局
+  // 取昵称：输入框留空 → 随机生成一个英文名（新用户不用强制起名），并记住用过的名字
+  function currentName() {
+    const raw = $('#name-input').value.trim();
+    const name = raw || randomName();
+    safeSet('bp_name', name);
+    return name;
+  }
   document.querySelectorAll('.mode-create').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
-      const name = $('#name-input').value;
-      safeSet('bp_name', name.trim());
-      state.socket.emit('createRoom', { name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
+      state.socket.emit('createRoom', { name: currentName(), avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
     });
   });
   document.querySelectorAll('.mode-ai').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (btn.dataset.mode) state.homeMode = btn.dataset.mode; // 兼容旧版 data-mode
-      const name = $('#name-input').value;
-      safeSet('bp_name', name.trim());
-      state.socket.emit('createRoomAI', { name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
+      state.socket.emit('createRoomAI', { name: currentName(), avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
     });
   });
   $('#btn-join').addEventListener('click', function () {
-    const name = $('#name-input').value;
-    safeSet('bp_name', name.trim());
-    state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: name, avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
+    state.socket.emit('joinRoom', { roomId: $('#room-input').value, name: currentName(), avatar: myAvatar(), mode: currentMode(), boardSize: currentSpec() });
   });
   // 对局中的「返回菜单」按钮（部署页 + 对战页 + 观战等待页各一个）
   document.querySelectorAll('.btn-back-menu').forEach(function (btn) {
@@ -1660,6 +1676,20 @@ function bindUIEvents() {
       if (!window.confirm(msg)) return;
       state.socket.emit('leaveRoom');
     });
+  });
+
+  // 对战/部署页：点自己的昵称改昵称（和点头像换头像一样）
+  // 观战者面板显示的是玩家的名字，不允许乱改
+  $('#panel-my-name').addEventListener('click', function () {
+    if (state.spectator) return;
+    const cur = state.names[state.seat] || '';
+    const next = window.prompt('输入新昵称（1~12 个字）', cur);
+    if (next === null) return; // 点了取消：不改
+    const name = next.trim();
+    if (!name) return; // 留空：不改
+    if (name.length > 12) { toast('昵称最长 12 个字符'); return; }
+    safeSet('bp_name', name); // 本地记住，下次建房/加入直接带新昵称
+    state.socket.emit('setNickname', { name: name });
   });
 
   // 部署页：朝向按钮
@@ -1742,8 +1772,10 @@ function bindUIEvents() {
 
   // 受邀加入页：确认加入 / 返回菜单
   $('#btn-invite-join').addEventListener('click', function () {
-    const name = $('#invite-name-input').value;
-    safeSet('bp_name', name.trim());
+    // 输入框留空 → 随机生成一个英文名（新用户不用强制起名），并记住用过的名字
+    const raw = $('#invite-name-input').value.trim();
+    const name = raw || randomName();
+    safeSet('bp_name', name);
     // 房间号存在 state 里（而不是网址里），即使加入失败清掉了网址也能重试
     state.socket.emit('joinRoom', { roomId: state.inviteRoomId, name: name, avatar: myAvatar() });
   });
@@ -1779,6 +1811,16 @@ function bindUIEvents() {
   });
   $('#rules-modal').addEventListener('click', function (e) {
     if (e.target === this) this.classList.add('hidden');
+  });
+  // 道具「查看详情」：点按钮展开/收起对应详情面板（按钮文字同步切换）
+  $('#rules-pane-props').addEventListener('click', function (e) {
+    const btn = e.target.closest('.prop-detail-btn');
+    if (!btn) return;
+    const panel = document.getElementById('prop-detail-' + btn.dataset.prop);
+    if (!panel) return;
+    const willShow = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !willShow);
+    btn.textContent = willShow ? '收起' : '查看详情';
   });
 
   // 头像选择面板：点自己的头像（首页/邀请页/对战页面板）打开；🎲 随机 / 点背景关闭

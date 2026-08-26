@@ -12,7 +12,7 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new' });
   const page = await browser.newPage();
   await page.setViewport({ width: 800, height: 1200 });
-  await page.goto('http://localhost:3000/', { waitUntil: 'networkidle0', timeout: 20000 });
+  await page.goto((process.env.TEST_URL || 'http://localhost:3000') + '/', { waitUntil: 'networkidle0', timeout: 20000 });
 
   const r = await page.evaluate(function () {
     const rect = function (sel) {

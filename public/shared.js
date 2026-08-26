@@ -43,6 +43,16 @@
     return AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
   }
 
+  // ---------- 随机昵称（新用户不填昵称时的默认英文名） ----------
+  // 形容词 + 名词组合（如 BraveFox），浏览器/小程序/服务器共用一份词表
+  const NAME_ADJ = ['Brave', 'Lucky', 'Fast', 'Clever', 'Happy', 'Wild', 'Mighty', 'Swift', 'Noble', 'Sunny', 'Cool', 'Silent', 'Golden', 'Crazy', 'Fuzzy'];
+  const NAME_NOUN = ['Fox', 'Tiger', 'Wolf', 'Eagle', 'Panda', 'Falcon', 'Shark', 'Owl', 'Lion', 'Bear', 'Hawk', 'Dragon', 'Rabbit', 'Whale', 'Penguin'];
+
+  function randomName() {
+    return NAME_ADJ[Math.floor(Math.random() * NAME_ADJ.length)] +
+           NAME_NOUN[Math.floor(Math.random() * NAME_NOUN.length)];
+  }
+
   // ---------- 飞机形状 ----------
   // 每架飞机由 10 个格子组成，用「机头所在格」作为原点 (0,0)，
   // 其余格子用相对偏移 [行偏移, 列偏移] 表示（行向下增长、列向右增长）。
@@ -141,7 +151,8 @@
     buildBoard: buildBoard,
     validateDeployment: validateDeployment,
     AVATAR_POOL: AVATAR_POOL,
-    randomAvatar: randomAvatar
+    randomAvatar: randomAvatar,
+    randomName: randomName
   };
 
   if (typeof module !== 'undefined' && module.exports) {

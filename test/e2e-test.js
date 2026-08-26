@@ -18,7 +18,7 @@ global.WebSocket = require('ws').WebSocket;
 const WSClient = require('../public/ws.js');
 const shared = require('../public/shared.js');
 
-const URL = 'http://localhost:3000';
+const URL = process.env.TEST_URL || 'http://localhost:3000'; // 默认连本机 3000；回归测试可注入 TEST_URL 换端口
 
 let passed = 0, failed = 0;
 function check(name, cond) {
@@ -91,24 +91,30 @@ async function main() {
   check('重复连接不增加唯一总数', vrA2.total === vrB.total);
 
   // /stats 明细页（Node 18+ 自带 fetch）
-  const STATS_KEY = process.env.STATS_KEY || 'bombplane-stats-2026';
-  const okRes = await fetch('http://localhost:3000/stats?key=' + encodeURIComponent(STATS_KEY));
+  const STATS_KEY = process.env.ADMIN_KEY || process.env.STATS_KEY || '1233';
+  const okRes = await fetch(URL + '/stats?key=' + encodeURIComponent(STATS_KEY));
   check('/stats 正确钥匙返回 200', okRes.status === 200);
   const html = await okRes.text();
   check('/stats 列出两位访客记录', html.indexOf(vidA) !== -1 && html.indexOf(vidB) !== -1);
   check('/stats 不泄露任何飞机坐标', html.indexOf('headRow') === -1);
-  const badRes = await fetch('http://localhost:3000/stats?key=wrong');
-  const noKeyRes = await fetch('http://localhost:3000/stats');
-  check('/stats 错误或缺失钥匙返回 403', badRes.status === 403 && noKeyRes.status === 403);
+  // 口令门禁：无钥匙/错钥匙都不进列表，只显示口令输入页（不泄露任何访客数据）
+  const badRes = await fetch(URL + '/stats?key=wrong');
+  const badHtml = await badRes.text();
+  check('/stats 错误钥匙显示口令错误提示', badRes.status === 200 &&
+    badHtml.indexOf('口令错误') !== -1 && badHtml.indexOf(vidA) === -1);
+  const noKeyRes = await fetch(URL + '/stats');
+  const noKeyHtml = await noKeyRes.text();
+  check('/stats 无钥匙显示口令输入页', noKeyRes.status === 200 &&
+    noKeyHtml.indexOf('请输入后台口令') !== -1 && noKeyHtml.indexOf(vidA) === -1);
 
   // /stats.json（本地备份脚本用的 JSON 接口）
-  const jsonRes = await fetch('http://localhost:3000/stats.json?key=' + encodeURIComponent(STATS_KEY));
+  const jsonRes = await fetch(URL + '/stats.json?key=' + encodeURIComponent(STATS_KEY));
   const jsonData = await jsonRes.json();
   check('/stats.json 返回 JSON 且含两位访客明细', jsonRes.status === 200 &&
     jsonData.total >= 1 && Array.isArray(jsonData.visitors) &&
     jsonData.visitors.some(function (v) { return v.id === vidA; }) &&
     jsonData.visitors.some(function (v) { return v.id === vidB; }));
-  const jsonBad = await fetch('http://localhost:3000/stats.json?key=wrong');
+  const jsonBad = await fetch(URL + '/stats.json?key=wrong');
   check('/stats.json 错误钥匙返回 403', jsonBad.status === 403);
 
   // stats.json 落盘（等过 1 秒防抖再读）
@@ -382,9 +388,10 @@ async function main() {
   const errRoom = await waitFor(C, 'error');
   check('加入不存在的房间被拒绝', errRoom.message.indexOf('不存在') !== -1);
 
+  // 空白昵称 → 不再报错：服务器自动分配随机英文名（新用户不用强制起名）
   C.emit('createRoom', { name: '   ' });
-  const errName = await waitFor(C, 'error');
-  check('空昵称被拒绝', errName.message.indexOf('昵称') !== -1);
+  const createdBlank = await waitFor(C, 'roomCreated');
+  check('空白昵称 → 服务器自动分配随机名', !!createdBlank.name && createdBlank.name.length > 0);
 
   C.emit('createRoom', { name: '小明' });
   const created2 = await waitFor(C, 'roomCreated');
@@ -666,17 +673,17 @@ async function main() {
   check('回收后无法重连（房间已删除）', rejFail.roomId === aiRoom.roomId);
   P3.disconnect();
 
-  // 异常输入：空昵称被拒
+  // 异常输入：空白昵称 → 不再报错，服务器自动分配随机英文名
   const P4 = new WSClient(URL);
   await waitFor(P4, 'connect');
   P4.emit('createRoomAI', { name: '   ' });
-  const errAI = await waitFor(P4, 'error');
-  check('人机房间空昵称被拒绝', errAI.message.indexOf('昵称') !== -1);
+  const aiRoom2 = await waitFor(P4, 'roomCreated');
+  check('人机房间空白昵称 → 自动分配随机名', !!aiRoom2.name && aiRoom2.name.length > 0);
   P4.disconnect();
 
   // 容错：非法 JSON 会被服务器关闭连接（1003）
   {
-    const raw = new WebSocket('ws://localhost:3000/ws');
+    const raw = new WebSocket(URL.replace(/^http/, 'ws') + '/ws');
     const badClosed = new Promise(function (resolve) {
       const t = setTimeout(function () { resolve(-1); }, 3000);
       raw.onopen = function () { raw.send('这不是JSON{{{'); };

@@ -10,8 +10,8 @@ global.WebSocket = require('ws').WebSocket;
 const WSClient = require('../public/ws.js');
 const shared = require('../public/shared.js');
 
-const URL = 'http://localhost:3000';
-const WS_URL = 'ws://localhost:3000/ws';
+const URL = process.env.TEST_URL || 'http://localhost:3000';
+const WS_URL = URL.replace(/^http/, 'ws') + '/ws';
 
 let passed = 0, failed = 0;
 const errors = []; // 服务器拒绝原因收集

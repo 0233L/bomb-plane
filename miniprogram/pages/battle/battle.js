@@ -60,6 +60,7 @@ Page({
     pending: {},              // 'r,c' -> true：已点击、等待服务器回复的格子
     showRules: false,         // 规则弹窗（对战页副本，首页那份不动）
     rulesTab: 'classic',      // 当前规则栏：经典 / 道具（打开时默认当前模式）
+    propDetailOpen: '',       // 道具规则详情展开的项：pro/devour/sonar/expose/burst/doom（'' = 全收起）
     battleDiagrams: []        // 4 种飞机朝向示意图（复用首页规则弹窗的数据源）
   },
 
@@ -69,8 +70,8 @@ Page({
     // 收到揭示结果 / 出错：先清掉"处理中"格子的样式，再整页重渲染
     // （其余事件直接整页重渲染即可）
     const self = this;
-    ['battleStart', 'gameOver', 'playerStatus', 'avatarUpdated', 'rematchVote', 'rematchStart',
-      'spectatorCount', 'reconnected', 'theme'].forEach(function (e) {
+    ['battleStart', 'gameOver', 'playerStatus', 'avatarUpdated', 'nicknameUpdated', 'rematchVote',
+      'rematchStart', 'spectatorCount', 'reconnected', 'theme'].forEach(function (e) {
       self._sub(e, function () { self.render(); });
     });
     self._sub('revealResult', function () { self.data.pending = {}; self.render(); });
@@ -89,6 +90,32 @@ Page({
 
   onShow() {
     this.render();
+  },
+
+  // 点自己的昵称改名（和换头像一样）：弹出输入框，发给服务器后由 nicknameUpdated 广播回来
+  onMyNameTap() {
+    if (state.spectator) return; // 观战者面板显示的是玩家的名字，不能乱改
+    const cur = state.names[state.seat] || '';
+    const self = this;
+    wx.showModal({
+      title: '修改昵称',
+      editable: true,
+      placeholderText: '输入新昵称（1~12 个字）',
+      content: cur,
+      success(res) {
+        if (!res.confirm) return; // 点了取消：不改
+        const name = (res.content || '').trim();
+        if (!name) return; // 留空：不改
+        if (name.length > 12) {
+          wx.showToast({ title: '昵称最长 12 个字符', icon: 'none' });
+          return;
+        }
+        app.saveStorage('bp_name', name); // 本地记住，下次建房/加入直接带新昵称
+        app.globalData.socket.emit('setNickname', { name: name });
+        state.names[state.seat] = name; // 本地立刻生效（服务器广播回来会再渲染一次，幂等）
+        self.render();
+      }
+    });
   },
 
   // 整页渲染（对齐 goWait + goBattle + goOver + updateBattlePanels）
@@ -464,7 +491,12 @@ Page({
   },
   onRulesClose() { this.setData({ showRules: false }); },
   onRulesTabTap(e) {
-    this.setData({ rulesTab: e.currentTarget.dataset.tab });
+    this.setData({ rulesTab: e.currentTarget.dataset.tab, propDetailOpen: '' }); // 切栏时收起道具详情
+  },
+  // 道具「查看详情」：点按钮展开/收起对应详情面板（手风琴，同时只展开一个）
+  onPropDetailTap(e) {
+    const prop = (e && e.currentTarget && e.currentTarget.dataset.prop) || '';
+    this.setData({ propDetailOpen: this.data.propDetailOpen === prop ? '' : prop });
   },
   noop() {},
 

@@ -21,7 +21,9 @@ let currentPage = '';
 
 global.wx = {
   connectSocket(opts) {
-    const ws = new WebSocket(opts.url);
+    // 小程序代码写死连本机 3000（app.js SERVER_URL）；测试服务器可能起在别的端口（TEST_URL），重定向
+    const testWs = (process.env.TEST_URL || 'http://localhost:3000').replace(/^http/, 'ws') + '/ws';
+    const ws = new WebSocket(opts.url === 'ws://localhost:3000/ws' ? testWs : opts.url);
     return {
       _ws: ws,
       onOpen(cb) { ws.on('open', function () { cb(); }); },
@@ -178,7 +180,7 @@ async function main() {
 
   // 3. 网页端先加入（房间切到部署阶段），随后跨端各自确认部署
   console.log('— 跨端对战 —');
-  const W = new WSClient('http://localhost:3000');
+  const W = new WSClient(process.env.TEST_URL || 'http://localhost:3000');
   await waitUntil(function () { return W.connected; }, 5000, '网页端连接');
   W.emit('joinRoom', { roomId: state.roomId, name: '网页玩家', avatar: '🦊' });
   await waitUntil(function () { return state.names[1] === '网页玩家'; }, 5000, '网页端加入');
@@ -208,6 +210,50 @@ async function main() {
   check('己方面板显示昵称', battle.data.myName.indexOf('小程序玩家') !== -1);
   check('对战面板显示自己头像', battle.data.myAvatar === app.myAvatar());
   check('对战面板显示对方头像', battle.data.enemyAvatar === '🦊');
+
+  // 声呐结果为 0 也要显示数字（判断必须用 !== undefined 而非 truthy）
+  console.log('— 声呐 0 显示 —');
+  app.globalData.state.sonarResults = [{ row: 2, col: 3, count: 0, attacker: 1 }]; // 对方放的声呐扫到全空区 → 我的棋盘中心格 (3,4) 显示 0
+  battle.render();
+  const sonar0Mine = battle.data.myCells.find(function (c) { return c.r === 3 && c.c === 4; });
+  check('对方声呐结果为 0 时我的棋盘显示 0', sonar0Mine && sonar0Mine.cls.indexOf('cell-sonar') !== -1 && sonar0Mine.text === '0');
+  app.globalData.state.sonarResults = [{ row: 2, col: 3, count: 0, attacker: 0 }]; // 我放的声呐扫到全空区 → 对方棋盘中心格显示 0
+  battle.render();
+  const sonar0Enemy = battle.data.enemyCells.find(function (c) { return c.r === 3 && c.c === 4; });
+  check('我放的声呐结果为 0 时对方棋盘显示 0', sonar0Enemy && sonar0Enemy.text === '0');
+  app.globalData.state.sonarResults = []; // 清掉，不影响后面的对局
+
+  // 对方施放的毁灭菇冻结格：❄ 显示在我的棋盘上（对方接下来 2 回合不能打这些格）
+  console.log('— 毁灭菇冻结显示 —');
+  app.globalData.state.frozenCells = [{ row: 4, col: 5, owner: 1, expiry: 999 }];
+  app.globalData.state.steps = [0, 0];
+  battle.render();
+  const frozenCell = battle.data.myCells.find(function (c) { return c.r === 4 && c.c === 5; });
+  check('对方毁灭菇冻结格在我的棋盘显示 ❄', frozenCell && frozenCell.cls.indexOf('cell-frozen') !== -1 && frozenCell.text === '❄');
+  const frozenCell2 = battle.data.myCells.find(function (c) { return c.r === 0 && c.c === 0; });
+  check('非冻结格不显示 ❄', frozenCell2 && frozenCell2.text !== '❄');
+  app.globalData.state.frozenCells = []; // 清掉，不影响后面的对局
+
+  // 吞噬者摧毁格：己方棋盘保留原底色（绿=机身/红=机头/空色）+ ✕，己方飞机布局永远可见
+  console.log('— 吞噬者摧毁格显示 —');
+  app.globalData.state.myPlanes = [{ headRow: 3, headCol: 3, dir: 'up' }];
+  app.globalData.state.myShotsReceived = [
+    { row: 2, col: 2, result: 'head' },                    // 基线：机头 (3,3) 已被对方揭示过
+    { row: 2, col: 3, result: 'destroyed' },               // 空格被摧毁
+    { row: 4, col: 3, result: 'destroyed' },               // 机身被摧毁
+    { row: 3, col: 3, result: 'head', destroyed: true }    // 机头被摧毁
+  ];
+  battle.render();
+  const devBody = battle.data.myCells.find(function (c) { return c.r === 4 && c.c === 3; });
+  const devHead = battle.data.myCells.find(function (c) { return c.r === 3 && c.c === 3; });
+  const devEmpty = battle.data.myCells.find(function (c) { return c.r === 2 && c.c === 3; });
+  check('机身格被摧毁：绿底保留 + ✕', devBody && devBody.cls.indexOf('cell-destroyed-mine') !== -1 &&
+    devBody.cls.indexOf('cell-body') !== -1 && devBody.text === '✕');
+  check('机头格被摧毁：红底保留 + ✕', devHead && devHead.cls.indexOf('cell-destroyed-mine') !== -1 &&
+    devHead.cls.indexOf('cell-head') !== -1 && devHead.text === '✕');
+  check('空格被摧毁：保留空底色 + ✕', devEmpty && devEmpty.cls.indexOf('cell-destroyed-mine') !== -1 &&
+    devEmpty.cls.indexOf('cell-body') === -1 && devEmpty.cls.indexOf('cell-head') === -1 && devEmpty.text === '✕');
+  app.globalData.state.myShotsReceived = []; // 只清受击记录；myPlanes 保留测试飞机，供对局结束「飞机已公开」断言用
 
   // 5. 打完整局：小程序端走页面真实点击路径，网页端直接 emit
   console.log('— 对局进行中 —');

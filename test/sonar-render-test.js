@@ -109,6 +109,17 @@ const testSrc = [
   '  renderBattleBoards();',
   '  check("重连后对方声呐画在我的棋盘", hasCls(tdIn("my-board", 2, 2), "cell-sonar") && tdIn("my-board", 2, 2).textContent === "1");',
   '',
+  '  // ===== 6. 探测结果为 0 也要显示数字（0 !== undefined，判断必须用 !== undefined 而非 truthy） =====',
+  '  lines.push("6. 声呐结果为 0 也显示");',
+  '  setup();',
+  '  state.sonarResults = [{ row: 3, col: 4, count: 0, attacker: 1 }];', // 对方放声呐扫到全空区域 → 我的棋盘中心格显示 "0"
+  '  renderBattleBoards();',
+  '  check("对方声呐结果为 0 时我的棋盘显示 0", hasCls(tdIn("my-board", 4, 5), "cell-sonar") && tdIn("my-board", 4, 5).textContent === "0");',
+  '  setup();',
+  '  state.sonarResults = [{ row: 3, col: 4, count: 0, attacker: 0 }];', // 我放声呐扫到全空区域 → 对方棋盘中心格显示 "0"
+  '  renderBattleBoards();',
+  '  check("我放的声呐结果为 0 时对方棋盘显示 0", hasCls(tdIn("enemy-board", 4, 5), "cell-sonar") && tdIn("enemy-board", 4, 5).textContent === "0");',
+  '',
   '  return { passed: passed, failed: failed, lines: lines };',
   '};'
 ].join('\n');
