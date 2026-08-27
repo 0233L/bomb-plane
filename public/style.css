@@ -791,6 +791,15 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   }
   .player-panel { min-width: 0; padding: 8px 10px; }
   .player-panel h3 { font-size: 14px; }
+  /* 棋盘标题区固定两行高 + 居中：两边副标题行数不同（换行）时，两张棋盘顶部也能对齐 */
+  .board-col h3 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0 6px;
+    min-height: 48px;
+  }
   .avatar { font-size: 16px; } /* 手机端头像跟着面板一起缩小 */
   .player-panel p { font-size: 12px; }
   .battle-score { padding: 8px 12px; font-size: 15px; }
