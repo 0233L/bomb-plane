@@ -107,7 +107,7 @@ function sortAndSaveHistory(list) {
 function saveRoomToHistory(roomId, token, name) {
   const list = sortAndSaveHistory(
     loadRoomHistory().filter(function (e) { return e.roomId !== roomId; })
-      .concat([{ roomId: roomId, token: token, name: name, lastSeen: Date.now() }])
+      .concat([{ roomId: roomId, token: token, name: name, lastSeen: Date.now(), left: false }])
   );
   renderRecentRooms();
 }
@@ -223,6 +223,10 @@ function renderRecentRooms() {
     const joinBtn = document.createElement('button');
     joinBtn.textContent = '进入';
     joinBtn.addEventListener('click', function () {
+      // 手动点「进入」= 主动回来：清掉「已离开」标记，以后刷新还能自动回到这局
+      const list = loadRoomHistory();
+      const entry = list.find(function (x) { return x.roomId === e.roomId; });
+      if (entry) { entry.left = false; sortAndSaveHistory(list); }
       updateRoomLastSeen(e.roomId); // 即将进入该房间，刷新它的最后在线时间
       state.socket.emit('rejoin', { token: e.token, roomId: e.roomId });
     });
@@ -296,10 +300,30 @@ const ITEM_TIPS = {
 
 // ---------- 棋盘渲染 ----------
 
+// 格子尺寸按「规格 + 屏幕宽度」动态计算，让每张棋盘尽量占满页面：
+//  手机（≤720px）：能并排就并排（每列上限 40px、下限 20px），放不下就堆叠占满整行（无上限）
+//  桌面：两列并排，尽量饱满，上限 64px（14×14 大规格也不会溢出）
+function boardCellSize() {
+  const vw = document.documentElement.clientWidth;
+  const size = curSpec().size;
+  const pad = 24;  // body 左右 padding 合计
+  const gap = 24;  // 两列间距
+  if (vw <= 720) {
+    const full = Math.floor((vw - pad - 1) / size);           // 上下堆叠：尽量占满整行
+    const side = Math.floor((vw - pad - gap - 1) / 2 / size); // 左右并排：每列宽
+    const sideB = side * size + 1;                            // 并排时每张棋盘的宽
+    const canSide = sideB * 2 + gap + pad <= vw && side >= 20;
+    return Math.max(canSide ? Math.min(side, 40) : full, 20);
+  }
+  const maxCol = (Math.min(vw, 1400) - pad - gap) / 2; // 桌面每列可用宽（.view max-width 1400）
+  return Math.min(64, Math.floor((maxCol - 1) / size));
+}
+
 // 生成一个 size×size 的空棋盘表格；onCellClick 不为空时格子可点击
 // 棋盘大小跟随当前房间规格（进房后按规格重建）
 function makeBoard(tableEl, onCellClick) {
   const size = curSpec().size;
+  const cellSize = boardCellSize();
   tableEl.innerHTML = '';
   let suppressNextClick = false; // 长按标注后抑制紧随的 click，防止误揭示/误选道具格
   for (let r = 0; r < size; r++) {
@@ -308,6 +332,8 @@ function makeBoard(tableEl, onCellClick) {
       const td = document.createElement('td');
       td.dataset.row = r;
       td.dataset.col = c;
+      td.style.width = cellSize + 'px';
+      td.style.height = cellSize + 'px';
       if (onCellClick) {
         td.addEventListener('click', function () {
           if (suppressNextClick) { suppressNextClick = false; return; }
@@ -1486,6 +1512,12 @@ function bindSocketEvents() {
   // 观战者离开观战席也走这里（不写历史，回首页后身份恢复成普通玩家）
   s.on('leftRoom', function () {
     safeRemove('bp_draft');
+    // 主动离开：给历史记录打上标记，刷新后不再自动回到这个房间
+    const list = loadRoomHistory();
+    const entry = list.find(function (e) { return e.roomId === state.roomId; });
+    if (entry) { entry.left = true; sortAndSaveHistory(list); }
+    state.roomId = null;
+    state.token = null; // 清掉现场：断线重连时 connect 事件不会自动 rejoin 回来
     state.spectator = false;
     state.spectatorCount = 0;
     clearRoomFromUrl(); // 地址栏回到干净的首页
@@ -1938,6 +1970,19 @@ function init() {
   makeBoard($('#my-board'), null);
   makeBoard($('#enemy-board'), onEnemyCellClick);
 
+  // 屏幕尺寸变化（如手机横竖屏切换）时重算格子大小
+  let resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      const cs = boardCellSize();
+      document.querySelectorAll('table.board:not(.mini-board) td').forEach(function (td) {
+        td.style.width = cs + 'px';
+        td.style.height = cs + 'px';
+      });
+    }, 150);
+  });
+
   // 画规则弹窗里的 4 张飞机朝向配图
   renderRulesDiagram();
 
@@ -1966,8 +2011,13 @@ function init() {
   if (/^[A-Z0-9]{4}$/.test(urlRoom)) {
     const entry = loadRoomHistory().find(function (e) { return e.roomId === urlRoom; });
     if (entry) {
-      // 这个房间我进去过：走重连恢复自己的座位（而不是重新加入被「房间已满」挡掉）
-      state.socket.emit('rejoin', { token: entry.token, roomId: entry.roomId });
+      // 这个房间我进去过：走重连恢复自己的座位（而不是重新加入被「房间已满」挡掉）。
+      // socket 可能还没连上：先记进 state，connect 事件会自动 rejoin；已连上就直接发
+      state.roomId = entry.roomId;
+      state.token = entry.token;
+      if (state.socket.connected) {
+        state.socket.emit('rejoin', { token: entry.token, roomId: entry.roomId });
+      }
     } else {
       // 朋友点开的邀请链接：显示专属「受邀加入」界面（不是菜单，没有创建房间等选项），
       // 房间号和昵称都填好，等 ta 点「加入房间」确认；也可以点「返回菜单」回普通首页
@@ -1976,6 +2026,18 @@ function init() {
       $('#invite-name-input').value = savedName;
       showView('invite');
       if (!savedName) $('#invite-name-input').focus();
+    }
+  } else {
+    // 刷新页面自动回到上次的对局：取历史里最近一条「没主动离开过」的房间。
+    // socket 还没连上时先记在 state 里，connect 事件会用它自动 rejoin（已有逻辑）；
+    // 已连上则直接 rejoin。服务器 10 分钟内不回收房间，刷新基本都能接回来。
+    const entry = loadRoomHistory().find(function (e) { return !e.left; });
+    if (entry) {
+      state.roomId = entry.roomId;
+      state.token = entry.token;
+      if (state.socket.connected) {
+        state.socket.emit('rejoin', { token: entry.token, roomId: entry.roomId });
+      }
     }
   }
 }
