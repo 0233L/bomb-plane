@@ -47,7 +47,6 @@
 
     <view class="board-title">
       <text>{{boardTitleMy}}</text>
-      <text class="board-note">{{boardNoteMy}}</text>
     </view>
     <view class="board-wrap">
       <view class="board">
@@ -57,6 +56,7 @@
         </view>
       </view>
     </view>
+    <view class="board-note" wx:if="{{boardNoteMy}}">{{boardNoteMy}}</view>
 
     <!-- 对方信息面板 -->
     <view class="battle-panel">
@@ -74,7 +74,6 @@
 
     <view class="board-title">
       <text>{{boardTitleEnemy}}</text>
-      <text class="board-note">{{boardNoteEnemy}}</text>
     </view>
     <view class="board-wrap">
       <view class="board">
@@ -86,6 +85,7 @@
         </view>
       </view>
     </view>
+    <view class="board-note" wx:if="{{boardNoteEnemy}}">{{boardNoteEnemy}}</view>
 
     <!-- 道具栏（道具版专属）：点道具 → 点对方棋盘选区域 → 确认执行（金币不够的置灰） -->
     <scroll-view class="items-panel" wx:if="{{coinsVisible}}" scroll-x>

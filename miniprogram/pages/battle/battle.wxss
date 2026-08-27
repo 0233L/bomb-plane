@@ -97,12 +97,23 @@
 .panel-stat { font-size: 24rpx; color: var(--text-3); margin-right: 16rpx; }
 .panel-turn { font-size: 24rpx; color: var(--primary); }
 
+/* 棋盘标题固定高度 + 居中：两块标题必须等高，棋盘顶部才能对齐。
+   副标题（.board-note）已移到棋盘下方，不参与标题高度 */
 .board-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   font-size: 28rpx;
+  height: 68rpx;
   margin: 8rpx 0;
 }
-.board-note { font-size: 22rpx; color: var(--faint); margin-left: 10rpx; }
+.board-note {
+  font-size: 22rpx;
+  color: var(--faint);
+  text-align: center;
+  margin-top: 8rpx;
+}
 
 .wait-card { text-align: center; padding: 80rpx 24rpx; }
 .wait-title { font-size: 34rpx; }

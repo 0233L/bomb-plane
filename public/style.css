@@ -627,7 +627,19 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
 /* ---------- 对战页双棋盘 ---------- */
 .boards-row { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
 .board-col { text-align: center; }
-.board-col h3 { margin-bottom: 8px; font-size: 16px; }
+/* 棋盘标题区固定高度 + 居中：两列标题必须等高，棋盘顶部才能对齐。
+   副标题（.board-note）已移到棋盘下方，不参与标题高度；昵称再长也只换行 2 行（38px）< 48px */
+.board-col h3 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  height: 48px;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+.board-note { margin-top: 8px; color: var(--faint); font-size: 12px; }
 .small { color: var(--faint); font-weight: normal; font-size: 12px; }
 
 /* ---------- 棋盘 ---------- */
@@ -791,15 +803,7 @@ button.small-btn { padding: 6px 12px; font-size: 13px; }
   }
   .player-panel { min-width: 0; padding: 8px 10px; }
   .player-panel h3 { font-size: 14px; }
-  /* 棋盘标题区固定两行高 + 居中：两边副标题行数不同（换行）时，两张棋盘顶部也能对齐 */
-  .board-col h3 {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0 6px;
-    min-height: 48px;
-  }
+  /* 棋盘标题区已在全局固定 48px 高（见 .board-col h3），两列恒等高，棋盘顶部必然对齐 */
   .avatar { font-size: 16px; } /* 手机端头像跟着面板一起缩小 */
   .player-panel p { font-size: 12px; }
   .battle-score { padding: 8px 12px; font-size: 15px; }
