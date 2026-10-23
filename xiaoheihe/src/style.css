@@ -1,0 +1,1201 @@
+/* ============================================
+   style.css —— 炸飞机界面样式
+   设计目标：简洁、直观，宽屏双棋盘并排，手机自动上下堆叠
+   ============================================ */
+
+/* ---------- 全局 ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ---------- 主题配色 ----------
+   浅色 = 默认（:root），深色 = 右上角按钮切换后（data-theme="dark"）。
+   页面里所有颜色都通过下面的变量引用，切换主题时只需换变量值 */
+:root {
+  color-scheme: light;
+  --bg: #f0f4f8;               /* 页面背景 */
+  --surface: #ffffff;          /* 卡片 / 面板 / 棋盘底色 */
+  --text: #1f2937;             /* 主文字（标题） */
+  --text-2: #334155;           /* 次要文字（按钮、正文） */
+  --text-3: #475569;           /* 辅助文字（标签、说明） */
+  --muted: #64748b;            /* 小注释 */
+  --faint: #94a3b8;            /* 最淡（分隔线文字） */
+  --border: #cbd5e1;           /* 输入框 / 按钮边框 */
+  --border-soft: #e2e8f0;      /* 浅分隔线 */
+  --primary: #2563eb;          /* 主色（主要按钮、链接、选中态） */
+  --primary-hover: #1d4ed8;
+  --hover: #f1f5f9;            /* 按钮悬停背景 */
+  --banner-bg: #fff8e1;        /* 对局结束横幅 */
+  --banner-border: #ffd54f;
+  --banner-text: #b45309;
+  --cell-empty: #f5f5f5;       /* 棋盘：空格 */
+  --cell-unknown: #cbd5e1;     /* 棋盘：未知格（浅灰蓝，亮色模式提亮） */
+  --cell-unknown-hover: #dbe4f0;
+  --cell-pending: #3b5bdb;      /* 棋盘：已点击、等待服务器回复的格子 */
+  --edge: #64748b;             /* 飞机轮廓线 */
+  --board-border: #94a3b8;     /* 棋盘格线 */
+  --grid: #94a3b8;             /* 规则渲染图格线（道具示意网格用） */
+  --dim-overlay: rgba(15, 23, 42, .28); /* 没被打过的格子的遮罩（亮色模式调浅：能区分但不暗） */
+  --history-win: #15803d;      /* 对战历史：胜利（绿） */
+  --history-loss: #dc2626;     /* 对战历史：失败（红） */
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #e2e8f0;
+  --text-2: #cbd5e1;
+  --text-3: #94a3b8;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --border: #475569;
+  --border-soft: #334155;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --hover: #334155;
+  --banner-bg: #3a341f;
+  --banner-border: #c9a227;
+  --banner-text: #eab308;
+  --cell-empty: #334155;       /* 深色下空格比未知格亮一档，仍然分得清 */
+  --cell-unknown: #0f172a;
+  --cell-unknown-hover: #475569;
+  --cell-pending: #3b82f6;
+  --edge: #94a3b8;
+  --board-border: #475569;
+  --grid: #334155;             /* 规则渲染图格线（道具示意网格用） */
+  --dim-overlay: rgba(0, 0, 0, .5);
+  --history-win: #4ade80;      /* 对战历史：胜利（深色模式用更亮的绿） */
+  --history-loss: #f87171;     /* 对战历史：失败（深色模式用更亮的红） */
+}
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 20px 12px;
+}
+
+/* ---------- 右上角主题切换按钮（所有页面固定显示） ---------- */
+#btn-theme {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 90;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 页面切换 ---------- */
+.view { display: none; width: 100%; max-width: 1400px; }
+.view.active { display: block; }
+
+h1 { text-align: center; font-size: 40px; margin: 24px 0 4px; }
+h2 { text-align: center; margin: 8px 0; }
+.subtitle { text-align: center; color: var(--muted); margin-bottom: 20px; }
+
+/* ---------- 首页：服务器连接/唤醒提示 ----------
+   未连接时显示；连接成功后自动隐藏。此时首页仍可看规则、换主题、改昵称，
+   只有创建/加入/人机等需要服务器的按钮会置灰。 */
+.server-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 420px;
+  margin: -6px auto 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+.server-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: server-spin .8s linear infinite;
+}
+@keyframes server-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .server-spinner { animation: none; }
+}
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  margin: 0 auto 16px;
+  max-width: 380px;
+}
+.card label { display: block; font-size: 14px; color: var(--text-3); margin: 8px 0 4px; }
+.card input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.card button { width: 100%; margin-top: 4px; }
+.divider { text-align: center; color: var(--faint); margin: 12px 0; font-size: 13px; }
+
+/* ---------- 首页：继续上局卡 ---------- */
+/* 返回菜单后房间只暂停不销毁：这里显示摘要，点「继续」回到刚才的对局。 */
+.resume-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 380px;
+  margin: 0 auto 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  text-align: left;
+}
+.resume-main { flex: 1; min-width: 0; }
+.resume-title { font-size: 15px; font-weight: bold; color: var(--text); }
+.resume-summary { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.resume-actions { display: flex; flex: none; gap: 8px; }
+.resume-actions button { width: auto; margin: 0; padding: 7px 12px; font-size: 13px; }
+
+/* ---------- 首页：玩法两栏（经典 / 道具）+ 地图规格选择 ---------- */
+/* 两张玩法卡片并排：点击选中（描边高亮），创建/人机按钮走选中的玩法 */
+.mode-cards {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.mode-card {
+  flex: 1;
+  min-width: 0;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.mode-card.active {
+  border-color: var(--primary);
+}
+.mode-card-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text);
+}
+.mode-card-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 10px;
+  line-height: 1.6;
+}
+/* 弹窗里的道具价格（金色） */
+.gold { color: #f59e0b; font-weight: bold; }
+/* 规则弹窗两栏 tab：经典模式 / 道具模式 */
+.rules-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.rules-tab {
+  flex: 1;
+  padding: 8px 0;
+  font-size: 14px;
+  background: var(--bg);
+  border-color: var(--border);
+}
+.rules-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: bold;
+}
+/* 创建房间 / 人机对战：地图选择下方的并排按钮行（不在卡片框里） */
+.home-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.home-actions button {
+  flex: 1;
+}
+.home-actions .mode-create { color: #fff; background: var(--primary); border-color: var(--primary); }
+.home-actions .mode-ai { background: transparent; }
+.home-actions .mode-local { background: transparent; }
+
+/* 地图规格行：经典/道具各自的默认（10×10 / 12×12），可自由切换 */
+.spec-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.spec-label { font-size: 13px; color: var(--text-3); }
+.spec-btn {
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.spec-btn:hover { background: var(--hover); }
+.spec-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ---------- 房间内徽标：显示玩法与规格（如「🎁 道具版 · 12×12」） ---------- */
+.mode-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+/* ---------- 受邀加入页 ---------- */
+.invite-room-id {
+  color: var(--primary);
+  font-size: 20px;
+  letter-spacing: 2px;
+}
+#view-invite .card button { margin-top: 8px; }
+
+/* ---------- 按钮 ---------- */
+button {
+  padding: 10px 18px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background .15s;
+}
+button:hover { background: var(--hover); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.primary:hover { background: var(--primary-hover); }
+
+.btn-row { display: flex; gap: 12px; justify-content: center; margin: 12px 0; }
+
+/* ---------- 顶部栏 ---------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px 16px;
+  padding-right: 52px; /* 整条栏保持全宽居中，只让条内右侧内容让出悬浮的主题按钮的位置 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.room-tag { color: var(--text-3); }
+.names-tag { color: var(--muted); }
+button.small-btn { padding: 6px 12px; font-size: 13px; }
+
+/* ---------- 头像 emoji ---------- */
+/* 跨平台字体回退：Windows/安卓都能显示彩色 emoji，而不是黑白字形 */
+.avatar {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  margin-right: 4px;
+}
+.avatar-click { cursor: pointer; }           /* 我的头像：可点击换头像 */
+.avatar-click:hover { transform: scale(1.15); }
+.player-panel h3 .avatar { font-size: 18px; } /* 对战面板标题里的头像略小一档 */
+.avatar-row { display: flex; align-items: center; gap: 6px; } /* 首页昵称行：标签 + 头像并排 */
+
+/* 头像选择弹窗：emoji 网格 */
+.avatar-pool {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+.avatar-pool button {
+  font-size: 26px;
+  padding: 6px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.avatar-pool button:hover { background: var(--hover); transform: scale(1.1); }
+
+/* ---------- 双方累计比分（信息条中间一项，第二局起显示） ---------- */
+/* 只显示数字；鼠标悬停在数字上时，下方气泡显示对应玩家昵称 */
+.battle-score {
+  display: table;
+  margin: 0; /* 作为信息条的子项，位置由父级 flex 布局决定 */
+  padding: 8px 22px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: bold;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+}
+/* 第一局还没有比分（0:0）：胶囊隐藏但保留占位，第二局出现时布局不跳动 */
+.battle-score.hidden { display: table !important; visibility: hidden; }
+.score-num {
+  position: relative;
+  padding: 0 4px;
+  cursor: default;
+  border-radius: 6px;
+}
+.score-num:hover { background: var(--hover); }
+.score-num:hover::after {
+  content: attr(data-name);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, .92);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: normal;
+  white-space: nowrap;
+  z-index: 10;
+}
+/* 气泡上方的小三角箭头 */
+.score-num:hover::before {
+  content: '';
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: rgba(15, 23, 42, .92);
+}
+
+/* ---------- 弹窗（游戏规则） ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 95; /* 高于悬浮主题按钮(90)：弹窗打开时右上角 ✕ 不被 🌓 遮挡；低于 toast(100) */
+}
+.modal-box {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 24px;
+  width: calc(100% - 40px);
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+/* 规则弹窗头部：标题 + ✕ 关闭按钮（✕ 不随内容滚动，始终可见） */
+.rules-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.modal-x {
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.modal-x:hover { background: transparent; color: var(--text); }
+/* 清空历史的确认弹窗要盖在历史弹窗（95）上面，仍然低于 toast（100） */
+#confirm-modal { z-index: 96; }
+
+/* ---------- 对战历史弹窗 ---------- */
+/* 列表自己滚动，标题和底部按钮始终可见；不用 .recent-list 的行样式，避免互相影响 */
+.history-box {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.history-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 4px 0 8px;
+}
+.history-list {
+  list-style: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.history-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.history-list li:last-child { border-bottom: none; }
+.history-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+/* 长昵称 / 连续 emoji 允许在任意位置换行，不撑破弹窗 */
+.history-player {
+  color: var(--text-2);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.history-vs { color: var(--faint); font-size: 12px; }
+.history-result {
+  margin-left: auto; /* 结果靠右显示 */
+  font-weight: bold;
+  white-space: nowrap;
+}
+.history-result.history-win { color: var(--history-win); }
+.history-result.history-loss { color: var(--history-loss); }
+.history-result.history-local { color: var(--primary); }
+.history-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+/* 有终局快照的记录：整行可点，悬停/键盘聚焦给出反馈 */
+.history-list li.history-clickable {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color .15s;
+}
+.history-list li.history-clickable:hover { background: var(--hover); }
+.history-list li.history-clickable:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.history-open {
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 12px;
+}
+.history-open-old { color: var(--faint); }
+
+/* ---------- 历史详情：双方终局棋盘 ---------- */
+#history-detail-modal { z-index: 97; } /* 盖在历史列表（95）上面，仍低于 toast（100） */
+.history-detail-box {
+  display: flex;
+  flex-direction: column;
+  max-width: 760px;
+  max-height: 90vh;
+  overflow: hidden; /* 只有棋盘区域滚动，标题和按钮始终可见 */
+}
+.history-detail-result {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: bold;
+}
+.history-detail-result.history-win { color: var(--history-win); }
+.history-detail-result.history-loss { color: var(--history-loss); }
+.history-detail-result.history-local { color: var(--primary); }
+.history-detail-boards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 12px;
+  padding: 2px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.history-board-col {
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 340px;
+  text-align: center;
+}
+.history-board-col h3 {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+/* 用 CSS Grid 画只读棋盘：格子随弹窗宽度自动缩放，14×14 在手机上也不会横向溢出 */
+.history-board {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 10), minmax(0, 1fr));
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--surface);
+  border: 1px solid var(--board-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+.history-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--board-border);
+}
+.history-cell.hist-head { background: #ef5350; }
+.history-cell.hist-body { background: #66bb6a; }
+.history-cell.hist-empty { background: var(--cell-empty); }
+/* 没被探测过的格子：保留飞机颜色，蒙一层暗色（和游戏结束页一致） */
+.history-cell.hist-dimmed::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--dim-overlay);
+  pointer-events: none;
+}
+/* 被吞噬者摧毁的格子：✕ 叠在最终底色上 */
+.history-cell.hist-x::after {
+  content: '✕';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  font-size: clamp(7px, 2.8vw, 14px);
+  line-height: 1;
+  pointer-events: none;
+}
+.history-detail-note {
+  flex-shrink: 0;
+  margin: 10px 0 0;
+  text-align: center;
+  color: var(--faint);
+  font-size: 12px;
+}
+.history-detail-box .rules-modal-head,
+.history-detail-result,
+#history-detail-meta,
+.history-detail-note,
+.history-detail-box .btn-row { flex-shrink: 0; }
+
+/* 自定义确认弹窗 / 修改昵称弹窗（iOS 沙箱屏蔽 confirm / prompt 后的替代） */
+.confirm-text {
+  text-align: center;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 6px 0 18px;
+}
+#nickname-modal input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+#nickname-modal-error {
+  min-height: 20px;
+  margin-top: 4px;
+  color: #ef5350;
+}
+/* 经典模式飞机朝向配图：2×2 网格（每行 2 张）、图改小 */
+.rules-diagram { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; justify-items: center; margin: 16px 0; }
+.rules-plane { text-align: center; }
+.rules-plane p { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.rules-h3 { font-size: 15px; margin: 16px 0 6px; color: var(--text); }
+.rules-h3:first-of-type { margin-top: 8px; }
+.rules-p { font-size: 14px; color: var(--text-2); line-height: 1.8; }
+.rules-list { padding-left: 20px; font-size: 14px; color: var(--text-2); line-height: 2; margin: 0; }
+.rules-list li { margin-bottom: 2px; }
+/* 规则里的小色块：白 = 空 / 绿 = 机身 / 红 = 机头 */
+.rules-chip {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--faint);
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+.chip-empty { background: var(--cell-empty); }
+.chip-body  { background: #66bb6a; }
+.chip-head  { background: #ef5350; }
+
+/* 规则弹窗里的飞机小配图：借用棋盘配色，格子缩小到 12px（5×5 图整体 60px 宽） */
+.mini-board td { width: 12px; height: 12px; }
+
+/* 道具折叠块：每个道具条目本身可点击（有边框轮廓 + 箭头暗示可展开），点头部展开/收起详情面板 */
+.props-fold-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-sizing: border-box;
+  cursor: pointer;
+  line-height: 1.6;
+}
+.props-fold-head:hover { background: var(--hover); }
+.fold-arrow {
+  flex-shrink: 0;
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--text-2);
+  transition: transform .2s;
+}
+.props-fold-head.open .fold-arrow { transform: rotate(90deg); color: var(--primary); }
+/* 道具详情面板：点头部展开显示 */
+.prop-detail { margin: 8px 0 4px; padding: 10px 12px; background: var(--surface); border-radius: 8px; }
+.prop-detail p { font-size: 13px; color: var(--text-2); line-height: 1.8; margin: 0 0 8px; }
+.prop-detail p:last-child { margin-bottom: 0; }
+/* 道具详情里的示意网格：复用棋盘配色，格子 22px */
+.prop-illus { border-collapse: collapse; margin: 4px auto 8px; }
+.prop-illus td { width: 22px; height: 22px; border: 1px solid var(--grid); background: var(--cell-unknown); text-align: center; font-size: 12px; line-height: 22px; }
+.prop-illus td.body { background: #66bb6a; }
+.prop-illus td.head { background: #ef5350; }
+.prop-illus td.x { color: var(--faint); }
+.prop-illus td.num { color: #fbbf24; font-weight: bold; }
+.prop-illus td.froz { color: #a78bfa; }
+.prop-illus caption { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+/* 「棋盘图标含义」图例小方块 */
+.illus-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--faint);
+  background: var(--cell-unknown);
+  text-align: center;
+  font-size: 10px;
+  line-height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.illus-dot.x-dot { color: var(--text-3); }
+.illus-dot.num-dot { color: #fbbf24; font-weight: bold; }
+.illus-dot.froz-dot { color: #a78bfa; }
+.illus-dot.gold-edge { box-shadow: inset 0 0 0 2px #f6c945; }
+/* 声呐插图的金色外框：描在整张 3×3 表格外缘，对应「区域边缘闪金色外框」。
+   注意不能用 outline：border-collapse: collapse 的表格在 Chrome 下不渲染 outline（已知渲染 bug），
+   所以用 box-shadow 画外框（和 mini 端 .illus-board.gold-box 同一方案，视觉一致） */
+.prop-illus.gold-box { box-shadow: 0 0 0 3px #f6c945; }
+.illus-dot.dim-dot { background: var(--cell-unknown); }
+
+/* ---------- 观战人数徽章（信息条最左侧，无人观战时不显示） ---------- */
+.spectator-badge {
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  color: var(--text-3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  white-space: nowrap;
+}
+#view-wait .spectator-badge { display: table; margin: 16px auto 0; }
+
+/* ---------- 在线状态点：绿 = 在线，红 = 离线 ---------- */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.dot-on { background: #22c55e; }
+.dot-off { background: #ef4444; }
+
+/* ---------- 部署页 ---------- */
+.dir-row { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 10px 0; }
+.dir-label { font-size: 14px; color: var(--text-3); }
+.dir-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+.board-wrap { display: flex; justify-content: center; }
+#deploy-count { text-align: center; margin: 8px 0; color: var(--text-3); font-size: 14px; }
+#deploy-ready-status { text-align: center; margin: 8px 0; color: var(--muted); font-size: 14px; min-height: 20px; }
+
+/* ---------- 对战页：棋盘上方信息条（我的信息 | 比分 | 对手信息） ---------- */
+/* 对战页吸顶区：同屏换人条在上、玩家信息栏在下，作为整体吸附。
+   之前两者各自吸顶，滚动后会重叠；现在只有一个吸顶点，顺序由 DOM 保证。 */
+.battle-sticky-top {
+  position: sticky;
+  top: calc(8px + var(--hb-safe-top, env(safe-area-inset-top, 0px)));
+  z-index: 60;
+}
+/* 悬浮条已经放进吸顶容器：取消它自己的 sticky，避免在容器内再次偏移 */
+.battle-sticky-top .switch-bar { position: static; }
+.battle-info-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+/* 对战界面「规则」按钮：打开规则弹窗，默认显示当前模式的规则栏 */
+.battle-rules-btn {
+  align-self: center;
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.battle-rules-btn:hover { background: var(--hover); }
+.player-panel {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  min-width: 150px;
+  text-align: center;
+}
+.player-panel h3 { font-size: 16px; margin-bottom: 6px; }
+.player-panel p { font-size: 14px; color: var(--text-3); margin: 3px 0; }
+.player-panel .turn-hint { color: var(--primary); font-size: 13px; min-height: 18px; }
+
+/* 道具版金币行（经典模式隐藏）：金币数字金色突出 */
+.coins-row b { color: #f59e0b; }
+
+/* 金币图标：SVG data-URI 绘制的金色硬币（外圆 + 深金描边 + 内环 + ¥），
+   替代 emoji 🪙——emoji 依赖系统字体（老安卓缺字、风格不搭），SVG 跨平台渲染一致。
+   用 em 单位：跟随所在元素字号自动缩放，不用单独适配手机端 */
+.coin-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em; /* 与文字基线对齐 */
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23f59e0b' stroke='%23b45309' stroke-width='1.5'/%3E%3Ccircle cx='12' cy='12' r='7' fill='none' stroke='%23ffe9b8' stroke-width='1.5'/%3E%3Ctext x='12' y='16' text-anchor='middle' font-size='11' font-family='sans-serif' font-weight='bold' fill='%237c4a03'%3E%C2%A5%3C/text%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+/* ---------- 道具版：道具面板 + 选区状态条（对战页） ---------- */
+.items-panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px auto 0;
+  max-width: 720px;
+}
+/* 道具栏最左：本玩家金币数（金色数字；经典模式整个面板隐藏，无需单独显隐） */
+.panel-coins {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+  padding-left: 4px;
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.panel-coins b { color: #f59e0b; font-size: 15px; }
+/* 每个道具一个按钮：图标 + 名称 + 价格（价格金色） */
+.item-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px;
+  font-size: 13px;
+  min-width: 96px;
+  border-radius: 10px;
+}
+.item-btn b { color: #f59e0b; font-size: 14px; }
+.item-btn:disabled b { color: var(--faint); }
+/* 按钮第二行：效果小字（不用选中也能看到每个道具干什么） */
+.item-desc { font-size: 11px; color: var(--text-2); opacity: .8; }
+.item-btn:disabled .item-desc { color: var(--faint); }
+/* 选中进入选区模式：主色描边 */
+.item-btn.active {
+  border-color: var(--primary);
+  background: var(--hover);
+  box-shadow: 0 0 0 2px var(--primary) inset;
+}
+/* 选区状态条：操作指引 + 确认/取消 */
+.item-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  max-width: 640px;
+  background: var(--surface);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text-2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+}
+.item-status button { padding: 6px 14px; font-size: 13px; }
+#item-status-text { flex: 1; }
+
+/* 对局结束横幅：留在对战页上方，棋盘保持可见 */
+.over-banner {
+  text-align: center;
+  background: var(--banner-bg);
+  border: 2px solid var(--banner-border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.over-banner h2 { margin: 0 0 4px; font-size: 22px; }
+.over-banner p { margin: 4px 0; }
+.over-banner #over-rematch-status { color: var(--banner-text); font-size: 13px; min-height: 18px; }
+
+/* ---------- 对战页双棋盘 ---------- */
+.boards-row { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
+.board-col { text-align: center; }
+/* 棋盘标题区固定高度 + 居中：两列标题必须等高，棋盘顶部才能对齐。
+   副标题（.board-note）已移到棋盘下方，不参与标题高度；昵称再长也只换行 2 行（38px）< 48px */
+.board-col h3 {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  height: 48px;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+/* 敌方棋盘标题右侧的「二次确认」勾选框：不占标题居中的空间 */
+.reveal-confirm-label {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.reveal-confirm-label input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.board-note { margin-top: 8px; color: var(--faint); font-size: 12px; }
+.small { color: var(--faint); font-weight: normal; font-size: 12px; }
+
+/* ---------- 棋盘 ---------- */
+.board {
+  border-collapse: collapse;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+.board td {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--board-border);
+  text-align: center;
+  user-select: none;
+  -webkit-touch-callout: none; /* iOS 长按不弹系统文本选择菜单（手机端长按 = 标注） */
+  -webkit-user-select: none;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* 格子颜色：机头柔红 / 机身柔绿 / 空白 / 未知深蓝灰 */
+.board td.cell-head  { background: #ef5350; }
+.board td.cell-body  { background: #66bb6a; }
+.board td.cell-empty { background: var(--cell-empty); }
+.board td.cell-unknown { background: var(--cell-unknown); }
+
+/* 没被打过的格子蒙上深色遮罩（调暗）；被打过的保持原色高亮，不加额外标记
+   （己方棋盘一直如此；对方棋盘在对局结束公开飞机后也这样显示） */
+#my-board td.dimmed::before, #enemy-board td.dimmed::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--dim-overlay);
+  pointer-events: none;
+}
+#my-board td { cursor: default; }
+
+/* 飞机的轮廓：中灰色，只画外边缘；比棋盘格线（1px 浅灰）略粗略深，能区分即可 */
+.board td.edge-t { border-top: 2px solid var(--edge); }
+.board td.edge-b { border-bottom: 2px solid var(--edge); }
+.board td.edge-l { border-left: 2px solid var(--edge); }
+.board td.edge-r { border-right: 2px solid var(--edge); }
+
+/* 上一手揭示的格子：蓝色框框选（双方棋盘都标，无论哪一方操作的）
+   与给棋盘打标记（cell-mark-body）同款：方格内的 inset 边框，不越出格子 */
+.board td.last-reveal { box-shadow: inset 0 0 0 3px var(--primary); z-index: 1; }
+
+/* 吞噬者摧毁的格子：深灰 + ✕（内容保密；对局结束后公开真实内容） */
+.board td.cell-destroyed { background: var(--cell-unknown); color: var(--text-3); }
+.board td.cell-destroyed::after { content: '✕'; font-size: 20px; color: var(--text-3); }
+/* 机头被摧毁（视为已发现飞机）：灰底红边 + 红色 ✕ */
+.board td.cell-head-destroyed { background: var(--cell-unknown); border: 2px solid #ef5350; }
+.board td.cell-head-destroyed::after { content: '✕'; font-size: 20px; color: #ef5350; }
+/* 己方棋盘被吞噬者摧毁的格子：保留原底色（绿=机身/红=机头/空色）+ ✕，
+   己方飞机布局永远可见；对方棋盘仍用上面 cell-destroyed 深灰保密 */
+.board td.cell-destroyed-mine::after { content: '✕'; font-size: 20px; color: var(--text-3); }
+
+/* 毁灭菇冻结的格子：紫色 ❄（渲染层用 td.textContent 写 ❄，这里只管颜色字号；
+   注意不要再加 ::after content——会和文本重复画两个 ❄） */
+.board td.cell-frozen { color: #a78bfa; font-size: 16px; }
+
+/* 注释标记：右键在未揭示格上标的「机身」（绿框）。
+   用 inset 阴影画一圈：不超出格子，中间仍是未揭示的暗色 */
+.board td.cell-mark-body { box-shadow: inset 0 0 0 3px #66bb6a; z-index: 1; }
+
+/* 声呐脉冲的数字：显示在 3x3 锚点格上，金色小字（扫雷式推理用） */
+.board td.cell-sonar {
+  color: #fbbf24;
+  font-size: 16px;
+  font-weight: bold;
+  text-shadow: 0 0 4px rgba(0, 0, 0, .6);
+}
+
+/* 道具选区高亮：金色描边（仅非区域型道具：双发/无所遁形的单格、双格——没有内部线问题） */
+.board td.cell-pick, .board td.cell-pick-hover { outline: 3px solid #f59e0b; z-index: 1; }
+/* 区域型道具选区的锚点格（3×3 左上角 / 毁灭菇中心）：浅金色半透明填充。
+   锚点格若画完整方框就形成「内部轮廓」，所以用填充不用线条指示位置 */
+.board td.cell-pick-anchor { background-color: rgba(245, 158, 11, .28); }
+/* 选区模式：对方棋盘十字光标，提示正在选区域 */
+#enemy-board.picking td.cell-unknown { cursor: crosshair; }
+
+/* 对方棋盘：只有未知格可以点（未知格更深，已揭示的更突出） */
+#enemy-board td.cell-unknown { cursor: pointer; }
+#enemy-board td.cell-unknown:hover { background: var(--cell-unknown-hover); }
+#enemy-board td:not(.cell-unknown) { cursor: default; }
+/* 对局结束公开布局后：对方棋盘不再可点（点了只会提示对局已结束） */
+#enemy-board.revealed td.cell-unknown { cursor: default; }
+#enemy-board.revealed td.cell-unknown:hover { background: var(--cell-unknown); }
+/* 已点击、等待服务器回复的格子：立即变色反馈，网络慢也不觉得"没反应" */
+#enemy-board td.cell-pending { background: var(--cell-pending); cursor: wait; }
+/* 二次确认选中的格子：虚线框（和金色的道具选区区分），再点一次才真正探测 */
+#enemy-board td.cell-probe-target {
+  outline: 3px dashed var(--primary);
+  outline-offset: -3px;
+  z-index: 1;
+}
+
+/* 部署棋盘：所有格子都可点（放置/旋转/移除） */
+#deploy-board td { cursor: pointer; }
+#deploy-board td:hover { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* ---------- 结束横幅里的文字（棋盘保留在对战页） ---------- */
+#over-title { font-size: 32px; }
+#over-detail { text-align: center; color: var(--text-3); margin: 12px 0; }
+#over-rematch-status { text-align: center; color: var(--banner-text); font-size: 14px; min-height: 20px; margin-top: 8px; }
+
+/* ---------- 底部提示条 ---------- */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, .92);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+  z-index: 100;
+}
+.toast.show { opacity: 1; }
+
+/* ---------- 顶部换人悬浮条（同屏双人专用） ----------
+   不强制换人：步数相等时半透明询问；步数领先时 .urgent 把不透明度拉满并改成主色边框。
+   位置：client.js 会把它插到当前页顶部栏的下方（不遮挡返回菜单/规则）；
+   页面滚动后 sticky 吸附在安全区下方，继续可见。
+   z-index 60：盖住棋盘内容，低于右上角主题按钮(90)、普通弹窗(95)、toast(100)。
+   右侧留 52px，避免「切换玩家」按钮被悬浮的主题按钮挡住。 */
+.switch-bar {
+  position: sticky;
+  top: calc(8px + var(--hb-safe-top, env(safe-area-inset-top, 0px)));
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto 10px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 52px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+  opacity: .62;
+  transition: opacity .2s, box-shadow .2s, border-color .2s;
+}
+.switch-bar.urgent {
+  opacity: 1;
+  border-color: var(--primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+}
+.switch-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; color: var(--text); }
+#btn-switch-now { flex: none; padding: 6px 12px; font-size: 13px; }
+
+/* ---------- 交接页（同屏双人专用） ----------
+   玩家主动点「切换玩家」后才出现。
+   必须完全不透明：上一位玩家的棋盘、飞机布局都不能在交接时露出来。
+   z-index 高于所有弹窗和 toast，保证交接期间屏幕上只剩提示。 */
+.pass-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + var(--hb-safe-top, env(safe-area-inset-top, 0px)))
+           calc(24px + var(--hb-safe-right, env(safe-area-inset-right, 0px)))
+           calc(24px + var(--hb-safe-bottom, env(safe-area-inset-bottom, 0px)))
+           calc(24px + var(--hb-safe-left, env(safe-area-inset-left, 0px)));
+}
+.pass-box { text-align: center; width: 100%; max-width: 360px; }
+.pass-icon { font-size: 48px; line-height: 1; margin-bottom: 12px; }
+.pass-name { font-size: 30px; font-weight: bold; color: var(--text); margin: 8px 0 12px; word-break: break-all; }
+.pass-hint { color: var(--text-3); font-size: 14px; line-height: 1.7; margin-bottom: 24px; }
+#btn-pass-ready { width: 100%; padding: 12px 0; font-size: 16px; }
+
+.help { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+/* ---------- 最近加入的房间列表 ---------- */
+#recent-card h3 { font-size: 15px; margin-bottom: 4px; }
+.recent-list { list-style: none; }
+.recent-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 14px;
+}
+.recent-list li:last-child { border-bottom: none; }
+.recent-list li span { flex: 1; color: var(--text-2); }
+.recent-list li button { width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
+
+/* ---------- 手机适配 ---------- */
+@media (max-width: 720px) {
+  .board td { width: 28px; height: 28px; font-size: 14px; }
+  h1 { font-size: 30px; }
+  /* 继续上局卡：手机上纵向排列，按钮靠右 */
+  .resume-card { flex-direction: column; align-items: stretch; gap: 10px; }
+  .resume-actions { justify-content: flex-end; }
+  /* 信息条压缩：面板变窄，比分胶囊变小，保持一行放得下。
+     吸顶交给外层 .battle-sticky-top（和换人条一起）；这里不再单独 sticky，
+     否则两个吸顶点又会叠在一起。背景保持透明：只有卡片/按钮有半透明底，
+     空白间距透出棋盘，不遮挡内容。 */
+  .battle-info-row { gap: 8px; }
+  /* 只有「按钮」半透明置顶：玩家卡片、比分胶囊、观战徽章（规则按钮已移入顶部菜单栏） */
+  .battle-info-row .player-panel,
+  .battle-info-row .battle-score,
+  .battle-info-row .spectator-badge {
+    background: rgba(255, 255, 255, .72);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+  }
+  :root[data-theme="dark"] .battle-info-row .player-panel,
+  :root[data-theme="dark"] .battle-info-row .battle-score,
+  :root[data-theme="dark"] .battle-info-row .spectator-badge {
+    background: rgba(15, 23, 42, .72);
+  }
+  .player-panel { min-width: 0; padding: 8px 10px; }
+  .player-panel h3 { font-size: 14px; }
+  /* 棋盘标题区已在全局固定 48px 高（见 .board-col h3），两列恒等高，棋盘顶部必然对齐 */
+  .avatar { font-size: 16px; } /* 手机端头像跟着面板一起缩小 */
+  .player-panel p { font-size: 12px; }
+  .battle-score { padding: 8px 12px; font-size: 15px; }
+  /* 手机端格子缩到 28px：❄ / ✕ / 声呐数字都要跟着缩小
+     （这些规则的特异性比 `.board td { font-size: 14px }` 高，必须单独覆盖，
+      否则 ❄ 16px 在 28px 格子里会大得撑变形） */
+  .board td.cell-frozen { font-size: 12px; }
+  .board td.cell-destroyed::after,
+  .board td.cell-head-destroyed::after { font-size: 12px; }
+  .board td.cell-sonar { font-size: 12px; }
+  /* 手机端金币行略放大：图标 em 跟随字号，数字 15px 起太小 */
+  .panel-coins { font-size: 15px; }
+  .panel-coins b { font-size: 17px; }
+  .coins-row { font-size: 13px; }
+  /* 规则弹窗手机端改底部抽屉：内容长时露出上方大片可点遮罩区（点外部退出），
+     顶部 ✕ 兜底。只限定 #rules-modal，头像弹窗 #avatar-modal 保持居中不受影响 */
+  #rules-modal { align-items: flex-end; }
+  #rules-modal .modal-box {
+    width: 100%;
+    max-width: none;
+    max-height: 78vh;
+    border-radius: 12px 12px 0 0;
+  }
+  /* 历史弹窗保持居中，限制整体高度；超出的部分由列表自己滚动 */
+  .history-box { max-height: 82vh; }
+}
+
+/* ---------- 小黑盒 App 安全区 ----------
+   优先用 hb-sdk 的窗口信息（--hb-safe-*，由 client.js 的 applyHostSafeArea 写入）；
+   iOS 里 env(safe-area-inset-*) 可能是 0，取不到变量时才退回 env()。
+   普通浏览器里两者都是 0，不影响原有样式；作用：避开刘海 / 底部手势条 / 圆角 */
+body {
+  padding-top: calc(20px + var(--hb-safe-top, env(safe-area-inset-top, 0px)));
+  padding-bottom: calc(20px + var(--hb-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-left: calc(12px + var(--hb-safe-left, env(safe-area-inset-left, 0px)));
+  padding-right: calc(12px + var(--hb-safe-right, env(safe-area-inset-right, 0px)));
+}
+#btn-theme {
+  top: calc(12px + var(--hb-safe-top, env(safe-area-inset-top, 0px)));
+  right: calc(12px + var(--hb-safe-right, env(safe-area-inset-right, 0px)));
+}
+/* 固定定位元素不受 body padding 影响，单独避开底部手势条 */
+.toast {
+  bottom: calc(28px + var(--hb-safe-bottom, env(safe-area-inset-bottom, 0px)));
+}
+#rules-modal .modal-box {
+  padding-bottom: calc(24px + var(--hb-safe-bottom, env(safe-area-inset-bottom, 0px)));
+}

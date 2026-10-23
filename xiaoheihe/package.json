@@ -1,0 +1,32 @@
+{
+  "name": "xiaoheihe",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "heybox": {
+    "miniProgramId": "01a15288-dc63-73a6-90e7-f283d3b25abb",
+    "name": "炸飞机",
+    "desc": "单机炸飞机：人机对战、同屏双人（无需联网）",
+    "category": "game",
+    "icon": "assets/icon.png",
+    "coverImages": ["assets/cover.png"],
+    "platforms": ["android", "ios"],
+    "permissions": {
+      "storage": {
+        "enabled": true
+      }
+    }
+  },
+  "scripts": {
+    "hb-sdk": "hb-sdk",
+    "dev": "hb-sdk dev",
+    "build": "hb-sdk build",
+    "deploy": "hb-sdk remote deploy"
+  },
+  "dependencies": {
+    "@heybox/hb-sdk": "^0.9.1"
+  },
+  "devDependencies": {
+    "vite": "^8.0.12"
+  }
+}

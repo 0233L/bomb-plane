@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <!-- viewport-fit=cover：让 env(safe-area-inset-*) 在小黑盒 App 里真正生效（官方模板同样配置） -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>炸飞机 · 单机对战</title>
+  <!-- 提前应用主题（必须在样式表加载前执行，避免页面闪一下白色）：
+       记住上次的选择；没选过就跟随系统深浅色 -->
+  <script>
+    (function () {
+      var t = 'auto';
+      try {
+        t = localStorage.getItem('bp_theme') || 'auto';
+      } catch (e) {
+        // 小黑盒沙箱可能禁用 localStorage：读不到就按「跟随系统」处理
+      }
+      if (t === 'auto') {
+        t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- ============ 首页：昵称 + 玩法选择 + 开局 ============ -->
+  <!-- 离线版：没有服务器，只剩「人机对战」和「同屏双人」两种玩法 -->
+  <section id="view-home" class="view active">
+    <h1>✈️ 炸飞机</h1>
+    <p class="subtitle">单机对战</p>
+
+    <!-- 继续上局：返回菜单只会暂停房间（房间在内存里，刷新仍会丢）。
+         同屏双人点「继续」后先出交接页，确认当前玩家后才恢复，避免布局泄露。 -->
+    <div id="resume-card" class="resume-card hidden">
+      <div class="resume-main">
+        <div class="resume-title">🕹 继续上局</div>
+        <div id="resume-summary" class="resume-summary"></div>
+      </div>
+      <div class="resume-actions">
+        <button id="btn-resume" class="primary">继续</button>
+        <button id="btn-resume-discard" class="small-btn">放弃</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="avatar-row"><label for="name-input">昵称</label><span id="home-avatar" class="avatar avatar-click" title="点我换头像"></span></span>
+      <input id="name-input" type="text" maxlength="12" placeholder="输入昵称（留空随机生成）">
+
+      <!-- 玩法两栏：经典模式 / 道具模式（点哪栏就按哪种玩法开局，道具栏自带玩法介绍） -->
+      <div class="mode-cards">
+        <div class="mode-card" data-mode="classic">
+          <div class="mode-card-title">🎯 经典模式</div>
+          <p class="mode-card-desc">传统炸飞机：轮流轰炸对手棋盘，先找出全部 3 架飞机机头的一方获胜</p>
+        </div>
+        <div class="mode-card" data-mode="props">
+          <div class="mode-card-title">🎁 道具模式</div>
+          <p class="mode-card-desc">金币买道具，让对战更刺激！详细规则看「📖 游戏规则」的道具模式栏</p>
+        </div>
+      </div>
+      <p class="help" id="mode-help"></p>
+
+      <!-- 地图大小：经典/道具各自默认（10×10 / 12×12），点小地图按钮自由切换 -->
+      <div class="spec-row">
+        <span class="spec-label">地图大小：</span>
+        <button class="spec-btn" data-spec="S">10×10</button>
+        <button class="spec-btn" data-spec="M">12×12</button>
+        <button class="spec-btn" data-spec="L">14×14</button>
+      </div>
+
+      <!-- 两种开局：人机对战（和电脑打）/ 同屏双人（两人轮流用同一台设备） -->
+      <div class="home-actions">
+        <button class="mode-ai">🤖 人机对战</button>
+        <button class="mode-local">👥 同屏双人</button>
+      </div>
+
+      <button id="btn-rules">📖 游戏规则</button>
+      <button id="btn-history">📜 对战历史</button>
+    </div>
+
+    <p class="help">同屏双人：两人共用一台设备；步数落后时继续行动追平，领先时顶部会提示切换玩家，飞机布局不会被对方看到</p>
+  </section>
+
+  <!-- ============ 部署页：摆放 3 架飞机 ============ -->
+  <section id="view-deploy" class="view">
+    <div class="topbar">
+      <span class="room-tag">房间 <b id="deploy-room-id"></b></span>
+      <span class="mode-badge hidden"></span>
+      <button class="btn-copy-link small-btn">📋 复制房间号</button>
+      <span class="names-tag">对手：<span id="deploy-opponent-avatar" class="avatar"></span><b id="deploy-opponent-name">等待加入…</b><span id="deploy-opponent-dot" class="dot hidden"></span></span>
+      <button class="btn-back-menu small-btn">← 返回菜单</button>
+    </div>
+    <h2>部署你的飞机</h2>
+    <p class="help">点空白格放置机头 · 点机身旋转 · 点机头移除 · 或点「随机布局」一键摆好</p>
+
+    <div class="dir-row">
+      <span class="dir-label">朝向：</span>
+      <button class="dir-btn active" data-dir="up">上</button>
+      <button class="dir-btn" data-dir="right">右</button>
+      <button class="dir-btn" data-dir="down">下</button>
+      <button class="dir-btn" data-dir="left">左</button>
+    </div>
+
+    <div class="board-wrap">
+      <table id="deploy-board" class="board"></table>
+    </div>
+    <p id="deploy-count">已放置 0 / 3 架</p>
+
+    <div class="btn-row">
+      <button id="btn-random">随机布局</button>
+      <button id="btn-clear">清空</button>
+      <button id="btn-confirm" class="primary" disabled>确认部署</button>
+      <button id="btn-unconfirm" class="hidden">取消确认</button>
+    </div>
+    <p id="deploy-ready-status"></p>
+  </section>
+
+  <!-- ============ 对战页：左右玩家信息栏 + 双棋盘 ============ -->
+  <section id="view-battle" class="view">
+    <div class="topbar">
+      <span class="room-tag">房间 <b id="battle-room-id"></b></span>
+      <span class="mode-badge hidden"></span>
+      <button class="btn-copy-link small-btn">📋 复制房间号</button>
+      <button id="btn-battle-rules" class="battle-rules-btn" title="查看游戏规则（优先显示当前模式的规则）">📖 规则</button>
+      <button class="btn-back-menu small-btn">← 返回菜单</button>
+    </div>
+    <!-- 结束横幅：对局结束后出现（棋盘保留、对方飞机公开），不遮挡棋盘 -->
+    <div id="over-banner" class="over-banner hidden">
+      <h2 id="over-title"></h2>
+      <p id="over-detail"></p>
+      <div class="btn-row">
+        <button id="btn-rematch" class="primary" disabled>再来一局</button>
+      </div>
+      <p id="over-rematch-status"></p>
+    </div>
+    <!-- 吸顶区：换人悬浮条在上，玩家信息栏在下，两者一起吸顶（scroll 时不再互相覆盖） -->
+    <div class="battle-sticky-top">
+      <div id="switch-slot"></div>
+      <!-- 棋盘上方的信息条：观战人数 | 我的信息 | 比分 | 对手信息（比分居中） -->
+      <div class="battle-info-row">
+        <div id="spectator-badge" class="spectator-badge hidden">👁 <span id="spectator-count">0</span></div>
+        <div class="player-panel">
+          <h3><span id="panel-my-avatar" class="avatar avatar-click" title="点我换头像"></span><span id="panel-my-name"></span> <span id="panel-my-dot" class="dot"></span></h3>
+          <p>步数：<b id="panel-my-steps">0</b></p>
+          <p>已找到机头：<b id="panel-my-heads">0/3</b></p>
+          <p class="coins-row hidden" id="panel-my-coins-info-row">金币：<b id="panel-my-coins-info">0</b> <i class="coin-icon"></i></p>
+          <p class="turn-hint" id="panel-my-turn"></p>
+        </div>
+        <div id="battle-score" class="battle-score hidden">
+          <span id="score-a" class="score-num">0</span>
+          <span class="score-sep">:</span>
+          <span id="score-b" class="score-num">0</span>
+        </div>
+        <div class="player-panel">
+          <h3><span id="panel-enemy-avatar" class="avatar"></span><span id="panel-enemy-name"></span> <span id="panel-enemy-dot" class="dot"></span></h3>
+          <p>步数：<b id="panel-enemy-steps">0</b></p>
+          <p>已找到机头：<b id="panel-enemy-heads">0/3</b></p>
+          <p class="coins-row hidden" id="panel-enemy-coins-row">金币：<b id="panel-enemy-coins">0</b> <i class="coin-icon"></i></p>
+          <p class="turn-hint" id="panel-enemy-turn"></p>
+        </div>
+      </div>
+    </div>
+    <div class="boards-row">
+      <div class="board-col">
+        <h3><span id="board-title-my">我的棋盘</span></h3>
+        <table id="my-board" class="board"></table>
+        <div class="board-note" id="board-title-my-note">（对方打过的位置高亮）</div>
+      </div>
+      <div class="board-col">
+        <h3>
+          <span id="board-title-enemy">对方棋盘</span>
+          <label id="reveal-confirm-wrap" class="reveal-confirm-label"
+                 title="勾选后，每次探测都要再点一次同一格确认">
+            <input type="checkbox" id="reveal-confirm">二次确认
+          </label>
+        </h3>
+        <table id="enemy-board" class="board"></table>
+        <div class="board-note" id="board-title-enemy-note">（点击未知格子揭示 · 右键/长按可标注机身）</div>
+      </div>
+    </div>
+    <!-- 道具面板（道具版专属）：点道具 → 点对方棋盘选区域 → 确认执行（金币不够的置灰）。
+         按钮顺序：探测者 3 → 声呐 4 → 无所遁形 4 → 双发 4 → 吞噬者 3 → 毁灭菇 6（位置固定，避免玩家记忆错乱） -->
+    <div id="items-panel" class="items-panel hidden">
+      <!-- 道具栏最左：本玩家金币数（道具版显示；敌方金币仍在对方信息面板） -->
+      <div class="panel-coins" id="panel-my-coins-row"><i class="coin-icon"></i> <b id="panel-my-coins">0</b></div>
+      <button class="item-btn" data-item="pro"><span>🔍 探测者<b>3<i class="coin-icon"></i></b></span><span class="item-desc">身→头→空优先揭 1 格 · 全空揭全区</span></button>
+      <button class="item-btn" data-item="devour"><span>🧨 吞噬者<b>3<i class="coin-icon"></i></b></span><span class="item-desc">3×3 区域摧毁</span></button>
+      <button class="item-btn" data-item="sonar"><span>🔊 声呐脉冲<b>4<i class="coin-icon"></i></b></span><span class="item-desc">区域内飞机数量</span></button>
+      <button class="item-btn" data-item="expose"><span>👁 无所遁形<b>4<i class="coin-icon"></i></b></span><span class="item-desc">整架飞机全揭示</span></button>
+      <button class="item-btn" data-item="burst"><span>💥 双发连射<b>4<i class="coin-icon"></i></b></span><span class="item-desc">一次行动揭 2 格</span></button>
+      <button class="item-btn" data-item="doom"><span>🌋 毁灭菇<b>6<i class="coin-icon"></i></b></span><span class="item-desc">十字揭示 · 邻格封锁</span></button>
+    </div>
+    <!-- 道具选区状态条：操作指引 + 确认/取消 -->
+    <div id="item-status" class="item-status hidden">
+      <span id="item-status-text"></span>
+      <button id="item-confirm" class="primary hidden">✓ 确认使用</button>
+      <button id="item-cancel" class="hidden">✕ 取消</button>
+    </div>
+  </section>
+
+  <!-- ============ 观战等待页：双方还在部署 ============ -->
+  <section id="view-wait" class="view">
+    <div class="topbar">
+      <span class="room-tag">房间 <b id="wait-room-id"></b></span>
+      <button class="btn-back-menu small-btn">← 返回菜单</button>
+    </div>
+    <h2>对局准备中</h2>
+    <p class="help">你正在观战：双方正在部署飞机，开战后自动进入对局</p>
+    <div id="wait-spectator-badge" class="spectator-badge hidden">👁 <span id="wait-spectator-count">0</span> 人观战中</div>
+  </section>
+
+  <!-- 右上角主题切换按钮：🌓 跟随系统 → ☀️ 浅色 → 🌙 深色（循环切换） -->
+  <button id="btn-theme" title="主题：跟随系统" aria-label="切换主题">🌓</button>
+
+  <!-- 底部小提示条 -->
+  <div id="toast" class="toast"></div>
+
+  <!-- ============ 顶部换人悬浮条（同屏双人专用） ============
+       不强制换人：步数相等时半透明询问；步数领先时加深并提醒必须换人；
+       步数落后时隐藏（先追平）。玩家点「切换玩家」才进入下面的交接页。 -->
+  <div id="switch-bar" class="switch-bar hidden" role="status">
+    <span id="switch-text" class="switch-text"></span>
+    <button id="btn-switch-now" class="primary small-btn">切换玩家</button>
+  </div>
+
+  <!-- ============ 交接页（同屏双人专用） ============
+       玩家主动点「切换玩家」后才出现：不透明全屏，盖住上一位玩家的棋盘和飞机布局。
+       下一位玩家点按钮后 local-server.js 切换座位，再把新座位的完整快照发给界面。 -->
+  <div id="pass-modal" class="pass-modal hidden">
+    <div class="pass-box">
+      <div class="pass-icon" aria-hidden="true">📱</div>
+      <h2>请把设备交给</h2>
+      <p id="pass-name" class="pass-name"></p>
+      <p id="pass-hint" class="pass-hint">轮到你行动</p>
+      <button id="btn-pass-ready" class="primary">我是玩家，开始</button>
+    </div>
+  </div>
+
+  <!-- 游戏规则弹窗：两栏 tab（经典模式基础规则 / 道具模式只讲道具特有规则，不重复基础规则） -->
+  <div id="rules-modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="rules-modal-head">
+        <h2>📖 游戏规则</h2>
+        <button id="btn-rules-x" class="modal-x" aria-label="关闭">✕</button>
+      </div>
+
+      <div class="rules-tabs">
+        <button class="rules-tab active" data-tab="classic">🎯 经典模式</button>
+        <button class="rules-tab" data-tab="props">🎁 道具模式</button>
+      </div>
+
+      <div id="rules-pane-classic">
+        <h3 class="rules-h3">🎯 游戏目标</h3>
+        <p class="rules-p">先击中对方全部 3 架飞机的<b>机头</b>（红色格）的一方获胜。机头是飞机的命门，机身被打中不会致命。</p>
+
+        <h3 class="rules-h3">✈️ 部署阶段</h3>
+        <p class="rules-p">双方各自在自己的 10×10 棋盘上秘密部署 3 架飞机。每架飞机由 <b>1 个红色机头 + 9 个绿色机身</b>组成，可以旋转 4 个朝向（见下图）。飞机之间不能重叠，可以贴边、可以接壤。部署完成之前，对方完全看不到你的飞机藏在哪里。</p>
+        <div id="rules-diagram" class="rules-diagram"></div>
+
+        <h3 class="rules-h3">💣 对战阶段</h3>
+        <p class="rules-p">轮流点击对方棋盘上的未知格子进行「轰炸」，揭示结果会<b>永久显示</b>，双方都能看到：</p>
+        <ul class="rules-list">
+          <li><span class="rules-chip chip-empty"></span><b>白色 = 空</b>：什么也没打中，下次换别处试试。</li>
+          <li><span class="rules-chip chip-body"></span><b>绿色 = 机身</b>：打中了飞机，但只有机头才算致命伤，顺着机身找机头吧。</li>
+          <li><span class="rules-chip chip-head"></span><b>红色 = 机头</b>：击中一架飞机的机头！注意只会亮起这一格，整架飞机不会自动暴露。</li>
+        </ul>
+
+        <h3 class="rules-h3">⚖️ 步数规则</h3>
+        <p class="rules-p">游戏<b>没有先后手之分</b>，谁能下棋由双方已走的步数决定：</p>
+        <ul class="rules-list">
+          <li>双方步数<b>相同</b>时，谁先点谁先下（拼手速抢第一步）。</li>
+          <li>步数相差 <b>1 步</b>时，<b>只有步数少的一方可以下</b>——所以落后者可以连续下两步，反而抢到领先。</li>
+        </ul>
+
+        <h3 class="rules-h3">🏆 胜利条件</h3>
+        <p class="rules-p">先击中对方全部 <b>3 个机头</b>的一方获胜。对局没有时间限制，也没有任何判负规则——对方中途离开只是暂停，随时可以回来继续。</p>
+      </div>
+
+      <div id="rules-pane-props" class="hidden">
+        <h3 class="rules-h3"><i class="coin-icon"></i> 金币经济</h3>
+        <p class="rules-p">开局双方各 <b>6 金币</b>：击中机身 +1、机头 +3。金币双方互见，道具即时扣费。</p>
+        <p class="rules-p">道具使用都算<b>一次行动</b>，选中道具后按操作提示点击对方棋盘即可。基础玩法与经典模式相同，见「🎯 经典模式」栏。</p>
+
+        <h3 class="rules-h3">🧰 道具列表（按价格从低到高）</h3>
+        <ul class="rules-list props-list">
+          <li class="props-item">
+            <div class="props-fold-head" data-prop="pro" role="button">
+              <span class="fold-text"><b>🔍 探测者 <span class="gold">3<i class="coin-icon"></i></span></b> — 在对方棋盘选 3×3 区域，按「机身 → 机头 → 空」的优先级随机揭示其中 1 格真实内容；若区域内没有飞机（全空）则直接揭示整个区域。</span>
+              <span class="fold-arrow">▸</span>
+            </div>
+            <div class="prop-detail hidden" id="prop-detail-pro">
+              <p><b>使用：</b>先点工具栏的「🔍 探测者」选中道具，再在对方棋盘点一个格子作 3×3 区域的左上角。</p>
+              <p><b>效果：</b>从区域内按「机身 → 机头 → 空格」的优先级随机揭示 1 格真实内容；如果区域内一架飞机都没有（全空），则整个 3×3 区域直接全部揭示。</p>
+              <table class="prop-illus"><caption>3×3 区域内揭示出 1 格机身（绿格）</caption>
+                <tr><td></td><td></td><td></td></tr>
+                <tr><td></td><td class="body"></td><td></td></tr>
+                <tr><td></td><td></td><td></td></tr>
+              </table>
+              <p class="prop-icon-note"><b>图标含义：</b>揭示出的绿格（机身）/ 红格（机头）/ 白格（空）就是该格的真实内容，永久显示。</p>
+            </div>
+          </li>
+          <li class="props-item">
+            <div class="props-fold-head" data-prop="devour" role="button">
+              <span class="fold-text"><b>🧨 吞噬者 <span class="gold">3<i class="coin-icon"></i></span></b> — <b>摧毁</b>对方棋盘 3×3 区域内的未揭示格，命中机头即发现飞机。</span>
+              <span class="fold-arrow">▸</span>
+            </div>
+            <div class="prop-detail hidden" id="prop-detail-devour">
+              <p><b>使用：</b>选中「🧨 吞噬者」，在对方棋盘点一个格子作 3×3 区域的左上角。</p>
+              <p><b>效果：</b><b>摧毁</b>区域内所有未揭示的格子（空格也会被<b>摧毁</b>）；如果<b>摧毁</b>到机头，显示机头位置。</p>
+              <table class="prop-illus"><caption>3×3 区域内全部被摧毁（✕ 标记）</caption>
+                <tr><td class="x">✕</td><td class="x">✕</td><td class="x">✕</td></tr>
+                <tr><td class="x">✕</td><td class="x">✕</td><td class="x">✕</td></tr>
+                <tr><td class="x">✕</td><td class="x">✕</td><td class="x">✕</td></tr>
+              </table>
+              <p class="prop-icon-note"><b>图标含义：</b>✕ 格表示该格已被<b>摧毁</b>，<b>以后不可揭示</b>。你自己的棋盘被吞噬时，格子会保留原来的颜色（绿=机身、红=机头）再叠上 ✕，你的飞机布局永远可见。</p>
+            </div>
+          </li>
+          <li class="props-item">
+            <div class="props-fold-head" data-prop="sonar" role="button">
+              <span class="fold-text"><b>🔊 声呐脉冲 <span class="gold">4<i class="coin-icon"></i></span></b> — 在对方棋盘选 3×3 区域，显示其中飞机格的数量。</span>
+              <span class="fold-arrow">▸</span>
+            </div>
+            <div class="prop-detail hidden" id="prop-detail-sonar">
+              <p><b>使用：</b>选中「🔊 声呐脉冲」，在对方棋盘点一个格子作 3×3 区域的左上角。</p>
+              <p><b>效果：</b>区域边缘闪金色外框，中心格显示一个金色数字——数字 = 区域内飞机格（机身 + 机头）的数量，0 表示全空。</p>
+              <table class="prop-illus gold-box"><caption>3×3 区域内共 2 格是飞机</caption>
+                <tr><td></td><td></td><td></td></tr>
+                <tr><td></td><td class="num">2</td><td></td></tr>
+                <tr><td></td><td></td><td></td></tr>
+              </table>
+              <p class="prop-icon-note"><b>图标含义：</b>金色数字 = 区域内飞机格数量（0 = 全空）；金色外框 = 声呐探测的区域。数字只告诉你数量，不告诉你飞机具体在哪格。</p>
+            </div>
+          </li>
+          <li class="props-item">
+            <div class="props-fold-head" data-prop="expose" role="button">
+              <span class="fold-text"><b>👁 无所遁形 <span class="gold">4<i class="coin-icon"></i></span></b> — 点已揭示的机头格，完整揭示整架飞机（10 格全显示）。</span>
+              <span class="fold-arrow">▸</span>
+            </div>
+            <div class="prop-detail hidden" id="prop-detail-expose">
+              <p><b>使用：</b>先打中对方一个机头（红色格），再选中「👁 无所遁形」，点击那个已经揭示的机头格。</p>
+              <p><b>效果：</b>整架飞机完整暴露：机头 + 9 个机身共 10 格全部显示，飞机的朝向和位置一目了然。</p>
+              <table class="prop-illus illus-5"><caption>整架飞机 10 格全部亮出</caption>
+                <tr><td></td><td></td><td class="head"></td><td></td><td></td></tr>
+                <tr><td class="body"></td><td class="body"></td><td class="body"></td><td class="body"></td><td class="body"></td></tr>
+                <tr><td></td><td></td><td class="body"></td><td></td><td></td></tr>
+                <tr><td></td><td class="body"></td><td class="body"></td><td class="body"></td><td></td></tr>
+                <tr><td></td><td></td><td></td><td></td><td></td></tr>
+              </table>
+              <p class="prop-icon-note"><b>图标含义：</b>红色格 = 机头。机头被击中后只会亮起这一格，用无所遁形才能把整架飞机补全。</p>
+            </div>
+          </li>
+          <li class="props-item">
+            <div class="props-fold-head" data-prop="burst" role="button">
+              <span class="fold-text"><b>💥 双发连射 <span class="gold">4<i class="coin-icon"></i></span></b> — 点对方棋盘 2 个未知格，一次行动同时揭示。</span>
+              <span class="fold-arrow">▸</span>
+            </div>
+            <div class="prop-detail hidden" id="prop-detail-burst">
+              <p><b>使用：</b>选中「💥 双发连射」，在对方棋盘点 2 个未知格（不能点已经揭示过的格）。</p>
+              <p><b>效果：</b>一次行动同时揭示两格，等于连打两发但只算一次行动。</p>
+              <table class="prop-illus"><caption>一次行动同时揭示 2 格</caption>
+                <tr><td class="body"></td><td></td><td></td></tr>
+                <tr><td></td><td></td><td></td></tr>
+                <tr><td></td><td></td><td class="body"></td></tr>
+              </table>
+              <p class="prop-icon-note"><b>图标含义：</b>两格会同时显示真实内容（颜色同普通揭示），没有特殊标记。</p>
+            </div>
+          </li>
+          <li class="props-item">
+            <div class="props-fold-head" data-prop="doom" role="button">
+              <span class="fold-text"><b>🌋 毁灭菇 <span class="gold">6<i class="coin-icon"></i></span></b> — 点对方棋盘任意格作十字中心：十字 5 格揭示，对角线 4 个角格被<b>封锁</b>（❄ 标记）——接下来 2 次行动你不能点击它们，对手不受影响。</span>
+              <span class="fold-arrow">▸</span>
+            </div>
+            <div class="prop-detail hidden" id="prop-detail-doom">
+              <p><b>使用：</b>选中「🌋 毁灭菇」，在对方棋盘点任意一个格子作十字中心。</p>
+              <p><b>效果：</b>十字 5 格（中心 + 上下左右）立即揭示；中心的对角线 4 个角格被封锁（❄ 标记）——接下来 2 次行动你不能点击这些冻结格，对手自己不受影响。</p>
+              <table class="prop-illus illus-5"><caption>十字 5 格揭示 + 对角线 4 个角格 ❄ 冻结</caption>
+                <tr><td></td><td></td><td></td><td></td><td></td></tr>
+                <tr><td></td><td class="froz">❄</td><td class="body"></td><td class="froz">❄</td><td></td></tr>
+                <tr><td></td><td class="body"></td><td class="head"></td><td class="body"></td><td></td></tr>
+                <tr><td></td><td class="froz">❄</td><td class="body"></td><td class="froz">❄</td><td></td></tr>
+                <tr><td></td><td></td><td></td><td></td><td></td></tr>
+              </table>
+              <p class="prop-icon-note"><b>图标含义：</b>❄ 格 = 被毁灭菇冻结：施放者接下来 2 次行动不能点击它（被施放方不受影响，可以正常打）。冻结到期后 ❄ 消失、格子恢复正常。</p>
+            </div>
+          </li>
+        </ul>
+
+        <h3 class="rules-h3">🔣 棋盘图标含义</h3>
+        <ul class="rules-list">
+          <li><span class="illus-dot x-dot">✕</span><b>✕ 格</b>：被吞噬者<b>摧毁</b>的格子，<b>以后不可揭示</b>。</li>
+          <li><span class="illus-dot num-dot">2</span><b>金色数字</b>：声呐探测结果，数字 = 区域内飞机格数量（0 = 全空）。</li>
+          <li><span class="illus-dot gold-edge"></span><b>金色外框</b>：声呐探测的 3×3 区域。</li>
+          <li><span class="illus-dot froz-dot">❄</span><b>❄ 格</b>：被毁灭菇冻结，施放者接下来 2 次行动不能点击。</li>
+          <li><span class="illus-dot dim-dot"></span><b>灰暗格</b>：还没打过的未知格。</li>
+        </ul>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-rules-close" class="primary">知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 头像选择弹窗：点自己的头像打开 ============ -->
+  <div id="avatar-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>选择你的头像</h2>
+      <div id="avatar-pool" class="avatar-pool"></div>
+      <div class="btn-row">
+        <button id="btn-avatar-random">🎲 随机</button>
+        <button id="btn-avatar-close" class="primary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 对战历史弹窗 ============
+       数据只存在本机（bp_match_history，最近 20 局）；
+       确认弹窗在 DOM 里更靠后且 z-index 更高，清空确认会盖在这个弹窗上面 -->
+  <div id="history-modal" class="modal hidden">
+    <div class="modal-box history-box">
+      <div class="rules-modal-head">
+        <h2>📜 对战历史</h2>
+        <button id="btn-history-x" class="modal-x" aria-label="关闭">✕</button>
+      </div>
+      <p class="history-note">最近 20 局 · 只保存在本机</p>
+      <ul id="history-list" class="history-list"></ul>
+      <p id="history-empty" class="help hidden">还没有对战记录，先来一局吧</p>
+      <div class="btn-row">
+        <button id="btn-history-clear">清空历史</button>
+        <button id="btn-history-close" class="primary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 对局详情弹窗：从对战历史点一条带棋盘的记录打开 ============ -->
+  <div id="history-detail-modal" class="modal hidden">
+    <div class="modal-box history-detail-box">
+      <div class="rules-modal-head">
+        <h2>🛩️ 对局详情</h2>
+        <button id="btn-history-detail-x" class="modal-x" aria-label="关闭">✕</button>
+      </div>
+      <p id="history-detail-result" class="history-detail-result"></p>
+      <p id="history-detail-meta" class="history-note"></p>
+      <div id="history-detail-boards" class="history-detail-boards"></div>
+      <p class="history-detail-note">棋盘为终局状态 · 暗色 = 没有被探测过的格子</p>
+      <div class="btn-row">
+        <button id="btn-history-detail-close" class="primary">返回列表</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 自定义确认弹窗 ============
+       iOS 小黑盒 WebView 会屏蔽 window.confirm（直接返回 false），
+       「返回菜单」等确认操作改用这个弹窗，样式与其它弹窗一致 -->
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-box">
+      <p id="confirm-text" class="confirm-text"></p>
+      <div class="btn-row">
+        <button id="btn-confirm-cancel">取消</button>
+        <button id="btn-confirm-ok" class="primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 修改昵称弹窗 ============
+       window.prompt 在 iOS 沙箱里同样可能用不了，改成页面内的输入弹窗 -->
+  <div id="nickname-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>修改昵称</h2>
+      <input id="nickname-modal-input" type="text" maxlength="12" placeholder="1~12 个字">
+      <p id="nickname-modal-error" class="help"></p>
+      <div class="btn-row">
+        <button id="btn-nickname-cancel">取消</button>
+        <button id="btn-nickname-ok" class="primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 入口：main.js 里按 shared → local-ai → local-server → client 的顺序加载代码 -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
