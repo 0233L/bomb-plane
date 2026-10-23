@@ -60,6 +60,7 @@
       <input id="room-input" type="text" maxlength="4" placeholder="4 位房间号">
       <button id="btn-join">加入房间</button>
       <button id="btn-rules">📖 游戏规则</button>
+      <button id="btn-history">📜 对战历史</button>
     </div>
 
     <div class="card" id="recent-card">
@@ -166,7 +167,13 @@
         <div class="board-note" id="board-title-my-note">（对方打过的位置高亮）</div>
       </div>
       <div class="board-col">
-        <h3><span id="board-title-enemy">对方棋盘</span></h3>
+        <h3>
+          <span id="board-title-enemy">对方棋盘</span>
+          <label id="reveal-confirm-wrap" class="reveal-confirm-label"
+                 title="勾选后，每次探测都要再点一次同一格确认">
+            <input type="checkbox" id="reveal-confirm">二次确认
+          </label>
+        </h3>
         <table id="enemy-board" class="board"></table>
         <div class="board-note" id="board-title-enemy-note">（点击未知格子揭示 · 右键/长按可标注机身）</div>
       </div>
@@ -373,6 +380,39 @@
     </div>
   </div>
 
+  <!-- ============ 对战历史弹窗：只读列表（最近 20 局，只保存在本机） ============ -->
+  <div id="history-modal" class="modal hidden">
+    <div class="modal-box history-box">
+      <div class="rules-modal-head">
+        <h2>📜 对战历史</h2>
+        <button id="btn-history-x" class="modal-x" aria-label="关闭">✕</button>
+      </div>
+      <p class="history-note">最近 20 局 · 只保存在本机</p>
+      <ul id="history-list" class="history-list"></ul>
+      <p id="history-empty" class="help hidden">还没有对战记录，先来一局吧</p>
+      <div class="btn-row">
+        <button id="btn-history-close" class="primary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 对局详情弹窗：从对战历史点一条带棋盘的记录打开 ============ -->
+  <div id="history-detail-modal" class="modal hidden">
+    <div class="modal-box history-detail-box">
+      <div class="rules-modal-head">
+        <h2>🛩️ 对局详情</h2>
+        <button id="btn-history-detail-x" class="modal-x" aria-label="关闭">✕</button>
+      </div>
+      <p id="history-detail-result" class="history-detail-result"></p>
+      <p id="history-detail-meta" class="history-note"></p>
+      <div id="history-detail-boards" class="history-detail-boards"></div>
+      <p class="history-detail-note">棋盘为终局状态 · 暗色 = 没有被探测过的格子</p>
+      <div class="btn-row">
+        <button id="btn-history-detail-close" class="primary">返回列表</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ 头像选择弹窗：点自己的头像打开 ============ -->
   <div id="avatar-modal" class="modal hidden">
     <div class="modal-box">
@@ -385,9 +425,10 @@
     </div>
   </div>
 
-  <!-- 脚本加载顺序：WebSocket 客户端（替代 socket.io）→ 共用游戏逻辑 → 前端逻辑 -->
+  <!-- 脚本加载顺序：WebSocket 客户端（替代 socket.io）→ 共用游戏逻辑 → 对战历史 → 前端逻辑 -->
   <script src="ws.js"></script>
   <script src="shared.js"></script>
+  <script src="match-history.js"></script>
   <script src="client.js"></script>
 </body>
 </html>

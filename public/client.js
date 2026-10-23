@@ -23,6 +23,7 @@ function showView(name) {
   document.querySelectorAll('.view').forEach(function (v) {
     v.classList.toggle('active', v.id === 'view-' + name);
   });
+  closeHistoryModal(); // 页面切换时顺手关掉对战历史弹窗，避免它盖在新页面上
 }
 
 // 部署页/对战页顶部的玩法徽标：道具版才显示（含地图规格），经典模式隐藏
@@ -126,6 +127,236 @@ function removeRoomFromHistory(roomId) {
     loadRoomHistory().filter(function (e) { return e.roomId !== roomId; })
   ));
   renderRecentRooms();
+}
+
+// ---------- 对战历史（localStorage bp_match_history，最近 20 局） ----------
+// 数据的校验/排序/格式化都在 match-history.js 里（window.MatchHistory），
+// 这里只负责读写存储、把记录渲染成首页弹窗里的列表。
+// 注意：存储失败、坏 JSON 都不能影响对局结算和首页启动，所以全部包 try/catch。
+
+// 读出历史记录（坏数据自动丢弃，最多 20 条，新的在前）
+function loadMatchHistory() {
+  try {
+    return MatchHistory.load(safeGet(MatchHistory.STORAGE_KEY));
+  } catch (e) {
+    return []; // 解析失败就当没有记录
+  }
+}
+
+// 把记录列表写回本机存储
+function saveMatchHistory(list) {
+  try {
+    safeSet(MatchHistory.STORAGE_KEY, MatchHistory.serialize(list));
+  } catch (e) {
+    // 历史记录不是游戏必需功能：写入失败时静默忽略
+  }
+}
+
+// 一局正常结束后写一条记录（只在 gameOver 处理器里调用，battleStart 时重置标记）
+// winnerSeat：0 / 1 = 哪一方获胜（人机对战里 0 是玩家自己）
+// planes：服务器在 gameOver 里公开的双方飞机，用于「点历史记录回看棋盘」
+function recordMatchResult(winnerSeat, planes) {
+  try {
+    // 观战者没有自己的座位，不记录
+    if (state.spectator || state.seat === null) return;
+
+    // 落子记录按「被攻击的座位」归档：
+    //   myShotsReceived   = 打在我这个座位上的记录
+    //   enemyShotsReceived = 打在对手座位上的记录
+    const mySeat = state.seat === 1 ? 1 : 0;
+    const shots = [[], []];
+    shots[mySeat] = (state.myShotsReceived || []).map(function (s) {
+      return { row: s.row, col: s.col, result: s.result, destroyed: s.destroyed === true };
+    });
+    shots[1 - mySeat] = (state.enemyShotsReceived || []).map(function (s) {
+      return { row: s.row, col: s.col, result: s.result, destroyed: s.destroyed === true };
+    });
+
+    const record = MatchHistory.createRecord({
+      time: Date.now(),
+      kind: state.isAI ? 'ai' : 'online',
+      mode: state.mode,
+      boardSize: state.boardSize,
+      names: [state.names[0], state.names[1]],       // 只传副本，不保存 state 里的数组引用
+      avatars: [state.avatars[0], state.avatars[1]],
+      steps: [state.steps[0], state.steps[1]],
+      winnerSeat: winnerSeat,
+      planes: planes || state.revealedPlanes,        // 双方终局飞机布局
+      shots: shots                                  // 双方棋盘各自的落子结果
+    });
+    // 先读出旧列表 → 新记录放最前 → 最多保留 20 条
+    saveMatchHistory(MatchHistory.append(safeGet(MatchHistory.STORAGE_KEY), record));
+  } catch (e) {
+    // 写历史失败绝不能让结算页崩掉
+  }
+}
+
+// 把历史记录渲染到弹窗列表里（全部用 createElement + textContent，昵称不会被当成 HTML）
+function renderMatchHistory() {
+  const listEl = $('#history-list');
+  if (!listEl) return;
+
+  const list = loadMatchHistory();
+  listEl.textContent = ''; // 清空旧内容（这个列表完全由本函数生成）
+
+  list.forEach(function (record) {
+    const li = document.createElement('li');
+    li.className = 'history-item';
+
+    // 第一行：头像+昵称 vs 头像+昵称 + 结果
+    const title = document.createElement('div');
+    title.className = 'history-title';
+    [0, 1].forEach(function (seat) {
+      if (seat === 1) {
+        const vs = document.createElement('span');
+        vs.className = 'history-vs';
+        vs.textContent = 'vs';
+        title.appendChild(vs);
+      }
+      const player = document.createElement('span');
+      player.className = 'history-player';
+      const avatar = record.avatars[seat] || '';
+      const name = record.names[seat] || ('玩家' + (seat + 1));
+      player.textContent = (avatar ? avatar + ' ' : '') + name;
+      title.appendChild(player);
+    });
+
+    const result = document.createElement('span');
+    // 结果颜色：人机 = 胜/负；联机（含兼容的 local2p）= 蓝色「XX 获胜」
+    result.className = 'history-result ' + (record.kind === 'ai'
+      ? (record.winnerSeat === 0 ? 'history-win' : 'history-loss')
+      : 'history-online');
+    result.textContent = MatchHistory.formatResult(record);
+    title.appendChild(result);
+    li.appendChild(title);
+
+    // 第二行：时间 · 类型 · 玩法 · 地图 · 步数
+    const meta = document.createElement('div');
+    meta.className = 'history-meta';
+    meta.textContent = MatchHistory.formatMeta(record);
+    li.appendChild(meta);
+
+    // 有终局快照的记录可以点进去看双方棋盘；旧记录明确说明不能回看
+    const hasBoard = MatchHistory.hasBoard(record);
+    const openHint = document.createElement('div');
+    openHint.className = 'history-open' + (hasBoard ? '' : ' history-open-old');
+    openHint.textContent = hasBoard ? '🛩️ 查看终局棋盘' : '旧记录未保存棋盘';
+    li.appendChild(openHint);
+
+    if (hasBoard) {
+      li.classList.add('history-clickable');
+      li.setAttribute('role', 'button');
+      li.tabIndex = 0;
+      const open = function () { openHistoryDetail(record); };
+      li.addEventListener('click', open);
+      li.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      });
+    }
+
+    listEl.appendChild(li);
+  });
+
+  // 没有记录时显示提示文字
+  const emptyEl = $('#history-empty');
+  if (emptyEl) emptyEl.classList.toggle('hidden', list.length > 0);
+}
+
+// 打开历史弹窗：每次都重新读存储，保证显示的是最新记录
+function openHistoryModal() {
+  closeHistoryDetail(); // 从详情返回时列表可能还开着，先收起详情
+  renderMatchHistory();
+  $('#history-modal').classList.remove('hidden');
+}
+
+function closeHistoryModal() {
+  closeHistoryDetail();
+  const modal = $('#history-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// 历史详情：用记录里的终局快照画双方棋盘（只读，不可点击）
+// 记录格式由 match-history.js 校验：planes[座位] 是飞机坐标，shots[座位] 是打在该座位上的记录
+function openHistoryDetail(record) {
+  if (!MatchHistory.hasBoard(record)) return;
+
+  const resultEl = $('#history-detail-result');
+  const metaEl = $('#history-detail-meta');
+  const boardsEl = $('#history-detail-boards');
+  if (!resultEl || !metaEl || !boardsEl) return;
+
+  resultEl.className = 'history-detail-result';
+  if (record.kind === 'ai') {
+    resultEl.classList.add(record.winnerSeat === 0 ? 'history-win' : 'history-loss');
+  } else if (record.kind === 'local2p') {
+    resultEl.classList.add('history-local');
+  } else {
+    resultEl.classList.add('history-online');
+  }
+  resultEl.textContent = MatchHistory.formatResult(record);
+  metaEl.textContent = MatchHistory.formatMeta(record);
+
+  boardsEl.textContent = ''; // 这个容器完全由本函数生成
+  [0, 1].forEach(function (seat) {
+    const col = document.createElement('div');
+    col.className = 'history-board-col';
+
+    const title = document.createElement('h3');
+    const avatar = record.avatars[seat] || '';
+    const name = record.names[seat] || ('玩家' + (seat + 1));
+    title.textContent = (record.winnerSeat === seat ? '👑 ' : '') +
+      (avatar ? avatar + ' ' : '') + name + ' 的棋盘';
+    col.appendChild(title);
+
+    const board = buildBoard(record.planes[seat] || [], record.boardSize);
+    const size = board.length;
+    const boardEl = document.createElement('div');
+    boardEl.className = 'history-board';
+    boardEl.style.setProperty('--n', String(size));
+    boardEl.setAttribute('role', 'img');
+    boardEl.setAttribute('aria-label', name + ' 的终局棋盘');
+
+    // 同一格可能被多个道具/揭示记录覆盖：销毁标记优先级最高
+    const marks = {};
+    const shots = (record.shots && record.shots[seat]) || [];
+    shots.forEach(function (s) {
+      const key = s.row + ',' + s.col;
+      const prev = marks[key];
+      if (!prev || s.destroyed || s.result === 'destroyed') marks[key] = s;
+    });
+
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'history-cell';
+        const type = board[r][c];
+        if (type === CELL_HEAD) cell.classList.add('hist-head');
+        else if (type === CELL_BODY) cell.classList.add('hist-body');
+        else cell.classList.add('hist-empty');
+
+        const shot = marks[r + ',' + c];
+        if (!shot) {
+          // 这格从没被探测过：保留飞机颜色，但蒙一层暗色，和游戏结束页一致
+          cell.classList.add('hist-dimmed');
+        } else if (shot.destroyed || shot.result === 'destroyed') {
+          cell.classList.add('hist-x'); // 被吞噬者摧毁的格子
+        }
+        boardEl.appendChild(cell);
+      }
+    }
+    col.appendChild(boardEl);
+    boardsEl.appendChild(col);
+  });
+
+  $('#history-detail-modal').classList.remove('hidden');
+}
+
+function closeHistoryDetail() {
+  const modal = $('#history-detail-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // ---------- 我的头像（localStorage bp_avatar，首次访问随机分配） ----------
@@ -274,7 +505,11 @@ const state = {
   spectator: false,          // 我是不是观战者（房间满员时进入观战席）
   spectatorCount: 0,         // 本房间的观战人数（0 时不显示徽章）
   over: false,               // 本局是否已结束（结束后棋盘保留并公开飞机）
-  revealedPlanes: null       // 对局结束后服务器公开的双方飞机 [A 的, B 的]
+  revealedPlanes: null,      // 对局结束后服务器公开的双方飞机 [A 的, B 的]
+  isAI: false,               // 当前房间是不是人机对战（对战历史里区分 ai / online）
+  historyRecorded: false,    // 本局是否已经写过对战历史（防止同一局重复记录）
+  revealConfirm: false,      // 探测二次确认：开启后普通探测要连点同一格两次
+  revealPending: null        // 二次确认已选中的目标 {row, col}（尚未提交）
 };
 
 // 当前房间的规格（未进房或未知规格 = 经典 10×10/3 架）
@@ -603,6 +838,11 @@ function renderBattleBoards() {
     } else {
       td.classList.add('cell-unknown');
     }
+    // 二次确认：已选中、等待第二次点击的目标格用虚线框标出
+    if (state.revealPending && state.revealPending.row === r && state.revealPending.col === c &&
+        !state.itemPick && !state.spectator && !state.over) {
+      td.classList.add('cell-probe-target');
+    }
     // 注释标记：右键在未揭示格上标的预期内容（红=机头 绿=机身 灰=空，中间仍是暗色；
     // 格子被揭示后自动不显示——注释只是本地猜测，揭示即作废；观战视角不显示）
     if (!revealed && !state.spectator && state.marks[r + ',' + c] && (!s || s.result === 'destroyed')) {
@@ -653,7 +893,7 @@ function renderBattleBoards() {
     // 高亮格：浅金背景填充（无线条）。3×3 区域道具（声呐/探测者/吞噬者）的高亮格是
     // 区域**中心**（不是左上角锚点——用户反馈左上角浅黄会误导选区位置）；毁灭菇的
     // keys[0] 本身就是十字中心，不动。高亮格可能同时是轮廓格，两样都加：线 + 填充
-    if (pickKeys) {
+    if (pickKeys && pickKeys.length) {
       let highlightKey = pickKeys[0];
       if (isRegionPick && state.itemPick.itemId !== 'doom') {
         const p = pickKeys[0].split(',');
@@ -865,6 +1105,7 @@ function clearItemPick() {
   state.pickReady = false;
   state.pickFirstKey = null;
   state.pickHover = [];
+  state.revealPending = null; // 退出道具模式时，未确认的普通探测目标也一起清掉
 }
 
 // 3x3 区域锚点（左上角）：让点击的格子落在区域里，同时保证区域完整在棋盘内
@@ -1070,7 +1311,8 @@ function goBattle() {
     $('#board-title-my').textContent = '我的棋盘';
     $('#board-title-enemy').textContent = '对方棋盘';
   }
-  $('#board-title-enemy-note').textContent = '（点击未知格子揭示 · 右键/长按可标注机身）';
+  $('#board-title-enemy-note').textContent = ENEMY_NOTE_DEFAULT;
+  updateRevealConfirmUI(); // 同步勾选框 + 观战/结束时的显示状态
   renderBattleBoards();
   updateBattlePanels();
   showView('battle');
@@ -1111,6 +1353,7 @@ function goOver() {
     $('#btn-rematch').classList.remove('hidden');
   }
   $('#board-title-enemy-note').textContent = '（暗色 = 对方没被你探测过的格子）';
+  updateRevealConfirmUI(); // 对局结束：隐藏二次确认开关
   renderBattleBoards();   // 公开渲染：探测过的保持结果颜色，没探测过的暗色公开
   updateBattlePanels();
   updateOverRematchStatus();
@@ -1193,6 +1436,46 @@ function saveDraft() {
 
 // ---------- 对战页交互 ----------
 
+// ---------- 探测二次确认 ----------
+// 勾选后：第一次点格子只选中并高亮，第二次点同一格才真正探测；
+// 点另一格 = 改选。道具选区在 onEnemyCellClick 最前面 return，完全不受影响。
+const ENEMY_NOTE_DEFAULT = '（点击未知格子揭示 · 右键/长按可标注机身）';
+
+function loadRevealConfirm() {
+  state.revealConfirm = safeGet('bp_reveal_confirm') === '1';
+  updateRevealConfirmUI();
+}
+
+function updateRevealConfirmUI() {
+  const box = $('#reveal-confirm');
+  const wrap = $('#reveal-confirm-wrap');
+  if (!box || !wrap) return;
+  box.checked = !!state.revealConfirm;
+  // 观战 / 对局结束时这个开关没有意义，直接隐藏
+  wrap.classList.toggle('hidden', !!(state.spectator || state.over));
+  if (!state.over) {
+    const note = $('#board-title-enemy-note');
+    if (note) {
+      note.textContent = (state.revealConfirm && !state.spectator)
+        ? '（二次确认已开启：连点同一格两次才会探测）'
+        : ENEMY_NOTE_DEFAULT;
+    }
+  }
+}
+
+function clearRevealPending() {
+  state.revealPending = null;
+}
+
+function onRevealConfirmChange(checked) {
+  state.revealConfirm = !!checked;
+  safeSet('bp_reveal_confirm', checked ? '1' : '0');
+  state.revealPending = null; // 关掉开关或重新开启时，清掉未确认的目标
+  renderBattleBoards();
+  updateRevealConfirmUI();
+  toast(checked ? '已开启二次确认：探测需连点同一格两次' : '已关闭二次确认');
+}
+
 // 点对方棋盘：道具选区模式优先（选区域而不是揭示），否则正常揭示
 function onEnemyCellClick(r, c) {
   if (state.itemPick) return pickItemCell(r, c);
@@ -1211,10 +1494,23 @@ function onEnemyCellClick(r, c) {
   if (state.steps[state.seat] > state.steps[1 - state.seat]) {
     return toast('你的步数已领先，等待对方');
   }
+  // 二次确认：第一次点只记下目标并高亮；点同一格第二次才提交
+  if (state.revealConfirm) {
+    const p = state.revealPending;
+    if (!p || p.row !== r || p.col !== c) {
+      state.revealPending = { row: r, col: c };
+      renderBattleBoards();
+      return toast('再点一次这个格子确认探测');
+    }
+    state.revealPending = null;
+  }
   // 点击后立即给格子一个"处理中"样式：网络慢时也能看到响应，不觉得卡
   const td = $('#enemy-board').querySelector(
     'td[data-row="' + r + '"][data-col="' + c + '"]');
-  if (td) td.classList.add('cell-pending');
+  if (td) {
+    td.classList.remove('cell-probe-target');
+    td.classList.add('cell-pending');
+  }
   state.socket.emit('reveal', { row: r, col: c });
 }
 
@@ -1322,6 +1618,7 @@ function bindSocketEvents() {
     state.mode = d.mode || 'classic';
     state.boardSize = d.boardSize || 'S';
     state.coins = [0, 0];
+    state.isAI = !!d.isAI; // 人机房间：对战历史里记为「人机对战」
     safeRemove('bp_draft');
     goDeploy();
   });
@@ -1342,6 +1639,7 @@ function bindSocketEvents() {
     state.mode = d.mode || 'classic';
     state.boardSize = d.boardSize || 'S';
     state.coins = [0, 0];
+    state.isAI = false; // 加入别人的房间：一定是对真人联机
     safeRemove('bp_draft');
     goDeploy();
   });
@@ -1356,6 +1654,7 @@ function bindSocketEvents() {
     state.mode = d.mode || 'classic';
     state.boardSize = d.boardSize || 'S';
     state.coins = d.coins || [0, 0];
+    state.isAI = false; // 观战视角不记录历史，这里只是保证状态干净
     state.names = d.names;
     state.avatars = d.avatars || ['', ''];
     state.online = d.online;
@@ -1414,6 +1713,7 @@ function bindSocketEvents() {
   s.on('battleStart', function (d) {
     state.names = d.names;
     state.avatars = d.avatars || ['', ''];
+    state.historyRecorded = false; // 新一局：还没有写对战历史
     state.steps = d.steps;
     state.score = d.score;
     state.online = d.online;
@@ -1452,6 +1752,15 @@ function bindSocketEvents() {
     state.rematchVotes = [false, false];
     state.revealedPlanes = d.planes || null; // 服务器公开双方飞机，棋盘暗色显示
     goOver();
+    // 对战历史：每局只记一次。重连恢复时是 reconnected 直接调 goOver，不经过这里，不会重复记录
+    try {
+      if (!state.historyRecorded) {
+        state.historyRecorded = true;
+        recordMatchResult(d.winner, d.planes);
+      }
+    } catch (e) {
+      // 记录失败绝不影响结算页
+    }
   });
 
   // 双方在线状态变化（断线 / 重连 / 离开）：更新绿点/红点，不做其它反应
@@ -1520,6 +1829,7 @@ function bindSocketEvents() {
     state.token = null; // 清掉现场：断线重连时 connect 事件不会自动 rejoin 回来
     state.spectator = false;
     state.spectatorCount = 0;
+    state.isAI = false; // 离开房间：下一局的类型等服务器重新告知
     clearRoomFromUrl(); // 地址栏回到干净的首页
     showView('home');
   });
@@ -1558,6 +1868,7 @@ function bindSocketEvents() {
     state.coins = d.coins || [0, 0];
     state.headsLeft = d.headsLeft;
     state.deployConfirmed = d.deployConfirmed;
+    state.isAI = !!d.isAI; // 人机房间重连后仍然记为「人机对战」
     state.myPlanes = d.myPlanes || [];
     state.myShotsReceived = d.myShotsReceived || [];
     state.enemyShotsReceived = d.enemyShotsReceived || [];
@@ -1657,6 +1968,14 @@ function renderHomeMode() {
 function bindUIEvents() {
   // 右上角主题切换：跟随系统 → 浅色 → 深色 循环
   $('#btn-theme').addEventListener('click', cycleTheme);
+
+  // 敌方棋盘上方：探测二次确认开关（记忆到本机）
+  const revealConfirmBox = $('#reveal-confirm');
+  if (revealConfirmBox) {
+    revealConfirmBox.addEventListener('change', function () {
+      onRevealConfirmChange(revealConfirmBox.checked);
+    });
+  }
 
   // 首页：玩法两栏卡片（点卡片任意处选中）+ 地图规格选择（S/M/L，每栏各自记忆）
   // 点卡片切换玩法栏：规格自动换成该栏记着的选择
@@ -1780,6 +2099,7 @@ function bindUIEvents() {
       if (state.over) return toast('对局已结束');
       if (state.steps[state.seat] > state.steps[1 - state.seat]) return toast('你的步数已领先，等待对方');
       if (state.coins[state.seat] < ITEM_PRICES[id]) return toast('金币不够，买不起这个道具');
+      state.revealPending = null; // 进入道具模式：取消还没确认的普通探测
       state.itemPick = { itemId: id };
       state.pickCells = [];
       state.pickAnchor = null;
@@ -1856,6 +2176,21 @@ function bindUIEvents() {
     const willShow = panel.classList.contains('hidden');
     panel.classList.toggle('hidden', !willShow);
     head.classList.toggle('open', willShow);
+  });
+
+  // 首页「对战历史」弹窗：打开 / 关闭（点深色背景也能关闭），只读展示，不能清空
+  $('#btn-history').addEventListener('click', openHistoryModal);
+  $('#btn-history-close').addEventListener('click', closeHistoryModal);
+  $('#btn-history-x').addEventListener('click', closeHistoryModal);
+  $('#history-modal').addEventListener('click', function (e) {
+    if (e.target === this) closeHistoryModal();
+  });
+
+  // 历史详情弹窗：关闭后回到历史列表（列表一直留在下面）
+  $('#btn-history-detail-x').addEventListener('click', closeHistoryDetail);
+  $('#btn-history-detail-close').addEventListener('click', closeHistoryDetail);
+  $('#history-detail-modal').addEventListener('click', function (e) {
+    if (e.target === this) closeHistoryDetail();
   });
 
   // 头像选择面板：点自己的头像（首页/邀请页/对战页面板）打开；🎲 随机 / 点背景关闭
@@ -1964,6 +2299,7 @@ function init() {
   bindSocketEvents();
   bindUIEvents();
   applyTheme(); // 按上次选择 / 系统偏好设置主题（含右上角按钮图标）
+  loadRevealConfirm(); // 恢复「探测二次确认」开关（默认关闭）
 
   // 预生成三个棋盘
   makeBoard($('#deploy-board'), onDeployCellClick);
