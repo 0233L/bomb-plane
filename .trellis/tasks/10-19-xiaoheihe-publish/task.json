@@ -1,0 +1,30 @@
+{
+  "id": "xiaoheihe-publish",
+  "name": "xiaoheihe-publish",
+  "title": "小黑盒小程序上架（炸飞机）",
+  "description": "将炸飞机网页版移植为小黑盒小程序工坊版本，完成网络权限、真机联调、审核与发布",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "233L",
+  "assignee": "233L",
+  "createdAt": "2026-10-19",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-19-xiaoheihe-ws-spike",
+    "10-19-xiaoheihe-port",
+    "10-23-xiaoheihe-offline"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

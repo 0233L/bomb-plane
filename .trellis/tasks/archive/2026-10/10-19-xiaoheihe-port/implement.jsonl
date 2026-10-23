@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端目录与规范入口，确认移植代码的放置位置"}
+{"file": ".trellis/spec/frontend/xiaoheihe-sandbox.md", "reason": "小黑盒沙箱的 CSP、network 权限、WebSocket 固定地址与宿主能力契约"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量与验收标准"}
+{"file": ".trellis/spec/guides/index.md", "reason": "跨层与复用思考指南，避免重复实现游戏逻辑"}
+{"file": ".trellis/tasks/archive/2026-10/10-19-xiaoheihe-ws-spike/research/xiaoheihe-platform.md", "reason": "小黑盒平台约束、发布流程与已确认的风险"}
+{"file": ".trellis/tasks/archive/2026-10/10-19-xiaoheihe-ws-spike/result.md", "reason": "WebSocket 可行性 GO 结论与 Browser Mock 实测证据"}

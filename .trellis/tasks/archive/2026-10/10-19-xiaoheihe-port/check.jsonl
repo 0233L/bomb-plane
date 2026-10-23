@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/xiaoheihe-sandbox.md", "reason": "检查 WebSocket 地址、CSP、权限与宿主能力适配是否符合沙箱契约"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "检查移植代码的目录与前端规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查代码质量、禁止模式与测试要求"}
+{"file": ".trellis/spec/guides/index.md", "reason": "检查是否有重复实现或跨层遗漏"}
+{"file": ".trellis/tasks/archive/2026-10/10-19-xiaoheihe-ws-spike/result.md", "reason": "对照 spike 结论检查 WebSocket 与权限处理"}
